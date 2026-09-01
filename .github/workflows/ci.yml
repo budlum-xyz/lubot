@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Build, test and gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.83.0 --profile minimal --component clippy --component rustfmt
+          rustup default 1.83.0
+          rustc --version
+
+      - name: Formatting is not a matter of taste here
+        run: cargo fmt --all -- --check
+
+      - name: Lints are errors
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: The suite
+        run: cargo test --workspace
+
+      # A gate that cannot prove it catches its own violation is decoration.
+      - name: Gate self-tests
+        run: |
+          set -euo pipefail
+          for gate in $(python3 gates/check.py --list); do
+            python3 gates/check.py "$gate" --self-test
+          done
+
+      - name: Repository gates
+        run: python3 gates/check.py --all
+
+      - name: The corpus builder runs on this repository
+        run: |
+          set -euo pipefail
+          python3 training/build_corpus.py --repo . --out /tmp/knowledge.jsonl
+          python3 training/make_sft.py --corpus /tmp/knowledge.jsonl \
+            --curriculum training/curriculum --out /tmp/sft.jsonl

@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/grant",
+    "crates/read",
+    "crates/index",
+    "crates/tools",
+    "crates/answer",
+]
+
+# The panic limit: a reader that panics is a reader that stops answering.
+# `unwrap` and `expect` are refused on the production path; tests are exempt
+# through `clippy.toml`.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license-file = "LICENSE.md"
