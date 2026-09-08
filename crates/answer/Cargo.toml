@@ -1,0 +1,15 @@
+[package]
+name = "lubot-answer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+lubot-grant = { path = "../grant" }
+lubot-index = { path = "../index" }
+lubot-read = { path = "../read" }
+lubot-tools = { path = "../tools" }
+
+[lints]
+workspace = true
