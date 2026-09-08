@@ -1,0 +1,13 @@
+[package]
+name = "lubot-doc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+description = "Rich-document reading: PDF text extraction, paragraph-aware chunking."
+
+[dependencies]
+pdf-extract = "0.12"
+
+[lints]
+workspace = true

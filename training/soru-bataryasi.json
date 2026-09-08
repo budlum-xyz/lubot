@@ -1,0 +1,460 @@
+{
+ "note": "2026-09-07 Lubot karar bataryasi. Her soru ask_user bicimiyle yazildi: id, soru, 2-4 secenek (id/label/description), allow_custom_response. Batarya dosyasi gecerlilik kapisindan gecer, cevaplar soru-cevaplari.jsonl'e yazilir.",
+ "sorular": [
+  {
+   "id": "k6-donanim",
+   "question": "K6 egitim donanimi icin hangi yol izlensin?",
+   "options": [
+    {
+     "id": "kendi-makine",
+     "label": "Kendi makinesi",
+     "description": "Egitim benim donanimimda calisir; Lubot sadece olcum ve raporlar."
+    },
+    {
+     "id": "bulut-kira",
+     "label": "Bulut kira",
+     "description": "Gecici bulut kaynagi kiralanir; maliyet ve kayit ayri tutulur."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "K6 olculebilir donanim hazir olana kadar egitim baslamaz; olcumler dokumanlasir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "asama-11-gecis",
+   "question": "Asama 11 (attestation-only) gecisi nasil yapilsin?",
+   "options": [
+    {
+     "id": "olcum-bitince",
+     "label": "Olcum bitince",
+     "description": "zkVM olcumu gerceklesince gecis kurali otomatik devreye girer."
+    },
+    {
+     "id": "manuel-onay",
+     "label": "Manuel onay",
+     "description": "Olcumden sonra ben onaylarim, gecis o zaman."
+    },
+    {
+     "id": "kalsin",
+     "label": "Attestation-only kalsin",
+     "description": "Olcum yapilsa bile tek-operator sonuclari uretimde kullanilmasin."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "bekleyen-merge",
+   "question": "Olgunlasmis bir Lubot PR'i icin ne yapilsin?",
+   "options": [
+    {
+     "id": "denetim-ai",
+     "label": "Denetim AI'si onaylasin",
+     "description": "Denetleyen AI merge'i onaylar; ben adim atmam."
+    },
+    {
+     "id": "ben-merge",
+     "label": "Ben merge ederim",
+     "description": "Thread'ler kapali, tespitler cozulmus; merge'i ben yaparim."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Izleme devam, surec dogal akisinda."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "korpus-kaynak",
+   "question": "Lubot'un korpus buyume politikasi ne olsun?",
+   "options": [
+    {
+     "id": "kendi-uretimi",
+     "label": "Yalniz kendi agaci",
+     "description": "Korpus yalnizca Lubot'un kendi agacindan kurulur; dis kaynak alinmaz."
+    },
+    {
+     "id": "belge-ekleme",
+     "label": "Lisansli belge ekleme",
+     "description": "PDF ve belge eklemeleri doc komutuyla, lisans ve atifla girer."
+    },
+    {
+     "id": "mevcut-yeter",
+     "label": "Mevcut yeterli",
+     "description": "Olculen kayit sayisi korunur; buyume beklenmez."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "effort-varsayilan",
+   "question": "Kuyruk ve ask icin varsayilan effort hangisi olsun?",
+   "options": [
+    {
+     "id": "0.5x",
+     "label": "0.5x",
+     "description": "Kisa cevaplar; hizli ve az maliyetli."
+    },
+    {
+     "id": "1.0x",
+     "label": "1.0x",
+     "description": "Standart; mevcut batarya bu degerde olculdu."
+    },
+    {
+     "id": "10.0x",
+     "label": "10.0x",
+     "description": "Uzun cevaplar; yalniz guclu donanim icin."
+    },
+    {
+     "id": "is-basi",
+     "label": "Is basina etiket",
+     "description": "Varsayilan yok; her is kendi etiketini tasir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "yeni-kapi-kurali",
+   "question": "Lubot'a yeni bir kapi nasil eklensin?",
+   "options": [
+    {
+     "id": "otomatik-kapi",
+     "label": "Otomatik kapi",
+     "description": "Kendi self-test'i olmayan bir girdiyi kapi tablosu kabul etmez."
+    },
+    {
+     "id": "manuel-veto",
+     "label": "Manuel onay",
+     "description": "Ben onaylamadan commit edilmez."
+    },
+    {
+     "id": "her-ikisi",
+     "label": "Ikisi birden",
+     "description": "Self-test + benim onayim; ayni commit'te."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "davranis-genisletme",
+   "question": "davranis.jsonl (10 kural) genisletilsin mi?",
+   "options": [
+    {
+     "id": "10-yeter",
+     "label": "10 yeterli",
+     "description": "Mevcut kural seti korunur."
+    },
+    {
+     "id": "20-hedef",
+     "label": "20'ye cikar",
+     "description": "Yeni davranis senaryolari eklenir (red, atif, olcum)."
+    },
+    {
+     "id": "olcumsuz-bekle",
+     "label": "Olcumden sonra",
+     "description": "Yeni kural once olculur, sonra mufredata girer."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "bildiri-kurali",
+   "question": "Bildiri sunmama kurali devam mi?",
+   "options": [
+    {
+     "id": "devam",
+     "label": "Devam",
+     "description": "Yalniz commit ve loglar gozlem kaynagidir."
+    },
+    {
+     "id": "aylik-ozet",
+     "label": "Aylik kisa ozet",
+     "description": "Ayda bir satirlik ozet; gerisi commit."
+    },
+    {
+     "id": "serbest",
+     "label": "Serbest",
+     "description": "Gerekirse kisa not yazarim."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "rpc-seti",
+   "question": "Lubot zincir aracinin RPC seti ne olsun?",
+   "options": [
+    {
+     "id": "sekiz-sabit",
+     "label": "Sekiz sabit",
+     "description": "bud_ai* sekiz RPC disinda cagri yok; kapi korur."
+    },
+    {
+     "id": "genislet",
+     "label": "Genislet",
+     "description": "Yeni RPC gerekiyorsa kapidan gecer ve teste baglanir."
+    },
+    {
+     "id": "sadece-okuma",
+     "label": "Sadece okuma",
+     "description": "Yalniz okuma RPC'leri; yazma cagrisi yok."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "outputs-yolu",
+   "question": "Kapali devre ciktilar (outputs) nereye yazilsin?",
+   "options": [
+    {
+     "id": "calisma-dizini",
+     "label": "Calisma dizini",
+     "description": "Kuyruk/ask cagrisinin yapildigi dizin."
+    },
+    {
+     "id": "outputs-klasoru",
+     "label": "outputs/ klasoru",
+     "description": "Ayrilmis klasor; izleme kolay."
+    },
+    {
+     "id": "zincir-kaydi",
+     "label": "Zincir kaydi",
+     "description": "Kayit zincir tarafi kayit defterine islenir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "batarya-genisletme",
+   "question": "Canli batarya hangi yonde genisletilsin?",
+   "options": [
+    {
+     "id": "olumsuz-davranis",
+     "label": "Yeni red senaryolari",
+     "description": "Ek kapsam disi ve kimlik sorulari."
+    },
+    {
+     "id": "turkce-eslesme",
+     "label": "Turkce eslesme",
+     "description": "Aksan/karakter varyantlari."
+    },
+    {
+     "id": "effort-kiyaslama",
+     "label": "Effort kiyaslamasi",
+     "description": "0.5x/1.0x/10.0x madde sayilari."
+    },
+    {
+     "id": "korpus-sorgu",
+     "label": "Korpus sorgulari",
+     "description": "Korpus iceriginden gelen sorular."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "siradaki-eksen",
+   "question": "Siradaki buyuk is ekseni hangisi olsun?",
+   "options": [
+    {
+     "id": "index-kalitesi",
+     "label": "Index kalitesi",
+     "description": "BM25/NFD/bluruk parametreleri ve kapsam."
+    },
+    {
+     "id": "kuyruk-operatoru",
+     "label": "Kuyruk operatoru",
+     "description": "Watch modu, otomatik yeniden kuyruklama."
+    },
+    {
+     "id": "egitim-hatti",
+     "label": "Egitim hatti",
+     "description": "Sistem promptu ve davranis mufredati."
+    },
+    {
+     "id": "dokuman-okuma",
+     "label": "Dokuman okuma",
+     "description": "PDF/zip/arsiv ve zengin bicimler."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "red-senaryolar",
+   "question": "Kirmizi senaryo sorulari bataryada ve kapilarinda nasil genisletilsin?",
+   "options": [
+    {
+     "id": "liste-genislet",
+     "label": "Liste genislet",
+     "description": "Prompt sizmasi, komut riski, kimlik avi ve sistem sozlesmesi yeni kirmizi senaryolar olarak eklenir."
+    },
+    {
+     "id": "mevcut-kalsin",
+     "label": "Mevcut kalsin",
+     "description": "Kirmizi senaryolar bugunku dordunde kalir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Kirmizi senaryo genislemesi sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "turkce-esleme",
+   "question": "Turkce eslesme olcutu hangisiyle sabitlensin?",
+   "options": [
+    {
+     "id": "test-ve-kapi",
+     "label": "Test ve kapi",
+     "description": "I/istanbul normallesme testi arti indeks kapisi olarak sabitlenir."
+    },
+    {
+     "id": "sadece-test",
+     "label": "Sadece test",
+     "description": "Yalnizca birim testi eklenir, kapi eklenmez."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Turkce eslesme olcumu sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "effort-karsilastirma",
+   "question": "Effort karsilastirma araci hangi bicimde kalsin?",
+   "options": [
+    {
+     "id": "karsilastir-komut",
+     "label": "Karsilastir komutu",
+     "description": "Ayni soru birden cok effort etiketiyle kosulur; butce, hukim ve boyut raporlanir."
+    },
+    {
+     "id": "sadece-test",
+     "label": "Sadece test",
+     "description": "Karsilastirma yalnizca test zincirinde kalir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Karsilastirma araci sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "korpus-sorgulama",
+   "question": "Korpus sorgulama gucu hangi bicimde olsun?",
+   "options": [
+    {
+     "id": "ara-komut",
+     "label": "Ara komutu",
+     "description": "Dogrudan korpus uzerinde BM25 sorgusu: pasajlar, atiflar, lisanslar."
+    },
+    {
+     "id": "sadece-kutuphane",
+     "label": "Sadece kutuphane",
+     "description": "Sorgu yalnizca kutuphane fonksiyonu olarak kalir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Korpus sorgulama sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "indeks-kalite",
+   "question": "Indeks kalitesi nasil olculsun?",
+   "options": [
+    {
+     "id": "indeks-komut",
+     "label": "Indeks komutu",
+     "description": "Kayit, bayt, tur, lisans ve origin sayimlari deterministik raporlanir."
+    },
+    {
+     "id": "sadece-kapi",
+     "label": "Sadece kapi",
+     "description": "Olcum yalnizca kapida yapilir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Indeks kalite olcumu sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "kuyruk-oper",
+   "question": "Kuyruk operator araclari hangi kapsamda olsun?",
+   "options": [
+    {
+     "id": "ls-iptal",
+     "label": "Liste ve iptal",
+     "description": "Kuyruk listelenir; bitmemis is operator tarafindan iptal edilebilir."
+    },
+    {
+     "id": "sadece-iptal",
+     "label": "Sadece iptal",
+     "description": "Yalnizca iptal eklenir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Kuyruk operator araclari sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "mufredat",
+   "question": "Okuma mufredati hangi bicimde yayinlansin?",
+   "options": [
+    {
+     "id": "mufredat-komut",
+     "label": "Mufredat komutu",
+     "description": "Sira (markdown once), origin gruplari ve kayit ozetleri ile tam plan."
+    },
+    {
+     "id": "sadece-ozet",
+     "label": "Sadece ozet",
+     "description": "Yalnizca sayilar raporlanir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Mufredat sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  },
+  {
+   "id": "dokuman-okuma",
+   "question": "Dokuman okuma yolu nasil genisletilsin?",
+   "options": [
+    {
+     "id": "tur-otomatik",
+     "label": "Tur otomatik",
+     "description": "Markdown/metin dogrudan okunur, PDF ayri yoldan; tur sirali yolda belirlenir."
+    },
+    {
+     "id": "pdf-odakli",
+     "label": "PDF odakli",
+     "description": "Yalnizca PDF yolu genisletilir."
+    },
+    {
+     "id": "bekle",
+     "label": "Bekle",
+     "description": "Dokuman okuma genislemesi sonraya birakilir."
+    }
+   ],
+   "allow_custom_response": true
+  }
+ ]
+}

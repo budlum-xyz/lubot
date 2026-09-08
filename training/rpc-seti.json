@@ -1,0 +1,13 @@
+{
+  "note": "Lubot zincir aracinin cagirabilecegi RPC seti. Yedi RPC raporun sabit yuzeyi; genisletme icin hem bu dosyaya hem ALLOWED_METHODS'a ayni anda eklenir (kapi iki tarafi denetler). bud_aiGetCeilings: node tarafinin salt-okunur sorgusu; tavanlar + effort araligi.",
+  "methods": [
+    "bud_aiGetModel",
+    "bud_aiRegisterModel",
+    "bud_aiSubmitRequest",
+    "bud_aiSubmitResult",
+    "bud_aiGetOutcome",
+    "bud_aiGetActiveVerifiers",
+    "bud_aiInferenceStats",
+    "bud_aiGetCeilings"
+  ]
+}
