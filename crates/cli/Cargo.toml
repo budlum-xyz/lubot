@@ -1,0 +1,21 @@
+[package]
+name = "lubot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+lubot-answer = { path = "../answer" }
+lubot-index = { path = "../index" }
+lubot-doc = { path = "../doc" }
+lubot-tools = { path = "../tools" }
+lubot-grant = { path = "../grant" }
+lubot-read = { path = "../read" }
+lubot-sikistir = { path = "../sikistir" }
+
+[lints]
+workspace = true

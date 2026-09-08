@@ -1,0 +1,17 @@
+{
+  "kosucu": "betik",
+  "tarih": "2026-09-08",
+  "is": "corpus-build-is-deterministic",
+  "olcut": {
+    "ad": "iki_bagimsiz_korpus_insasinin_sha256_esitligi",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 0.16,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kanit": "build_corpus.py iki kez bagimsiz kosuldu; sha256 ozetleri esit (b836277997cf)."
+}
