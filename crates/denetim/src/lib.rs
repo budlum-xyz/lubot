@@ -411,7 +411,13 @@ mod tests {
 
         // Low: the floor is not reached, no attestation needed.
         review
-            .reject("low", Waiver { reason: "not on the read path".to_owned(), attester: String::new() })
+            .reject(
+                "low",
+                Waiver {
+                    reason: "not on the read path".to_owned(),
+                    attester: String::new(),
+                },
+            )
             .unwrap();
         // High: an unattested waiver is refused and the finding stays open.
         assert_eq!(
