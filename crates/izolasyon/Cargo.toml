@@ -1,0 +1,12 @@
+[package]
+name = "lubot-izolasyon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+# Self-contained: models the isolation boundary as a pure, checkable
+# contract. It takes no dependencies and performs no filesystem access.
+
+[lints]
+workspace = true
