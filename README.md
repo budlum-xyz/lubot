@@ -29,9 +29,11 @@ nothing to check a generation against.
 | the assembled reading loop, schema-validated exit; scope refusals; the finalized-output handoff (`ai-inference` tag) | `crates/answer` | 14 tests |
 | rich-document reading: PDF text extraction, paragraph-aware chunking | `crates/doc` | 4 tests |
 | context compression: route by content type, pins survive byte for byte, CCR store with digest re-verification, append-only savings ledger | `crates/sikistir` | 11 tests |
+| the isolation boundary as a checkable contract: a session opens from an empty workspace under a session-scoped identity, with exactly one contract in force, and results leave only as copies | `crates/izolasyon` | 4 tests |
+| the security review as an evidenced ledger (scan, validate, fix): every finding ends in a disposition, a fix closes only with the check that proves it plus the commit that is it, no waiver at the attestation floor without an attester, and a finding that changes on re-scan voids its stale closure | `crates/denetim` | 9 tests |
 | the runnable binary: corpus load, `ask`, grant book, output audit, closed-loop handoff; `ceilings`; multi-question `batch`; the uninterrupted-work queue (resume, budget, per-job gate check, loud halt); measured baselines that may only rise (`ratchet`); repository `envanter`; restricted `it` (only the listed paths are committed and pushed); the four-step `olc` verification chain; `durum`; the manifest map `graf`; the credential scan `guvenlik`; the file-kind router `dosya`; the ask_user-shaped decision battery `soru` (list/get/cevapla/durum); content search `ara`, measured `indeks`, the ordered reading plan `mufredat`, effort comparison `karsilastir`; context compression `sikistir` (--path/--geri-getir: typed routing, pinned lines, reversible CCR store, measured ledger) and failure mining `ogren` (pattern grouping, two-tier promotion); the queue operator (`queue ls`, `queue iptal` - a cancelled job never runs); batch writes the same audit and closed-loop trace as `ask` | `crates/cli` | 37 tests |
 
-178 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 37 gates, each with its own self-test; the ratchet holds (178 tests, 37 gates, 0 pedantic warnings, 793 corpus records).
+191 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 37 gates, each with its own self-test; the ratchet holds (191 tests, 37 gates, 0 pedantic warnings, 793 corpus records).
 
 ## Permission is an admission decision
 
@@ -81,6 +83,8 @@ grant book used, so "revoked" is never reported as "not found".
 | `crates/index` | passages with line ranges, secret masking, term search |
 | `crates/tools` | the exact-rational calculator and the router |
 | `crates/answer` | the reading loop that puts the four together |
+| `crates/izolasyon` | the isolation boundary: empty workspace, session-scoped identity, one contract, copy-only exit |
+| `crates/denetim` | the review ledger: scan, validate, fix, evidenced dispositions |
 | `gates/check.py` | the repository gates CI enforces |
 | `training/` | the corpus builder and the supervised-set builder |
 | `corpus/` | derived self-built corpus (gitignored; CI builds it before the gates) |
