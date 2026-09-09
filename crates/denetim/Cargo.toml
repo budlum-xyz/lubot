@@ -1,0 +1,12 @@
+[package]
+name = "lubot-denetim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+# Self-contained: models a security review (scan -> validate -> fix) as a
+# checkable ledger. It takes no dependencies and performs no I/O.
+
+[lints]
+workspace = true
