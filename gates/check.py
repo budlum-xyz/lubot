@@ -1597,8 +1597,53 @@ def selftest_eval_runs_are_mechanical() -> None:
     assert _eval_run_finding(unmeasured) is not None, "a run without duration accounting passed"
 
 
+# --------------------------------------------------------------------------
+# gate: the review crate holds the ledger rules; a closure without evidence
+# --------------------------------------------------------------------------
+REVIEW_RULE_MARKERS = [
+    "pub enum Severity",
+    "pub fn record(",
+    "pub fn fix(",
+    "pub fn reject(",
+    "pub fn complete(",
+    "pub fn verify(",
+    "AttesterRequired",
+    "EmptyEvidence",
+    "finding.severity >= Severity::High",
+]
+
+
+def gate_review_crate_holds_ledger_rules() -> str:
+    """The denetim crate is the review-ledger authority: scan, validate and
+    fix live in one ledger, closures are evidence-gated, the attestation
+    floor sits at High, and re-scan invalidation is in force."""
+    src = read("crates/denetim/src/lib.rs")
+    for marker in REVIEW_RULE_MARKERS:
+        if marker not in src:
+            raise SystemExit(f"denetim crate lost a ledger rule: {marker}")
+    if "let voided = self.dispositions.remove(&finding.id);" not in src:
+        raise SystemExit("re-scan no longer voids a stale closure")
+    return "denetim crate is the review-ledger authority"
+
+
+def selftest_review_crate_holds_ledger_rules() -> None:
+    good = "\n".join(REVIEW_RULE_MARKERS) + "\nlet voided = self.dispositions.remove(&finding.id);"
+    thin = "pub fn record(\npub fn fix("
+    assert not run_review_like(good)
+    assert run_review_like(thin)
+
+
+def run_review_like(text: str) -> bool:
+    """True when the text does NOT carry the full rule set."""
+    for marker in [*REVIEW_RULE_MARKERS, "let voided = self.dispositions.remove(&finding.id);"]:
+        if marker not in text:
+            return True
+    return False
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
+    "review-crate-holds-ledger-rules": (gate_review_crate_holds_ledger_rules, selftest_review_crate_holds_ledger_rules),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
     "output-finalize-closed-loop": (gate_output_finalize_closed_loop, selftest_output_finalize_closed_loop),
     "cli-asks-and-renders-markdown": (gate_cli_asks_and_renders_markdown, selftest_cli_asks_and_renders_markdown),
