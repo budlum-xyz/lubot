@@ -1,0 +1,13 @@
+[package]
+name = "lubot-anlama"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+# Self-contained: no dependencies, no filesystem access, no clock. The command
+# text and any attachment bodies arrive as strings from the caller; the reading
+# is a pure function of them, so a test can hold the whole thing in memory.
+
+[lints]
+workspace = true
