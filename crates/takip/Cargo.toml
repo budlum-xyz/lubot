@@ -1,0 +1,12 @@
+[package]
+name = "lubot-takip"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+# Self-contained: no dependencies, no filesystem access, no clock. A pure
+# contract that can be checked by a test and nothing else.
+
+[lints]
+workspace = true
