@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 import subprocess
 import sys
@@ -156,6 +157,145 @@ def selftest_no_panic_path() -> None:
 # --------------------------------------------------------------------------
 # gate: the claims in the README are measured
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# gate: a `pub fn` nothing reaches is public API, and the count is a ratchet
+# --------------------------------------------------------------------------
+DEAD_API_BASELINE = ROOT / "gates" / "dead-pub-api.baseline"
+DEAD_API_EXEMPT = ("WIRING:", "Convenience:", "exposed for")
+DEAD_API_LOOKBACK = 14
+DEAD_API_MAX_REPORTED = 20
+DEAD_API_DIRS = ("crates",)
+DEAD_API_REF_GLOBS = ("*.rs", "*.md", "*.toml", "*.py", "*.json", "*.jsonl")
+
+
+def strip_test_tail(text: str) -> str:
+    """Production side of a source file: everything before `#[cfg(test)]`."""
+    cut = text.find("#[cfg(test)]")
+    return text if cut < 0 else text[:cut]
+
+
+def pub_fn_decls(text: str) -> list[tuple[int, str]]:
+    """`(line, name)` for every production `pub fn` the text declares.
+
+    Deliberately literal: the qualifiers are consumed one at a time, so a shape
+    this gate cannot read (a macro-generated function, an `extern` block) is not
+    quietly counted as a declaration.
+    """
+    prod = strip_test_tail(text).splitlines()
+    out: list[tuple[int, str]] = []
+    for i, line in enumerate(prod):
+        m = re.match(r"\s*pub (?:const |unsafe |async )*fn ([a-z0-9_]+)\b", line)
+        if m:
+            out.append((i, m.group(1)))
+    return out
+
+
+def reference_counts() -> dict[str, int]:
+    """How often each identifier appears in the tree, test tails removed."""
+    counts: dict[str, int] = {}
+    seen: set[pathlib.Path] = set()
+    for pattern in DEAD_API_REF_GLOBS:
+        for path in ROOT.rglob(pattern):
+            if not path.is_file() or path in seen or ".git" in path.parts or "target" in path.parts:
+                continue
+            seen.add(path)
+            text = strip_test_tail(path.read_text(encoding="utf-8", errors="replace"))
+            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text):
+                counts[token] = counts.get(token, 0) + 1
+    return counts
+
+
+def dead_public_api_entries(text: str, refs: dict[str, int]) -> list[str]:
+    """Names this file declares that no other line of the tree uses.
+
+    A declaration subtracts its own file's `pub fn` lines from the reference
+    count, so a name that only appears where it is declared is unreached. A
+    name whose only other use is under `#[cfg(test)]` is unreached too: "tested"
+    and "wired to a caller" are different claims, and collapsing them is how a
+    crate full of unreachable API stays green.
+    """
+    lines = strip_test_tail(text).splitlines()
+    out: list[str] = []
+    for i, name in pub_fn_decls(text):
+        declared = sum(1 for l in lines if re.match(r"\s*pub (?:const |unsafe |async )*fn " + re.escape(name) + r"\b", l))
+        if refs.get(name, 0) - declared > 0:
+            continue
+        window = "\n".join(lines[max(0, i - DEAD_API_LOOKBACK):i])
+        if any(token in window for token in DEAD_API_EXEMPT):
+            continue
+        out.append(name)
+    return out
+
+
+def read_dead_api_baseline() -> list[str]:
+    if not DEAD_API_BASELINE.is_file():
+        raise SystemExit(
+            "gates/dead-pub-api.baseline is missing: without the recorded debt the "
+            "gate can only say the tree is clean, which it has not measured"
+        )
+    entries: list[str] = []
+    for raw in DEAD_API_BASELINE.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
+            raise SystemExit(
+                f"baseline line `{line}` is not `path:name`: a line the gate can "
+                "never match is a line that silently never matches"
+            )
+        entries.append(line)
+    if entries != sorted(set(entries)):
+        raise SystemExit("gates/dead-pub-api.baseline is not sorted or holds duplicates")
+    return entries
+
+
+def gate_public_api_is_reached() -> str:
+    """`crates/*/src/**` declares no `pub fn` that nothing in the tree reaches,
+    beyond what the baseline records."""
+    refs = reference_counts()
+    measured: list[str] = []
+    for d in DEAD_API_DIRS:
+        for path in sorted((ROOT / d).glob("**/src/**/*.rs")):
+            rel = str(path.relative_to(ROOT))
+            if "/tests/" in rel:
+                continue
+            for name in dead_public_api_entries(path.read_text(encoding="utf-8", errors="replace"), refs):
+                measured.append(f"{rel}:{name}")
+    measured.sort()
+    baseline = read_dead_api_baseline()
+    extra = [e for e in measured if e not in set(baseline)]
+    gone = [e for e in baseline if e not in set(measured)]
+    if extra:
+        shown = "\n  ".join(extra[:DEAD_API_MAX_REPORTED])
+        more = f"\n  ... and {len(extra) - DEAD_API_MAX_REPORTED} more" if len(extra) > DEAD_API_MAX_REPORTED else ""
+        raise SystemExit(
+            f"{len(extra)} public function(s) nothing in the tree calls:\n  {shown}{more}\n"
+            "  Call it from the path it was written for, or write the exemption next "
+            "to the declaration (one of: " + ", ".join(DEAD_API_EXEMPT) + f") within "
+            f"{DEAD_API_LOOKBACK} lines. Do not add a line to the baseline to pass this."
+        )
+    if gone:
+        raise SystemExit(
+            f"{len(gone)} baseline entr{'y' if len(gone)==1 else 'ies'} no longer dead "
+            f"(wired up or deleted):\n  " + "\n  ".join(gone[:DEAD_API_MAX_REPORTED])
+            + "\n  Remove those lines in this patch: the next author inherits whatever stays."
+        )
+    return f"public api is at its recorded floor: {len(measured)} unreached, baseline {len(baseline)}"
+
+
+def selftest_public_api_is_reached() -> None:
+    """The extractor is not vacuous, and neither is the baseline rule."""
+    assert pub_fn_decls("pub fn alpha() {}\nfn beta() {}\n") == [(0, "alpha")]
+    assert pub_fn_decls("#[cfg(test)]\npub fn gamma() {}\n") == []
+    assert pub_fn_decls("pub async fn delta() {}\npub const fn epsilon() {}\n") == [(0, "delta"), (1, "epsilon")]
+    refs = {"alpha": 1, "used_elsewhere": 2}
+    text = "pub fn alpha() {}\npub fn used_elsewhere() {}\n"
+    dead = dead_public_api_entries(text, refs)
+    assert dead == ["alpha"], dead
+    exempted = "/// Convenience: kept for the CLI.\npub fn alpha() {}\n"
+    assert dead_public_api_entries(exempted, refs) == []
+
+
 def gate_readme_is_measured() -> str:
     """The test count in the README is the count the suite reports."""
     readme = read("README.md")
@@ -1660,6 +1800,7 @@ GATES_EXTRA = {
     "doc-pdf-feeds-corpus": (gate_doc_pdf_feeds_corpus, selftest_doc_pdf_feeds_corpus),
     "queue-continues-uninterruptedly": (gate_queue_continues_uninterruptedly, selftest_queue_continues_uninterruptedly),
     "ratchet-holds": (gate_ratchet_holds, selftest_ratchet_holds),
+    "public-api-is-reached": (gate_public_api_is_reached, selftest_public_api_is_reached),
     "fmt-clean": (gate_fmt_clean, selftest_fmt_clean),
     "it-is-restricted": (gate_it_is_restricted, selftest_it_is_restricted),
     "no-debug-leftovers": (gate_no_debug_leftovers, selftest_no_debug_leftovers),
