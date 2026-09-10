@@ -1,0 +1,13 @@
+[package]
+name = "lubot-esik"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+# Self-contained: no dependencies, no filesystem access, no clock. Epochs arrive
+# as arguments, so "is the new rule live" is a question a test answers for any
+# height, and a schedule never gains an opinion about what time it is.
+
+[lints]
+workspace = true
