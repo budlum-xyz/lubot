@@ -1,4 +1,4 @@
-# Crate inventory, nine entries added in this series
+# Crate inventory, ten entries added in this series
 
 | crate | holds | fails closed on |
 |---|---|---|
@@ -11,7 +11,8 @@
 | `kuyruk` | bounded maintenance work: pending, done, dead letters, and the eviction ledger | a zero capacity, a duplicate key, an arrival that cannot displace anything, an early take, and any job the sums cannot find |
 | `erisim` | issued capability grants, their narrowing by delegation, and the audit trail | a zero ttl or use count, an empty scope or capability, a `starts_with` scope escape, a delegation that widens, a use after revocation or expiry, a trail that disagrees with the records |
 | `anlama` | what each word of the command contributed, and what had to be added to get there | a scope no word supports, a loose match with no correction on record, an assumption nobody listed, an instruction read out of attached text |
+| `esik` | the activation schedule: plans, the flags inside them, and the epoch each opens at | an activation at genesis, a change whose epoch is not its plan's, a flag the plan never promised, a plan opened twice at one epoch, a due change nobody ratified, a retirement that never ran, a rewritten epoch |
 
-None of the nine depends on another. All are `std` only, no I/O, no clock, no
+None of the ten depends on another. All are `std` only, no I/O, no clock, no
 randomness: a run that reads them can be reproduced from its inputs, which is
 the only property that makes a review finding reviewable a second time.
