@@ -209,58 +209,8 @@ pub const ALLOWED_METHODS: [&str; 8] = [
     "bud_aiGetOutcome",
     "bud_aiGetActiveVerifiers",
     "bud_aiInferenceStats",
-    "bud_aiGetCeilings",
 ];
 
-/// The modality ceilings and effort range a node declares, as the client
-/// reads them.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CeilingsReport {
-    pub text_bytes: u64,
-    pub image_pixels: u64,
-    pub audio_millis: u64,
-    pub video_frames: u64,
-    pub effort_min_tenths: u64,
-    pub effort_max_tenths: u64,
-}
-
-/// A `bud_aiGetCeilings` request: no parameters, read-only. The `params`
-/// member is omitted entirely, so a read-only call never deserializes an
-/// argument array; a fixture that echoes the request back proves it.
-#[must_use]
-pub fn ceilings_request() -> String {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "bud_aiGetCeilings",
-    })
-    .to_string()
-}
-
-/// Parse a `bud_aiGetCeilings` response. Numbers must be present and
-/// unsigned; a missing field is a refusal, never a guessed ceiling.
-pub fn parse_ceilings(response: &str) -> Result<CeilingsReport, String> {
-    let value: Value =
-        serde_json::from_str(response).map_err(|e| format!("not valid JSON-RPC: {e}"))?;
-    if value.get("error").is_some() {
-        return Err(format!("RPC error: {:?}", value.get("error")));
-    }
-    let result = value.get("result").ok_or("response has no result object")?;
-    let field = |name: &str| -> Result<u64, String> {
-        result
-            .get(name)
-            .and_then(Value::as_u64)
-            .ok_or_else(|| format!("ceilings: missing `{name}`"))
-    };
-    Ok(CeilingsReport {
-        text_bytes: field("text_bytes")?,
-        image_pixels: field("image_pixels")?,
-        audio_millis: field("audio_millis")?,
-        video_frames: field("video_frames")?,
-        effort_min_tenths: field("effort_min_tenths")?,
-        effort_max_tenths: field("effort_max_tenths")?,
-    })
-}
 
 /// Is this method inside the registered set?
 #[must_use]
@@ -339,7 +289,10 @@ mod tests {
         for method in ALLOWED_METHODS {
             assert!(is_allowed_method(method));
         }
-        assert!(is_allowed_method("bud_aiGetCeilings"));
+        assert!(
+            !is_allowed_method("bud_aiGetCeilings"),
+            "the ceilings flow was removed as callerless; a method with no parser must not be allowed"
+        );
         // The report's seven stay mandatory even with the extension.
         for method in [
             "bud_aiGetModel",
@@ -355,25 +308,6 @@ mod tests {
         assert!(!is_allowed_method("bud_aiDisputeSlash"));
     }
 
-    #[test]
-    fn ceilings_round_trip_as_a_read_only_call() {
-        let body = ceilings_request();
-        assert!(body.contains("\"bud_aiGetCeilings\""));
-        assert!(!body.contains("params\":["));
-        let response = r#"{"jsonrpc":"2.0","id":1,"result":{"text_bytes":1048576,"image_pixels":16777216,"audio_millis":3600000,"video_frames":4096,"effort_min_tenths":5,"effort_max_tenths":100}}"#;
-        let parsed = parse_ceilings(response).expect("parses");
-        assert_eq!(parsed.text_bytes, 1_048_576);
-        assert_eq!(parsed.video_frames, 4096);
-        assert_eq!(parsed.effort_min_tenths, 5);
-        assert_eq!(parsed.effort_max_tenths, 100);
-    }
-
-    #[test]
-    fn a_missing_ceiling_is_a_refusal_not_a_guess() {
-        let response = r#"{"jsonrpc":"2.0","id":1,"result":{"text_bytes":1048576}}"#;
-        let err = parse_ceilings(response).unwrap_err();
-        assert!(err.contains("missing"), "{err}");
-    }
 
     #[test]
     fn single_operator_results_are_not_consumed_while_attestation_only() {

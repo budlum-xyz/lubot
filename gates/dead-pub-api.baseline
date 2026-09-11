@@ -38,9 +38,7 @@ crates/read/src/perception.rs:is_known
 crates/takip/src/lib.rs:declare_unwired
 crates/takip/src/lib.rs:declare_wired
 crates/takip/src/lib.rs:unclaimed
-crates/tools/src/chain.rs:ceilings_request
 crates/tools/src/chain.rs:jsonrpc_request
-crates/tools/src/chain.rs:parse_ceilings
 crates/tools/src/chain.rs:to_corpus_line
 crates/tools/src/lib.rs:numerator
 crates/tools/src/operator.rs:compute_bond_ok
