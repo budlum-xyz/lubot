@@ -1,4 +1,4 @@
-# Crate inventory, twelve entries added in this series
+# Crate inventory, thirteen entries added in this series
 
 | crate | holds | fails closed on |
 |---|---|---|
@@ -14,6 +14,7 @@
 | `erisim` | issued capability grants, their narrowing by delegation, and the audit trail | a zero ttl or use count, an empty scope or capability, a `starts_with` scope escape, a delegation that widens, a use after revocation or expiry, a trail that disagrees with the records |
 | `anlama` | what each word of the command contributed, and what had to be added to get there | a scope no word supports, a loose match with no correction on record, an assumption nobody listed, an instruction read out of attached text |
 | `esik` | the activation schedule: plans, the flags inside them, and the epoch each opens at | an activation at genesis, a change whose epoch is not its plan's, a flag the plan never promised, a plan opened twice at one epoch, a due change nobody ratified, a retirement that never ran, a rewritten epoch |
+| `usl` | the settlement envelope a cold wallet reads off the media: canonical payout lines, fee, window, sealed on `muhur` | a media whose entries no longer hash to the seal it carries; a non-canonical amount; a window that does not open after genesis; a duplicate payout line |
 
 None of the twelve depends on another. All are `std` only, no I/O, no clock, no
 randomness: a run that reads them can be reproduced from its inputs, which is

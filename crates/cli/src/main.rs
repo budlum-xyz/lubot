@@ -41,6 +41,9 @@ fn usage() -> String {
         "  lubot queue log [--file q.jsonl] [--limit n]",
         "  lubot ratchet [--set] [--baseline training/ratchet.json]",
         "  lubot envanter [--corpus-dir f] [--at EPOCH]",
+        "  lubot usl make --seq N --chain ID --to ADDR --amount M.mm [--to ADDR --amount M.mm]...",
+        "              [--memo TEXT]... --fee M.mm --not-before E --not-after E [--out DIR]",
+        "  lubot usl check <file>",
         "  lubot it -m <msg> --path <p> [--path p2 ...] [--dry-run] [--branch b]",
         "  lubot olc",
         "  lubot durum",
@@ -91,6 +94,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "queue" => cmd_queue(rest),
         "ratchet" => cmd_ratchet(rest),
         "envanter" => cmd_envanter(rest),
+        "usl" => cmd_usl(rest),
         "it" => cmd_it(rest),
         "olc" => cmd_olc(rest),
         "durum" => cmd_durum(rest),
@@ -1066,6 +1070,148 @@ fn measure_all() -> Result<lubot::ratchet::Measured, String> {
         pedantic: lubot::ratchet::measure_pedantic("cargo")?,
         corpus: lubot::ratchet::measure_corpus(&PathBuf::from("corpus"))?,
     })
+}
+
+/// Build or verify the settlement media a cold wallet reads off the stick.
+///
+/// `make` writes one file per media - a batch of several payouts shares one
+/// seal, which is the point of the media: the cold side reads once and
+/// re-derives everything from that one file. `check` re-seals from the
+/// entries and prints the total, so a human with a stick can compare the
+/// two outputs before the wallet signs.
+fn cmd_usl(args: &[String]) -> Result<(), String> {
+    let Some(sub) = args.first() else {
+        return Err("usl: `make` or `check`".to_string());
+    };
+    match sub.as_str() {
+        "make" => {
+            let (found, _) = flags(
+                &args[1..],
+                &[
+                    "--out",
+                    "--seq",
+                    "--chain",
+                    "--to",
+                    "--amount",
+                    "--memo",
+                    "--fee",
+                    "--not-before",
+                    "--not-after",
+                ],
+            );
+            let many = |name: &str| -> Vec<String> {
+                found
+                    .iter()
+                    .filter(|(n, _)| n == name)
+                    .map(|(_, v)| v.clone())
+                    .collect()
+            };
+            let seq: u64 = one(&found, "--seq")
+                .ok_or("usl: --seq is required")?
+                .parse()
+                .map_err(|_| "usl: --seq is not a number".to_string())?;
+            let chain = one(&found, "--chain").ok_or("usl: --chain is required")?;
+            let not_before: u64 = one(&found, "--not-before")
+                .ok_or("usl: --not-before is required")?
+                .parse()
+                .map_err(|_| "usl: --not-before is not a number".to_string())?;
+            let not_after: u64 = one(&found, "--not-after")
+                .ok_or("usl: --not-after is required")?
+                .parse()
+                .map_err(|_| "usl: --not-after is not a number".to_string())?;
+            let fee = one(&found, "--fee").ok_or("usl: --fee is required")?;
+            let (fee_major, fee_minor) =
+                lubot_usl::parse_amount(&fee).map_err(|e| format!("usl: {e}"))?;
+            let tos = many("--to");
+            let amounts = many("--amount");
+            let memos = many("--memo");
+            if tos.is_empty() {
+                return Err("usl: at least one --to is required".to_string());
+            }
+            if tos.len() != amounts.len() {
+                return Err(format!(
+                    "usl: {} --to but {} --amount; each address needs one amount",
+                    tos.len(),
+                    amounts.len()
+                ));
+            }
+            if !memos.is_empty() && memos.len() != tos.len() {
+                return Err(format!(
+                    "usl: {} --memo for {} payouts; give every payout its own or none",
+                    memos.len(),
+                    tos.len()
+                ));
+            }
+            let mut manifest = match lubot_usl::Manifest::new(seq, &chain) {
+                Ok(m) => m,
+                Err(e) => return Err(format!("usl: {e}")),
+            };
+            if let Err(e) = manifest.with_maturity(not_before, not_after) {
+                return Err(format!("usl: {e}"));
+            }
+            if let Err(e) = manifest.with_fee(fee_major, fee_minor) {
+                return Err(format!("usl: {e}"));
+            }
+            for i in 0..tos.len() {
+                let memo = if memos.is_empty() { "" } else { &memos[i] };
+                let payout = match lubot_usl::Payout::new(&tos[i], &amounts[i], memo) {
+                    Ok(p) => p,
+                    Err(e) => return Err(format!("usl: payout {}: {e}", i + 1)),
+                };
+                if let Err(e) = manifest.add_payout(payout) {
+                    return Err(format!("usl: {e}"));
+                }
+            }
+            let media = match manifest.to_media() {
+                Ok(t) => t,
+                Err(e) => return Err(format!("usl: {e}")),
+            };
+            let dir = one(&found, "--out").unwrap_or_else(|| "media".to_string());
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                return Err(format!("usl: {e}"));
+            }
+            let path = std::path::Path::new(&dir).join(lubot_usl::media_file_name(seq));
+            if let Err(e) = std::fs::write(&path, media) {
+                return Err(format!("usl: {e}"));
+            }
+            let (major, minor) = manifest.total();
+            println!(
+                "usl: {} sealed, {} payout(s), total {major}.{minor:02}",
+                path.display(),
+                manifest.payouts().len()
+            );
+            Ok(())
+        }
+        "check" => {
+            let Some(path) = args.get(1) else {
+                return Err("usl: check needs the media path".to_string());
+            };
+            let text = std::fs::read_to_string(path).map_err(|e| format!("usl: {e}"))?;
+            let manifest = match lubot_usl::Manifest::from_media(&text) {
+                Ok(m) => m,
+                Err(e) => return Err(format!("usl: {e}")),
+            };
+            let (major, minor) = manifest.total();
+            let (nb, na) = manifest.maturity();
+            for p in manifest.payouts() {
+                if p.memo().is_empty() {
+                    println!("usl:   pay {} x {}", p.to(), p.amount());
+                } else {
+                    println!("usl:   pay {} x {} - {}", p.to(), p.amount(), p.memo());
+                }
+            }
+            println!(
+                "usl: media #{}, chain {}, {} payout(s), total {major}.{minor:02}, \
+window {nb}..{na}, fee {} - seal matches its entries",
+                manifest.seq(),
+                manifest.chain_id(),
+                manifest.payouts().len(),
+                manifest.fee()
+            );
+            Ok(())
+        }
+        other => Err(format!("usl: unknown verb `{other}`")),
+    }
 }
 
 fn cmd_envanter(args: &[String]) -> Result<(), String> {
