@@ -755,21 +755,27 @@ def selftest_cli_asks_and_renders_markdown() -> None:
 # gate: operator sync rules (Aşama 7) stay in the tool crate
 # --------------------------------------------------------------------------
 def gate_operator_sync_rules() -> str:
-    """The report's operator rules are checks Lubot can run: non-zero bond
-    above the floor, one model_hash among active operators, effort tier
-    hashed into the request within 0.5x-10.0x, and a checkpoint transition
-    window with a real retirement moment."""
+    """The operator rule Lubot can actually run is the effort ceiling: it is
+    checked at every door the CLI has (answer budget, hashed request) and
+    verified again by the chain client. The bond, model_hash and window rules
+    left the crate with their callers - the gate asserted their names while
+    nothing in the tree could produce the records they read, which is the
+    exact mask this ratchet exists to catch; a name-only assertion would
+    preserve a library nobody links. If the registry lands, the rules return
+    in that patch and the gate re-grows its list."""
     src = read("crates/tools/src/operator.rs")
-    for word in ["compute_bond_ok", "same_model_hash", "effort_tag_ok",
-                 "effort_hash", "CheckpointWindow", "both_active", "old_retired"]:
+    for word in ["effort_tag_ok", "effort_hash", "answer_budget"]:
         if word not in src:
-            raise SystemExit(f"operator rules lost `{word}`")
+            raise SystemExit(f"operator effort rules lost `{word}`")
+    for gone in ["compute_bond_ok", "same_model_hash", "CheckpointWindow"]:
+        if gone in src:
+            raise SystemExit(f"`{gone}` is back without a caller to check it")
     if "cheap" in src and "0.4x" not in src:
         raise SystemExit("the ceiling refusals have no fixture")
     chain = read("crates/tools/src/chain.rs")
     if "effort_hash does not match effort_tag" not in chain:
         raise SystemExit("parse_request no longer verifies the hashed effort tier")
-    return "bond, single hash, ceiling-hashed effort and the transition window are all checks"
+    return "ceiling-hashed effort is checked on every CLI door, and the retired rules stay retired without owners"
 
 
 def selftest_operator_sync_rules() -> None:
