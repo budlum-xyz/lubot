@@ -27,6 +27,35 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+class ToolUnavailable(SystemExit):
+    """A gate needs a binary that is not on PATH.
+
+    The gate is then *unmeasured*, and an unmeasured gate does not pass: it is
+    reported like any other failure instead of aborting the run.
+    """
+
+    def __init__(self, tool: str) -> None:
+        self.tool = tool
+        super().__init__(
+            f"the `{tool}` binary is not on PATH, so this gate cannot be measured"
+        )
+
+
+def run_tool(*args, **kwargs):
+    """`subprocess.run` with a missing binary turned into a verdict.
+
+    `FileNotFoundError` out of `subprocess` is not a gate failure the author
+    wrote; it is an environment fact. Left alone it escapes `main`'s handler,
+    kills the process and takes every gate after it down with it - a run that
+    stops at gate six reports nothing about the other thirty-four. Funnelled
+    here it becomes one failing gate and the rest still get a verdict.
+    """
+    try:
+        return subprocess.run(*args, **kwargs)
+    except FileNotFoundError as exc:
+        raise ToolUnavailable(exc.filename or (args[0][0] if args and args[0] else "?")) from None
+
+
 def read(rel: str) -> str:
     path = ROOT / rel
     if not path.is_file():
@@ -302,7 +331,7 @@ def gate_readme_is_measured() -> str:
     claimed = re.search(r"(\d+) tests, `clippy", readme)
     if not claimed:
         raise SystemExit("the README no longer states a measured test count")
-    out = subprocess.run(
+    out = run_tool(
         ["cargo", "test", "--workspace"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -414,7 +443,7 @@ def gate_training_gate_epoch_ledger_fail_closed() -> str:
         if needle not in src:
             raise SystemExit(f"epoch ledger no longer carries {needle}")
     # Behavioral execution of the epoch-ledger lifecycle
-    proc = subprocess.run(
+    proc = run_tool(
         [sys.executable, "training/epoch_ledger.py", "--self-test"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -700,7 +729,7 @@ def _begins_with_heading(text: str) -> bool:
 def _cli_in(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     """The binary with the repository manifest, run inside `cwd` - for path-
     sensitive commands that must see a fixture tree instead of the repo."""
-    return subprocess.run(
+    return run_tool(
         ["cargo", "run", "--quiet", "--manifest-path", str(ROOT / "Cargo.toml"),
          "-p", "lubot", "--bin", "lubot", "--", *args],
         cwd=cwd, capture_output=True, text=True, check=False,
@@ -708,7 +737,7 @@ def _cli_in(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return run_tool(
         ["cargo", "run", "--quiet", "-p", "lubot", "--bin", "lubot", "--", *args],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -1056,7 +1085,7 @@ def gate_ratchet_holds() -> str:
         if key not in baseline:
             raise SystemExit(f"ratchet baseline lost `{key}`")
     # tests: the suite's own count.
-    out = subprocess.run(
+    out = run_tool(
         ["cargo", "test", "--workspace"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -1065,7 +1094,7 @@ def gate_ratchet_holds() -> str:
     measured_tests = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout))
     measured_gates = len(GATES)
     measured_corpus = count_corpus_records()
-    clippy = subprocess.run(
+    clippy = run_tool(
         ["cargo", "clippy", "--workspace", "--all-targets", "--", "-W", "pedantic"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -1104,7 +1133,7 @@ def selftest_ratchet_holds() -> None:
 def gate_fmt_clean() -> str:
     """`cargo fmt --check` passes: a tree the formatter rewrites is a tree
     nobody read."""
-    out = subprocess.run(
+    out = run_tool(
         ["cargo", "fmt", "--check"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -1127,12 +1156,12 @@ def gate_it_is_restricted() -> str:
     must leave the fixture repo untouched."""
     import tempfile
     with tempfile.TemporaryDirectory() as td:
-        subprocess.run(["git", "init", "-q"], cwd=td, capture_output=True, text=True, check=True)
+        run_tool(["git", "init", "-q"], cwd=td, capture_output=True, text=True, check=True)
         (Path(td) / "a.txt").write_text("x", encoding="utf-8")
         run = _cli_in(td, "it", "-m", "x", "--path", "a.txt", "--dry-run")
         if run.returncode != 0 or "Dry run" not in run.stdout:
             raise SystemExit(f"`it --dry-run` failed: {run.stdout[:120]!r} {run.stderr[:120]!r}")
-        head = subprocess.run(
+        head = run_tool(
             ["git", "rev-parse", "--verify", "HEAD"],
             cwd=td, capture_output=True, text=True, check=False,
         )
@@ -1422,7 +1451,7 @@ def gate_sft_evaluation_baseline() -> str:
     import tempfile
 
     def py(script: str, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+        return run_tool(
             [sys.executable, str(ROOT / script), *args],
             cwd=ROOT, capture_output=True, text=True, check=False,
         )
@@ -1509,7 +1538,7 @@ def gate_corpus_build_is_deterministic() -> str:
         builds = []
         for i in (1, 2):
             out = Path(td) / f"knowledge-{i}.jsonl"
-            r = subprocess.run(
+            r = run_tool(
                 [sys.executable, str(ROOT / "training" / "build_corpus.py"),
                  "--repo", ".", "--out", str(out)],
                 cwd=ROOT, capture_output=True, text=True, check=False,
@@ -1624,7 +1653,7 @@ def gate_findings_are_disciplined() -> str:
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(mod)
-    r = subprocess.run(
+    r = run_tool(
         [sys.executable, str(ROOT / "training" / "findings.py"), "--self-test"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
@@ -1786,7 +1815,78 @@ def run_review_like(text: str) -> bool:
     return False
 
 
+# --------------------------------------------------------------------------
+# gate: a tool that is not installed is a verdict, not a crashed run
+# --------------------------------------------------------------------------
+MISSING_TOOL_FUNNEL_MARKERS = [
+    "class ToolUnavailable(SystemExit):",
+    "def run_tool(*args, **kwargs):",
+    "except FileNotFoundError as exc:",
+]
+
+
+def gate_runner_reports_missing_tool() -> str:
+    """A gate whose binary is absent is reported and counted, never fatal.
+
+    Every external call goes through `run_tool`, which turns the
+    `FileNotFoundError` the OS raises into a `ToolUnavailable`. That class
+    subclasses `SystemExit` so `main`'s handler counts it, and the handler
+    runs *after* the self-test as well as the gate - otherwise one canary
+    that shells out takes the whole run down with it.
+    """
+    src = read("gates/check.py")
+    for needle in MISSING_TOOL_FUNNEL_MARKERS:
+        if needle not in src:
+            raise SystemExit(f"the runner no longer funnels tools: {needle} is gone")
+    if "except ToolUnavailable as err:" not in src:
+        raise SystemExit("`main` no longer reports a missing tool as its own verdict")
+    if "except (SystemExit, AssertionError) as err:" not in src:
+        raise SystemExit("`main` no longer survives a gate that raises")
+    # The self-test has to run *inside* the guard: `main` calls it once in the
+    # `--all` loop (which must be guarded) and once in single-gate mode (which
+    # prints one verdict and exits, so a crash there hides nothing). Matched
+    # by the following line so a fixture string cannot satisfy it.
+    lines = src.splitlines()
+    guarded = [
+        i for i, ln in enumerate(lines)
+        if ln == "                selftest()"
+        and i + 1 < len(lines)
+        and lines[i + 1] == "                verdict = run()"
+    ]
+    if len(guarded) != 1:
+        raise SystemExit(
+            "`main`'s loop no longer runs the self-test inside its guard; "
+            "one canary that shells out kills every gate after it"
+        )
+    # Behavioural, not only textual: the funnel really does convert.
+    try:
+        run_tool(["lubot-canary-no-such-binary"], capture_output=True, text=True)
+    except ToolUnavailable as err:
+        if "lubot-canary-no-such-binary" not in str(err):
+            raise SystemExit(f"the verdict names the wrong binary: {err}") from None
+    else:
+        raise SystemExit("a missing binary reached the caller as something else")
+    return "a missing tool is one reported failure, and the run finishes"
+
+
+def selftest_runner_reports_missing_tool() -> None:
+    thin = "\n".join(MISSING_TOOL_FUNNEL_MARKERS[:-1]) + "\n            selftest()\n            try:\n"
+    assert run_missing_tool_like(thin)
+    assert not run_missing_tool_like("\n".join(MISSING_TOOL_FUNNEL_MARKERS))
+
+
+def run_missing_tool_like(text: str) -> bool:
+    """True when the runner is missing the funnel."""
+    for marker in MISSING_TOOL_FUNNEL_MARKERS:
+        if marker not in text:
+            return True
+    return False
+
+
 GATES_EXTRA = {
+    "runner-reports-missing-tool": (
+        gate_runner_reports_missing_tool, selftest_runner_reports_missing_tool
+    ),
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "review-crate-holds-ledger-rules": (gate_review_crate_holds_ledger_rules, selftest_review_crate_holds_ledger_rules),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -1843,12 +1943,24 @@ def main(argv: list[str]) -> int:
     if argv[0] == "--all":
         failures = 0
         for name, (run, selftest) in GATES.items():
-            selftest()
             try:
-                print(f"OK   [{name}] {run()}")
-            except SystemExit as err:
+                # The self-test runs inside the guard too: a canary that
+                # shells out to a missing binary is exactly as unmeasured as
+                # the gate it guards, and leaving it outside let one such
+                # canary kill the run at the nineteenth gate.
+                selftest()
+                verdict = run()
+            except ToolUnavailable as err:
+                # Subclass first: it is a SystemExit, and the clause below
+                # would swallow it into an ordinary failure line.
+                failures += 1
+                print(f"NO-TOOL [{name}] {err}")
+                continue
+            except (SystemExit, AssertionError) as err:
                 failures += 1
                 print(f"FAIL [{name}] {err}")
+                continue
+            print(f"OK   [{name}] {verdict}")
         print("ALL GATES PASSED" if not failures else f"{failures} gate(s) failed")
         return 1 if failures else 0
     name = argv[0]
