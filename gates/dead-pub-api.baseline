@@ -3,16 +3,6 @@ crates/anlama/src/lib.rs:found_in_data
 crates/anlama/src/lib.rs:is_blocking
 crates/anlama/src/lib.rs:with_attachment
 crates/denetim/src/lib.rs:is_fix
-crates/esik/src/lib.rs:earliest_open
-crates/esik/src/lib.rs:is_live_at
-crates/esik/src/lib.rs:is_on
-crates/esik/src/lib.rs:live_at
-crates/esik/src/lib.rs:pending_at
-crates/esik/src/lib.rs:ratify
-crates/esik/src/lib.rs:requires_quorum
-crates/esik/src/lib.rs:with_flag
-crates/esik/src/lib.rs:with_note
-crates/esik/src/lib.rs:with_why
 crates/grant/src/lib.rs:revoked_pairs
 crates/grant/src/training.rs:from_hex
 crates/grant/src/training.rs:grant_by_id

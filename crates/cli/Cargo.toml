@@ -16,6 +16,7 @@ lubot-tools = { path = "../tools" }
 lubot-grant = { path = "../grant" }
 lubot-read = { path = "../read" }
 lubot-sikistir = { path = "../sikistir" }
+lubot-esik = { path = "../esik" }
 
 [lints]
 workspace = true

@@ -40,7 +40,7 @@ fn usage() -> String {
         "  lubot queue run [--file q.jsonl] [--budget n] [--check cmd] [--audit f] [--outputs f] [--book b] [--watch --poll s --idle n]",
         "  lubot queue log [--file q.jsonl] [--limit n]",
         "  lubot ratchet [--set] [--baseline training/ratchet.json]",
-        "  lubot envanter [--corpus-dir corpus]",
+        "  lubot envanter [--corpus-dir f] [--at EPOCH]",
         "  lubot it -m <msg> --path <p> [--path p2 ...] [--dry-run] [--branch b]",
         "  lubot olc",
         "  lubot durum",
@@ -1069,7 +1069,7 @@ fn measure_all() -> Result<lubot::ratchet::Measured, String> {
 }
 
 fn cmd_envanter(args: &[String]) -> Result<(), String> {
-    let (found, leftover) = flags(args, &["--corpus-dir"]);
+    let (found, leftover) = flags(args, &["--corpus-dir", "--at"]);
     if !leftover.is_empty() {
         return Err(format!("envanter: unexpected `{}`", leftover[0]));
     }
@@ -1090,6 +1090,14 @@ fn cmd_envanter(args: &[String]) -> Result<(), String> {
     }
     walk_rs(&PathBuf::from("crates"), &mut rs_files, &mut loc);
     crate_names.sort();
+    let at: u64 = match one(&found, "--at") {
+        Some(s) => s
+            .parse()
+            .map_err(|_| format!("envanter: --at must be a u64, got `{s}`"))?,
+        None => 0,
+    };
+    let reg = lubot::activation::load(&PathBuf::from(lubot::activation::DEFAULT_LEDGER))
+        .map_err(|e| format!("envanter: {e}"))?;
     let measured = measure_all()?;
     let corpus_count = lubot::ratchet::measure_corpus(&corpus_dir)?;
     let mut md = String::from("# Envanter\n\n");
@@ -1101,6 +1109,10 @@ fn cmd_envanter(args: &[String]) -> Result<(), String> {
     md.push_str(&format!("| kapi (olcum) | {} |\n", measured.gates));
     md.push_str(&format!("| corpus kaydi | {corpus_count} |\n"));
     md.push_str(&format!("| pedantic uyari | {} |\n", measured.pedantic));
+    md.push_str(&format!(
+        "| aktivasyon defteri ({at}) | {} |\n",
+        lubot::activation::report(&reg, at)
+    ));
     md.push_str("\nKok: `");
     md.push_str(&crate_names.join("`, `"));
     md.push_str("`\n");
