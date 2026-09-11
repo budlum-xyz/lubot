@@ -331,7 +331,10 @@ impl std::fmt::Display for AdmitError {
                 write!(f, "a card that closes on a description closes on nothing")
             }
             Self::Stepless => {
-                write!(f, "a card with no steps cannot be distinguished from no card")
+                write!(
+                    f,
+                    "a card with no steps cannot be distinguished from no card"
+                )
             }
         }
     }
@@ -524,10 +527,7 @@ impl Ledger {
         contradicted: bool,
     ) -> Result<Status, LedgerError> {
         let threshold = self.promotion_after;
-        let record = self
-            .records
-            .get_mut(&id)
-            .ok_or(LedgerError::Unknown(id))?;
+        let record = self.records.get_mut(&id).ok_or(LedgerError::Unknown(id))?;
         if contradicted {
             record.contradictions += 1;
             record.status = Status::Rejected;
@@ -590,10 +590,7 @@ impl Ledger {
             }
         }
         applied.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        (
-            applied.into_iter().map(|(_, id)| id).collect(),
-            deferred,
-        )
+        (applied.into_iter().map(|(_, id)| id).collect(), deferred)
     }
 
     /// Checks the ledger's own invariants, for a CI canary.
@@ -641,14 +638,16 @@ mod tests {
         let hit = Context::at("src/storage/erasure.rs", "storage");
         let miss = Context::at("src/consensus/poa.rs", "consensus");
         assert_eq!(l.route(&hit), vec![SkillId(1)]);
-        assert!(l.route(&miss).is_empty(), "a route that matches everything is not a route");
+        assert!(
+            l.route(&miss).is_empty(),
+            "a route that matches everything is not a route"
+        );
     }
 
     #[test]
     fn a_card_with_no_trigger_is_refused() {
         let mut l = Ledger::new(1);
-        let bare = SkillCard::new(SkillId(9), "bare", EvidenceKind::GateRun)
-            .step("do the thing");
+        let bare = SkillCard::new(SkillId(9), "bare", EvidenceKind::GateRun).step("do the thing");
         assert_eq!(l.admit(bare), Err(AdmitError::Unconditional));
     }
 
@@ -673,8 +672,14 @@ mod tests {
     fn promotion_needs_the_threshold_of_closing_evidences() {
         let mut l = ledger();
         let id = SkillId(1);
-        assert_eq!(l.record(id, EvidenceKind::TestRun, false).unwrap(), Status::Draft);
-        assert_eq!(l.record(id, EvidenceKind::TestRun, false).unwrap(), Status::Trusted);
+        assert_eq!(
+            l.record(id, EvidenceKind::TestRun, false).unwrap(),
+            Status::Draft
+        );
+        assert_eq!(
+            l.record(id, EvidenceKind::TestRun, false).unwrap(),
+            Status::Trusted
+        );
         assert_eq!(l.verify(), Ok(()));
     }
 
@@ -683,7 +688,10 @@ mod tests {
         let mut l = ledger();
         let id = SkillId(1);
         for _ in 0..4 {
-            assert_eq!(l.record(id, EvidenceKind::Narrative, false).unwrap(), Status::Draft);
+            assert_eq!(
+                l.record(id, EvidenceKind::Narrative, false).unwrap(),
+                Status::Draft
+            );
         }
         assert_eq!(l.record_of(id).unwrap().closing(), 0);
     }
@@ -695,8 +703,14 @@ mod tests {
         l.record(id, EvidenceKind::TestRun, false).unwrap();
         l.record(id, EvidenceKind::TestRun, false).unwrap();
         assert_eq!(l.record_of(id).unwrap().status(), Status::Trusted);
-        assert_eq!(l.record(id, EvidenceKind::TestRun, true).unwrap(), Status::Rejected);
-        assert!(l.runnable().is_empty(), "a refuted method must not keep running");
+        assert_eq!(
+            l.record(id, EvidenceKind::TestRun, true).unwrap(),
+            Status::Rejected
+        );
+        assert!(
+            l.runnable().is_empty(),
+            "a refuted method must not keep running"
+        );
         assert_eq!(l.record_of(id).unwrap().contradictions(), 1);
     }
 
@@ -757,7 +771,11 @@ mod tests {
             .step("list them");
         let no_symbols = Context::at("a.rs", "storage");
         let read = no_symbols.clone().with_symbol("assign_object");
-        assert_eq!(card.matches(&no_symbols), 0, "an empty symbol list is not a non-match");
+        assert_eq!(
+            card.matches(&no_symbols),
+            0,
+            "an empty symbol list is not a non-match"
+        );
         assert!(card.matches(&read) > 0);
     }
 
@@ -771,7 +789,10 @@ mod tests {
         assert_eq!(l.verify(), Ok(()));
         let mut broken = l.clone();
         broken.records.get_mut(&SkillId(1)).unwrap().closing = 0;
-        assert_eq!(broken.verify(), Err(LedgerError::TrustedWithoutEvidence(SkillId(1))));
+        assert_eq!(
+            broken.verify(),
+            Err(LedgerError::TrustedWithoutEvidence(SkillId(1)))
+        );
     }
 
     #[test]

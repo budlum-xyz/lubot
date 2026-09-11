@@ -395,9 +395,11 @@ impl Ledger {
                         .max(self.reserve_left()),
                 });
             }
-            let from_reserve =
-                self.ordinary.saturating_add(self.closing).saturating_add(wanted)
-                    > self.budget.ordinary_limit();
+            let from_reserve = self
+                .ordinary
+                .saturating_add(self.closing)
+                .saturating_add(wanted)
+                > self.budget.ordinary_limit();
             self.closing = self.closing.saturating_add(wanted);
             self.items.push(item);
             return Ok(if from_reserve {
@@ -497,9 +499,7 @@ impl Ledger {
             }
         }
         if ordinary != self.ordinary || closing != self.closing {
-            let cost = self
-                .used()
-                .saturating_sub(ordinary.saturating_add(closing));
+            let cost = self.used().saturating_sub(ordinary.saturating_add(closing));
             let label = self
                 .drops
                 .keys()
@@ -550,7 +550,10 @@ mod tests {
     #[test]
     fn work_below_the_watermark_is_admitted_quietly() {
         let mut l = Ledger::new(budget());
-        assert_eq!(l.admit(read("a", 30, Priority::Planned)).unwrap(), Admitted::Granted);
+        assert_eq!(
+            l.admit(read("a", 30, Priority::Planned)).unwrap(),
+            Admitted::Granted
+        );
         assert_eq!(l.band(), Band::Under);
     }
 
@@ -566,7 +569,11 @@ mod tests {
         let planned = l.admit(read("c", 15, Priority::Planned)).unwrap();
         assert_eq!(planned, Admitted::GrantedUnderPressure);
         assert_eq!(l.band(), Band::Pressure);
-        assert_eq!(l.refusals(), 1, "the refusal above was counted, not swallowed");
+        assert_eq!(
+            l.refusals(),
+            1,
+            "the refusal above was counted, not swallowed"
+        );
     }
 
     #[test]
@@ -594,10 +601,7 @@ mod tests {
         let gate = Item::new("run the gate", 15, Priority::Required, Kind::Closing);
         assert_eq!(
             l.admit(gate).unwrap(),
-            Admitted::GrantedFromReserve {
-                taken: 15,
-                left: 5
-            }
+            Admitted::GrantedFromReserve { taken: 15, left: 5 }
         );
         assert_eq!(l.reserve_left(), 5);
     }
@@ -606,8 +610,13 @@ mod tests {
     fn a_closing_check_that_outgrows_everything_fails_loudly() {
         let mut l = Ledger::new(budget());
         l.admit(read("a", 80, Priority::Required)).unwrap();
-        l.admit(Item::new("first gate", 15, Priority::Required, Kind::Closing))
-            .unwrap();
+        l.admit(Item::new(
+            "first gate",
+            15,
+            Priority::Required,
+            Kind::Closing,
+        ))
+        .unwrap();
         let gate = Item::new("run the gate", 20, Priority::Required, Kind::Closing);
         assert_eq!(
             l.admit(gate),
@@ -624,7 +633,8 @@ mod tests {
         l.admit(read("scratch", 30, Priority::Optional)).unwrap();
         l.admit(read("notes", 25, Priority::Optional)).unwrap();
         l.admit(read("context", 25, Priority::Required)).unwrap();
-        l.admit(Item::new("gate", 20, Priority::Required, Kind::Closing)).unwrap();
+        l.admit(Item::new("gate", 20, Priority::Required, Kind::Closing))
+            .unwrap();
         assert_eq!(l.band(), Band::Truncated);
         let dropped = l.ease_to_watermark();
         assert_eq!(
@@ -644,7 +654,9 @@ mod tests {
         l.admit(read("a", 40, Priority::Optional)).unwrap();
         assert_eq!(l.verify(), Ok(()));
         l.items.clear();
-        assert!(matches!(l.verify(), Err(BudgetError::UnrecordedDrop { .. })));
+        assert!(matches!(
+            l.verify(),
+            Err(BudgetError::UnrecordedDrop { .. })
+        ));
     }
-
 }

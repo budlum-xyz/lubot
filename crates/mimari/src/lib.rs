@@ -198,11 +198,7 @@ impl Table {
             if !line.starts_with('|') {
                 continue;
             }
-            let cells: Vec<&str> = line
-                .trim_matches('|')
-                .split('|')
-                .map(str::trim)
-                .collect();
+            let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
             if cells.len() < 3 {
                 return Err(ParseError::WrongColumnCount {
                     line: idx + 1,
@@ -224,7 +220,8 @@ impl Table {
                 continue;
             }
             let module = cell_text(cells[0]).ok_or(ParseError::MissingModule { line: idx + 1 })?;
-            let symbol = first_token(cells[1]).ok_or(ParseError::MissingSymbol { line: idx + 1 })?;
+            let symbol =
+                first_token(cells[1]).ok_or(ParseError::MissingSymbol { line: idx + 1 })?;
             let contract = cells[2].trim_matches('`').trim().to_string();
             rows.push(Row {
                 module,
@@ -291,8 +288,19 @@ impl SourceTree {
             return false;
         };
         for prefix in [
-            "fn ", "pub fn ", "async fn ", "struct ", "enum ", "trait ", "type ", "const ",
-            "static ", "mod ", "def ", "class ", "async def ",
+            "fn ",
+            "pub fn ",
+            "async fn ",
+            "struct ",
+            "enum ",
+            "trait ",
+            "type ",
+            "const ",
+            "static ",
+            "mod ",
+            "def ",
+            "class ",
+            "async def ",
         ] {
             let needle = format!("{prefix}{symbol}");
             if text.contains(&needle) {
@@ -383,7 +391,10 @@ impl Report {
     #[must_use]
     pub fn summary(&self) -> String {
         if self.is_clean() {
-            return format!("{} rows checked, all of them name a real symbol", self.checked);
+            return format!(
+                "{} rows checked, all of them name a real symbol",
+                self.checked
+            );
         }
         let mut out = format!(
             "{} of {} rows do not match the tree:\n",
@@ -573,7 +584,7 @@ mod tests {
         assert!(!t.declares("crates/core/src/build.rs", "helper_missing"));
         let py = SourceTree::from_pairs(&[(
             "lib/cluster.py".to_string(),
-                "def cluster(g):\n    return {}\n\nclass Graph:\n    pass\n".to_string(),
+            "def cluster(g):\n    return {}\n\nclass Graph:\n    pass\n".to_string(),
         )]);
         assert!(py.declares("lib/cluster.py", "cluster"));
         assert!(py.declares("lib/cluster.py", "Graph"));

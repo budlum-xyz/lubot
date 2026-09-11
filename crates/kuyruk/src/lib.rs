@@ -388,7 +388,13 @@ impl Queue {
             .pending
             .values()
             .filter(|job| job.due <= now)
-            .max_by_key(|job| (job.class, std::cmp::Reverse(job.due), std::cmp::Reverse(job.id)))
+            .max_by_key(|job| {
+                (
+                    job.class,
+                    std::cmp::Reverse(job.due),
+                    std::cmp::Reverse(job.id),
+                )
+            })
             .map(|job| job.id)?;
         let job = self.pending.remove(&id)?;
         self.by_key.remove(&job.key);
@@ -404,12 +410,7 @@ impl Queue {
     /// because "we stopped trying" is a result, not a caller mistake - and it is
     /// returned as one, so the caller who has to report it can tell it apart
     /// from a job that will be retried.
-    pub fn fail(
-        &mut self,
-        id: u64,
-        backoff: u64,
-        now: u64,
-    ) -> Result<Option<Settled>, QueueError> {
+    pub fn fail(&mut self, id: u64, backoff: u64, now: u64) -> Result<Option<Settled>, QueueError> {
         let Some(job) = self.pending.get(&id).cloned() else {
             return Err(self.settled_error(id)?);
         };
@@ -447,10 +448,7 @@ impl Queue {
     ///
     /// [`QueueError::NotDue`] if `now` is before the job's due epoch.
     pub fn peek_due(&self, id: u64, now: u64) -> Result<&Job, QueueError> {
-        let job = self
-            .pending
-            .get(&id)
-            .ok_or(QueueError::UnknownJob(id))?;
+        let job = self.pending.get(&id).ok_or(QueueError::UnknownJob(id))?;
         if job.due > now {
             return Err(QueueError::NotDue {
                 job: id,
@@ -463,9 +461,15 @@ impl Queue {
 
     fn settled_error(&self, id: u64) -> QueueError {
         if self.done.contains_key(&id) {
-            QueueError::AlreadySettled { job: id, where_: "done" }
+            QueueError::AlreadySettled {
+                job: id,
+                where_: "done",
+            }
         } else if self.dead.contains_key(&id) {
-            QueueError::AlreadySettled { job: id, where_: "dead" }
+            QueueError::AlreadySettled {
+                job: id,
+                where_: "dead",
+            }
         } else {
             QueueError::UnknownJob(id)
         }
@@ -629,7 +633,11 @@ mod tests {
     fn running_out_of_tries_is_a_result_not_a_caller_error() {
         let mut q = q();
         let id = q.submit(Class::Index, "i", "p", 0, 2).unwrap();
-        assert_eq!(q.fail(id, 1, 0).unwrap(), None, "one try left, so still work");
+        assert_eq!(
+            q.fail(id, 1, 0).unwrap(),
+            None,
+            "one try left, so still work"
+        );
         assert_eq!(q.len(), 1);
         assert_eq!(q.pending[&id].attempts, 1);
         assert_eq!(q.pending[&id].due, 1, "the backoff moved the due epoch");

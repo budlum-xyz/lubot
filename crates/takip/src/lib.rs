@@ -208,11 +208,7 @@ impl std::fmt::Display for Drift {
                 f,
                 "the route for `{symbol}` claims `{from}`, which does not mention `{symbol}`"
             ),
-            Self::SiteNoLongerHolds {
-                symbol,
-                file,
-                line,
-            } => write!(
+            Self::SiteNoLongerHolds { symbol, file, line } => write!(
                 f,
                 "`{symbol}` was wired from `{file}:{line}` and that call is gone; the \
                  comment is now the only thing saying this is safe"
@@ -634,10 +630,13 @@ mod tests {
     fn checking_a_different_commit_says_so_first() {
         let r = wired();
         let drift = r.recompute(&tree(), "def9999");
-        assert_eq!(drift.first(), Some(&Drift::CommitMoved {
-            written: "abc1234".to_string(),
-            checked: "def9999".to_string(),
-        }));
+        assert_eq!(
+            drift.first(),
+            Some(&Drift::CommitMoved {
+                written: "abc1234".to_string(),
+                checked: "def9999".to_string(),
+            })
+        );
         assert_eq!(r.expired("def9999").len(), 1);
         assert!(r.expired("abc1234").is_empty());
     }
@@ -699,7 +698,11 @@ mod tests {
     #[test]
     fn the_rendered_form_carries_the_reason_for_an_unwired_claim() {
         let mut r = Registry::new("abc1234");
-        r.declare_unwired("src/core/account.rs", "slash_all_roles", "duplicate of registry");
+        r.declare_unwired(
+            "src/core/account.rs",
+            "slash_all_roles",
+            "duplicate of registry",
+        );
         let lines = r.render();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].starts_with("WIRING: unwired"));

@@ -211,7 +211,6 @@ pub const ALLOWED_METHODS: [&str; 8] = [
     "bud_aiInferenceStats",
 ];
 
-
 /// Is this method inside the registered set?
 #[must_use]
 pub fn is_allowed_method(method: &str) -> bool {
@@ -307,7 +306,6 @@ mod tests {
         }
         assert!(!is_allowed_method("bud_aiDisputeSlash"));
     }
-
 
     #[test]
     fn single_operator_results_are_not_consumed_while_attestation_only() {

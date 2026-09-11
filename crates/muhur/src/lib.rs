@@ -202,12 +202,13 @@ impl std::fmt::Display for Breach {
                 f,
                 "the log jumps from {before} to {after}: {n} entries are missing from the \
                  middle",
-                n = if after > before + 1 { after - before - 1 } else { 0 }
+                n = if after > before + 1 {
+                    after - before - 1
+                } else {
+                    0
+                }
             ),
-            Self::TailMoved {
-                sealed,
-                recomputed,
-            } => write!(
+            Self::TailMoved { sealed, recomputed } => write!(
                 f,
                 "the sealed tip is {sealed} and the entries produce {recomputed}: the tail \
                  was shortened, which is how a report survives its own inconvenient end"
@@ -499,7 +500,8 @@ mod tests {
 
     fn filled() -> Chain {
         let mut c = Chain::new("lubot-run-2026-09-10A");
-        c.append("loop", "read src/storage/storage_deal.rs").unwrap();
+        c.append("loop", "read src/storage/storage_deal.rs")
+            .unwrap();
         c.append("loop", "audit_coding wired at chain_actor.rs:4106")
             .unwrap();
         c.append("gate", "typos clean, fmt dirty").unwrap();
@@ -623,8 +625,7 @@ mod tests {
         // entry is: not by trust, by recomputation. The chain itself is intact
         // here, so the failure is the index's alone - which is why the index
         // gets its own rule instead of leaning on the seal.
-        ix.by_actor
-            .insert("ghost".to_string(), vec![9u64]);
+        ix.by_actor.insert("ghost".to_string(), vec![9u64]);
         assert_eq!(
             ix.verify(),
             Err(Breach::IndexDrift {

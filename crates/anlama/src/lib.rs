@@ -295,9 +295,7 @@ impl Attachment {
         if want.is_empty() {
             return false;
         }
-        fold(&self.text)
-            .split_whitespace()
-            .any(|word| word == want)
+        fold(&self.text).split_whitespace().any(|word| word == want)
             || fold(&self.path)
                 .split('/')
                 .any(|part| part == want || part.contains(want.as_str()))
@@ -542,8 +540,19 @@ struct Entry {
 /// Words that, inside an attached file, are somebody else's instructions - and
 /// therefore evidence that an instruction was *attempted*, not one.
 const IMPERATIVES: &[&str] = &[
-    "push", "merge", "approve", "delete", "rm", "sudo", "override", "force", "ignore",
-    "disregard", "execute", "run", "apply",
+    "push",
+    "merge",
+    "approve",
+    "delete",
+    "rm",
+    "sudo",
+    "override",
+    "force",
+    "ignore",
+    "disregard",
+    "execute",
+    "run",
+    "apply",
 ];
 
 /// The vocabulary of these commands: the verbs that get typed, the three
@@ -672,7 +681,9 @@ const ENTRIES: &[Entry] = &[
         quantity: None,
     },
     Entry {
-        keys: &["durmak", "durma", "bırakma", "birakma", "çalış", "calis", "devam"],
+        keys: &[
+            "durmak", "durma", "bırakma", "birakma", "çalış", "calis", "devam",
+        ],
         role: Role::Modality,
         gloss: "keep going without check-ins",
         action: None,
@@ -681,7 +692,13 @@ const ENTRIES: &[Entry] = &[
     },
     Entry {
         keys: &[
-            "detay", "detaylı", "detayli", "ayrıntı", "ayrinti", "derinlemesine", "dikkat",
+            "detay",
+            "detaylı",
+            "detayli",
+            "ayrıntı",
+            "ayrinti",
+            "derinlemesine",
+            "dikkat",
         ],
         role: Role::Coverage,
         gloss: "leave nothing at the gist level",
@@ -765,9 +782,9 @@ pub fn fold(word: &str) -> String {
 /// silently matches nothing looks exactly like a language that has no case
 /// endings. A test pins this invariant.
 const SUFFIXES: &[&str] = &[
-    "lari", "leri", "lar", "ler", "dan", "den", "tan", "ten", "in", "un", "lik", "luk", "ci",
-    "cu", "ca", "ce", "larin", "lerin", "si", "su", "yor", "acak", "ecek", "mis", "mus", "di",
-    "du", "sa", "se", "sin", "mali", "li", "lu", "ma", "me", "a", "e", "i", "u",
+    "lari", "leri", "lar", "ler", "dan", "den", "tan", "ten", "in", "un", "lik", "luk", "ci", "cu",
+    "ca", "ce", "larin", "lerin", "si", "su", "yor", "acak", "ecek", "mis", "mus", "di", "du",
+    "sa", "se", "sin", "mali", "li", "lu", "ma", "me", "a", "e", "i", "u",
 ];
 
 fn lookup(normalized: &str) -> Option<&'static Entry> {
@@ -1136,13 +1153,16 @@ pub fn scan_imperatives(text: &str) -> Vec<String> {
     found
 }
 
-
 /// Words these commands genuinely use in two senses, with both readings and
 /// whether picking wrongly would change what gets committed.
 const AMBIGUA: &[(&str, &[&str], bool)] = &[
     (
         "pr",
-        &["open a pull request", "annotate an existing one", "merge one"],
+        &[
+            "open a pull request",
+            "annotate an existing one",
+            "merge one",
+        ],
         true,
     ),
     (
@@ -1152,7 +1172,10 @@ const AMBIGUA: &[(&str, &[&str], bool)] = &[
     ),
     (
         "modul",
-        &["a scope boundary for the change", "a new crate to be created"],
+        &[
+            "a scope boundary for the change",
+            "a new crate to be created",
+        ],
         false,
     ),
     ("her", &["every word of it", "every file of it"], false),
@@ -1161,11 +1184,22 @@ const AMBIGUA: &[(&str, &[&str], bool)] = &[
         &["keep working, a manner", "a working system, a noun"],
         false,
     ),
-    ("durma", &["do not stop, a manner", "downtime, a noun"], false),
-    ("ek", &["an attachment, data", "add something, an order"], false),
+    (
+        "durma",
+        &["do not stop, a manner", "downtime, a noun"],
+        false,
+    ),
+    (
+        "ek",
+        &["an attachment, data", "add something, an order"],
+        false,
+    ),
     (
         "sistem",
-        &["a new mechanism to build", "the operating system, not a target"],
+        &[
+            "a new mechanism to build",
+            "the operating system, not a target",
+        ],
         true,
     ),
     (
@@ -1467,9 +1501,7 @@ impl Understanding {
     #[must_use]
     pub fn attachment(&self, path: &str) -> Option<&Attachment> {
         let want = fold(path);
-        self.attachments
-            .iter()
-            .find(|a| fold(a.path()) == want)
+        self.attachments.iter().find(|a| fold(a.path()) == want)
     }
 
     /// How many words the record could not place.
@@ -1733,7 +1765,12 @@ impl Understanding {
         }
         let narrowing = self.words.iter().any(|w| w.role == Role::Constraint);
         if narrowing && self.stated_actions.len() > 1 {
-            let names: Vec<&str> = self.stated_actions.iter().copied().map(Action::label).collect();
+            let names: Vec<&str> = self
+                .stated_actions
+                .iter()
+                .copied()
+                .map(Action::label)
+                .collect();
             let note = format!(
                 "the command limits the action set and names {} actions anyway: every stated one \
                  is kept and none is arbitrated, because deciding which limit wins is the \
@@ -1865,10 +1902,7 @@ impl Understanding {
                 }
             }
             if word.basis == Basis::Assumed
-                && !self
-                    .assumptions
-                    .iter()
-                    .any(|note| note.contains(&word.raw))
+                && !self.assumptions.iter().any(|note| note.contains(&word.raw))
             {
                 return Err(Misreading::UnlistedAssumption {
                     word: word.raw.clone(),
@@ -1888,7 +1922,9 @@ impl Understanding {
                 !have.is_empty() && (have.contains(want.as_str()) || want.contains(have))
             });
             if !grounded {
-                return Err(Misreading::ScopeWithoutWord { value: value.clone() });
+                return Err(Misreading::ScopeWithoutWord {
+                    value: value.clone(),
+                });
             }
         }
         for action in &self.actions {
@@ -2120,11 +2156,10 @@ mod tests {
         assert_eq!(u.unmatched(), 3);
         assert_eq!(u.actions(), &[Action::Read]);
         assert!(u.assumptions().len() >= 4);
-        assert!(
-            u.assumptions()
-                .iter()
-                .any(|note| note.contains("blink") && note.contains("glossary"))
-        );
+        assert!(u
+            .assumptions()
+            .iter()
+            .any(|note| note.contains("blink") && note.contains("glossary")));
     }
 
     #[test]
@@ -2219,7 +2254,10 @@ mod tests {
         assert!(u.prohibitions().contains(&Action::Delete));
         assert!(u.found_in_data("merge"));
         assert_eq!(u.attachments().len(), 1);
-        assert!(u.assumptions().iter().any(|note| note.contains("actions anyway")));
+        assert!(u
+            .assumptions()
+            .iter()
+            .any(|note| note.contains("actions anyway")));
         assert_eq!(u.quantities(), &[Quantity::Order(3), Quantity::Count(40)]);
         assert!(u.modalities().contains(&Modality::Aggressive));
         assert!(u.modalities().contains(&Modality::Exhaustive));
@@ -2303,7 +2341,8 @@ mod tests {
         ));
         let mut kept = understood("lubot kodla");
         kept.extend_scope("lubot", 0);
-        kept.verify().unwrap_or_else(|why| panic!("a cited scope is fine: {why}"));
+        kept.verify()
+            .unwrap_or_else(|why| panic!("a cited scope is fine: {why}"));
     }
 
     #[test]

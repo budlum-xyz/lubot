@@ -120,7 +120,11 @@ pub struct Pending {
 
 impl fmt::Display for Pending {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "review incomplete: {} finding(s) still open", self.open.len())
+        write!(
+            f,
+            "review incomplete: {} finding(s) still open",
+            self.open.len()
+        )
     }
 }
 
@@ -346,7 +350,9 @@ mod tests {
     #[test]
     fn idempotent_rescan_keeps_disposition() {
         let mut review = Review::new();
-        review.record(finding("f-1", Severity::Low, "leak in log")).unwrap();
+        review
+            .record(finding("f-1", Severity::Low, "leak in log"))
+            .unwrap();
         review.fix("f-1", evidence()).unwrap();
 
         // The same scan runs again, unchanged: nothing moves.
@@ -361,7 +367,9 @@ mod tests {
     #[test]
     fn changed_finding_voids_stale_closure() {
         let mut review = Review::new();
-        review.record(finding("f-1", Severity::Medium, "first form")).unwrap();
+        review
+            .record(finding("f-1", Severity::Medium, "first form"))
+            .unwrap();
         review.fix("f-1", evidence()).unwrap();
 
         // The scan sees the same finding changed: the old closure is voided
@@ -378,7 +386,9 @@ mod tests {
     #[test]
     fn fix_requires_evidence() {
         let mut review = Review::new();
-        review.record(finding("f-1", Severity::Low, "leak in log")).unwrap();
+        review
+            .record(finding("f-1", Severity::Low, "leak in log"))
+            .unwrap();
         assert_eq!(
             review.fix(
                 "f-1",
@@ -405,9 +415,15 @@ mod tests {
     #[test]
     fn serious_rejection_requires_attestation() {
         let mut review = Review::new();
-        review.record(finding("low", Severity::Low, "style nit")).unwrap();
-        review.record(finding("high", Severity::High, "injection path")).unwrap();
-        review.record(finding("crit", Severity::Critical, "root compromise")).unwrap();
+        review
+            .record(finding("low", Severity::Low, "style nit"))
+            .unwrap();
+        review
+            .record(finding("high", Severity::High, "injection path"))
+            .unwrap();
+        review
+            .record(finding("crit", Severity::Critical, "root compromise"))
+            .unwrap();
 
         // Low: the floor is not reached, no attestation needed.
         review
@@ -468,8 +484,12 @@ mod tests {
     #[test]
     fn complete_reports_attested_waivers() {
         let mut review = Review::new();
-        review.record(finding("f-1", Severity::Low, "leak in log")).unwrap();
-        review.record(finding("f-2", Severity::Critical, "root compromise")).unwrap();
+        review
+            .record(finding("f-1", Severity::Low, "leak in log"))
+            .unwrap();
+        review
+            .record(finding("f-2", Severity::Critical, "root compromise"))
+            .unwrap();
         review.fix("f-1", evidence()).unwrap();
         review
             .reject(
@@ -490,7 +510,10 @@ mod tests {
     #[test]
     fn unknown_finding_id_is_an_error() {
         let mut review = Review::new();
-        assert_eq!(review.fix("ghost", evidence()), Err(ReviewError::UnknownFinding));
+        assert_eq!(
+            review.fix("ghost", evidence()),
+            Err(ReviewError::UnknownFinding)
+        );
         assert_eq!(
             review.reject(
                 "ghost",
@@ -509,7 +532,9 @@ mod tests {
     #[test]
     fn verify_catches_mutation() {
         let mut review = Review::new();
-        review.record(finding("f-1", Severity::Low, "leak in log")).unwrap();
+        review
+            .record(finding("f-1", Severity::Low, "leak in log"))
+            .unwrap();
         review.fix("f-1", evidence()).unwrap();
         review.verify().unwrap();
 

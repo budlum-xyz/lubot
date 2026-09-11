@@ -98,8 +98,7 @@ pub fn parse_ledger(text: &str) -> Result<Registry, String> {
         let activates_at =
             u64_field(&rec, "activates_at").map_err(|e| format!("line {line_no}: {e}"))?;
         let effect_raw = str_field(&rec, "effect").map_err(|e| format!("line {line_no}: {e}"))?;
-        let effect =
-            effect_from(&effect_raw).map_err(|e| format!("line {line_no}: {e}"))?;
+        let effect = effect_from(&effect_raw).map_err(|e| format!("line {line_no}: {e}"))?;
         let why = match rec.get("why") {
             None | Some(Value::Null) => None,
             Some(v) => Some(

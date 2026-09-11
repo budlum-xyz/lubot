@@ -96,5 +96,4 @@ mod tests {
         assert_eq!(answer_budget("10.0x").unwrap(), 10);
         assert!(answer_budget("0.4x").unwrap_err().contains("outside"));
     }
-
 }
