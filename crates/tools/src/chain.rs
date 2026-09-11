@@ -209,6 +209,7 @@ pub const ALLOWED_METHODS: [&str; 8] = [
     "bud_aiGetOutcome",
     "bud_aiGetActiveVerifiers",
     "bud_aiInferenceStats",
+    "bud_aiGetCeilings",
 ];
 
 /// Is this method inside the registered set?
