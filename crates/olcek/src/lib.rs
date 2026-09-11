@@ -77,17 +77,6 @@ pub enum Admitted {
     },
 }
 
-impl Admitted {
-    /// True for every outcome that put the item in the ledger.
-    #[must_use]
-    pub fn is_granted(&self) -> bool {
-        matches!(
-            self,
-            Self::Granted | Self::GrantedUnderPressure | Self::GrantedFromReserve { .. }
-        )
-    }
-}
-
 /// Why a ledger is misconfigured, or why it refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BudgetError {
@@ -305,7 +294,6 @@ pub struct Ledger {
     budget: Budget,
     ordinary: usize,
     closing: usize,
-    pressure: usize,
     refusals: usize,
     drops: BTreeMap<String, usize>,
     items: Vec<Item>,
@@ -319,7 +307,6 @@ impl Ledger {
             budget,
             ordinary: 0,
             closing: 0,
-            pressure: 0,
             refusals: 0,
             drops: BTreeMap::new(),
             items: Vec::new(),
@@ -336,24 +323,6 @@ impl Ledger {
     #[must_use]
     pub fn used(&self) -> usize {
         self.ordinary.saturating_add(self.closing)
-    }
-
-    /// Cost held by ordinary work.
-    #[must_use]
-    pub fn ordinary_used(&self) -> usize {
-        self.ordinary
-    }
-
-    /// Cost held by closing work.
-    #[must_use]
-    pub fn closing_used(&self) -> usize {
-        self.closing
-    }
-
-    /// Headroom left under the hard ceiling.
-    #[must_use]
-    pub fn headroom(&self) -> usize {
-        self.budget.hard_ceiling().saturating_sub(self.used())
     }
 
     /// Reserve left for closing work.
@@ -378,12 +347,6 @@ impl Ledger {
         } else {
             Band::Under
         }
-    }
-
-    /// Admissions that had to press past the watermark.
-    #[must_use]
-    pub fn pressure_admissions(&self) -> usize {
-        self.pressure
     }
 
     /// Refusals counted.
@@ -443,7 +406,6 @@ impl Ledger {
                     left: self.reserve_left(),
                 }
             } else if self.used() > self.budget.soft_watermark() {
-                self.pressure += 1;
                 Admitted::GrantedUnderPressure
             } else {
                 Admitted::Granted
@@ -470,7 +432,6 @@ impl Ledger {
             });
         }
         let outcome = if projected_ordinary > self.budget.soft_watermark() {
-            self.pressure += 1;
             Admitted::GrantedUnderPressure
         } else {
             Admitted::Granted
@@ -518,12 +479,6 @@ impl Ledger {
     #[must_use]
     pub fn drops(&self) -> &BTreeMap<String, usize> {
         &self.drops
-    }
-
-    /// True when the run lost work: evicted, refused, or both.
-    #[must_use]
-    pub fn was_truncated(&self) -> bool {
-        !self.drops.is_empty() || self.refusals > 0
     }
 
     /// Recomputes the totals from the held items and refuses to accept a
@@ -597,11 +552,10 @@ mod tests {
         let mut l = Ledger::new(budget());
         assert_eq!(l.admit(read("a", 30, Priority::Planned)).unwrap(), Admitted::Granted);
         assert_eq!(l.band(), Band::Under);
-        assert_eq!(l.pressure_admissions(), 0);
     }
 
     #[test]
-    fn the_pressure_band_needs_a_claim_and_counts_that_it_had_one() {
+    fn the_pressure_band_needs_a_claim_and_swallows_nothing() {
         let mut l = Ledger::new(budget());
         l.admit(read("a", 50, Priority::Planned)).unwrap();
         let optional = l.admit(read("b", 20, Priority::Optional));
@@ -612,7 +566,6 @@ mod tests {
         let planned = l.admit(read("c", 15, Priority::Planned)).unwrap();
         assert_eq!(planned, Admitted::GrantedUnderPressure);
         assert_eq!(l.band(), Band::Pressure);
-        assert_eq!(l.pressure_admissions(), 1);
         assert_eq!(l.refusals(), 1, "the refusal above was counted, not swallowed");
     }
 
@@ -646,7 +599,6 @@ mod tests {
                 left: 5
             }
         );
-        assert_eq!(l.closing_used(), 15);
         assert_eq!(l.reserve_left(), 5);
     }
 
@@ -695,21 +647,4 @@ mod tests {
         assert!(matches!(l.verify(), Err(BudgetError::UnrecordedDrop { .. })));
     }
 
-    #[test]
-    fn truncation_shows_in_the_report_when_the_run_lost_work() {
-        let mut l = Ledger::new(budget());
-        l.admit(read("only", 80, Priority::Required)).unwrap();
-        assert!(!l.was_truncated(), "a full ordinary pool is not a truncated run");
-        assert!(l.admit(read("more", 1, Priority::Required)).is_err());
-        assert!(l.was_truncated());
-    }
-
-    #[test]
-    fn headroom_counts_both_pools() {
-        let mut l = Ledger::new(budget());
-        l.admit(read("a", 30, Priority::Planned)).unwrap();
-        l.admit(Item::new("gate", 10, Priority::Required, Kind::Closing)).unwrap();
-        assert_eq!(l.used(), 40);
-        assert_eq!(l.headroom(), 60);
-    }
 }
