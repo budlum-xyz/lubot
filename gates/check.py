@@ -816,7 +816,7 @@ def selftest_output_finalize_closed_loop() -> None:
 # --------------------------------------------------------------------------
 def gate_system_prompt_is_true() -> str:
     """The Budlum-specific system prompt states only measured facts: the four
-    ceilings, the eight RPC names, the effort range, the threshold, the
+    ceilings, the seven RPC names, the effort range, the threshold, the
     ai-inference tag - and no superlative or proof claim that nothing here
     produced."""
     prompt = read("training/system_prompt.md")
@@ -824,7 +824,6 @@ def gate_system_prompt_is_true() -> str:
                   "bud_aiGetModel", "bud_aiRegisterModel", "bud_aiSubmitRequest",
                   "bud_aiSubmitResult", "bud_aiGetOutcome",
                   "bud_aiGetActiveVerifiers", "bud_aiInferenceStats",
-                  "bud_aiGetCeilings",
                   "0.5x", "10.0x", "agreement_threshold", "ai-inference",
                   "attestation-only"]:
         if token not in prompt:
