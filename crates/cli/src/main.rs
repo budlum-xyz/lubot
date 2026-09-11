@@ -1167,13 +1167,10 @@ fn cmd_usl(args: &[String]) -> Result<(), String> {
                 Err(e) => return Err(format!("usl: {e}")),
             };
             let dir = one(&found, "--out").unwrap_or_else(|| "media".to_string());
-            if let Err(e) = std::fs::create_dir_all(&dir) {
-                return Err(format!("usl: {e}"));
-            }
-            let path = std::path::Path::new(&dir).join(lubot_usl::media_file_name(seq));
-            if let Err(e) = std::fs::write(&path, media) {
-                return Err(format!("usl: {e}"));
-            }
+            let path = match lubot_usl::write_media(&std::path::PathBuf::from(&dir), seq, &media) {
+                Ok(p) => p,
+                Err(e) => return Err(format!("usl: {e}")),
+            };
             let (major, minor) = manifest.total();
             println!(
                 "usl: {} sealed, {} payout(s), total {major}.{minor:02}",

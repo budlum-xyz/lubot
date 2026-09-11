@@ -38,7 +38,10 @@
 //! 2. `from_media` rebuilds the whole chain from the file's own entries and
 //!    compares the seal; an accepted media satisfies `check` by construction,
 //!    because every payout is parsed back through the same validating
-//!    constructors that built it.
+//!    constructors that built it, and its lines are re-rendered and compared
+//!    to the file - so a read media writes back byte for byte, and a file
+//!    that only *sort of* parses ("SEQ 007", a swapped line order) is refused
+//!    as media text, not normalized into a different one.
 //! 3. No line contains tab, quote, backslash, or control characters, so the
 //!    one-space-per-token grammar of the media cannot be escaped out of.
 //!
@@ -114,11 +117,29 @@ pub fn parse_amount(text: &str) -> Result<(u64, u64), UslError> {
         return Err(bad());
     }
     let major: u64 = major.parse().map_err(|_| bad())?;
+    if (major.len() > 1 && major.starts_with('0')) || major.is_empty() {
+        return Err(bad());
+    }
     let minor: u64 = minor.parse().map_err(|_| bad())?;
     if minor >= MINOR_PER_MAJOR {
         return Err(bad());
     }
     Ok((major, minor))
+}
+
+/// Parses a decimal integer written the only way the media spells numbers:
+/// no leading zero, no sign, no spaces. A line that says `007` and a line
+/// that says `7` would seal the same manifest and print a different file -
+/// and byte stability is the whole promise a sealed media makes to the audit
+/// that re-reads it.
+fn parse_canonical_u64(text: &str) -> Result<u64, UslError> {
+    let value: u64 = text
+        .parse()
+        .map_err(|_| UslError::Media(format!("`{text}` is not a canonical number")))?;
+    if format!("{value}") != text {
+        return Err(UslError::Media(format!("`{text}` is not canonical (`{value}` is)")));
+    }
+    Ok(value)
 }
 
 fn reject_hostile(name: &str, value: &str, spaces_allowed: bool) -> Result<(), UslError> {
@@ -237,6 +258,7 @@ impl Manifest {
     ///
     /// [`UslError::Window`] if `not_before` is zero or `not_after` is not
     /// strictly later than it.
+    #[must_use = "an unset window makes the envelope unsealable; handle the error"]
     pub fn with_maturity(&mut self, not_before: u64, not_after: u64) -> Result<(), UslError> {
         if not_before < 1 {
             return Err(UslError::Window(
@@ -354,6 +376,31 @@ impl Manifest {
             .not_after
             .ok_or_else(|| UslError::Window("the media must carry a NOT-AFTER line".to_string()))?;
         self.fee.ok_or_else(|| UslError::BadField("the media must carry a FEE line".to_string()))?;
+        for (index, line) in self.payouts.iter().enumerate() {
+            if self.payouts[..index].iter().any(|earlier| {
+                earlier.to == line.to
+                    && earlier.memo == line.memo
+                    && earlier.major == line.major
+                    && earlier.minor == line.minor
+            }) {
+                return Err(UslError::BadField(format!(
+                    "payout to {} x{} `{}` appears twice",
+                    line.to,
+                    line.amount(),
+                    if line.memo.is_empty() { "no memo" } else { &line.memo }
+                )));
+            }
+        }
+        let minors: u128 = self
+            .payouts
+            .iter()
+            .map(|p| u128::from(p.major) * u128::from(MINOR_PER_MAJOR) + u128::from(p.minor))
+            .sum();
+        if minors > u128::from(u64::MAX) {
+            return Err(UslError::BadField(format!(
+                "the batch totals {minors} minor units, past the addressable u64 range"
+            )));
+        }
         Ok(())
     }
 
@@ -446,35 +493,92 @@ impl Manifest {
             fee: None,
             payouts: Vec::new(),
         };
+        let mut seen_seq = false;
+        let mut seen_chain = false;
+        let mut seen_maturity = [false, false];
+        let mut seen_fee = false;
         for line in entries {
             if let Some(rest) = line.strip_prefix("SEQ ") {
-                manifest.seq = rest.parse().map_err(|_| UslError::Media(format!("`{line}`")))?;
+                if seen_seq {
+                    return Err(UslError::Media("the SEQ line appears twice".to_string()));
+                }
+                seen_seq = true;
+                manifest.seq = parse_canonical_u64(rest)?;
             } else if let Some(rest) = line.strip_prefix("CHAIN ") {
+                if seen_chain {
+                    return Err(UslError::Media("the CHAIN line appears twice".to_string()));
+                }
+                seen_chain = true;
                 reject_hostile("chain label", rest, false)?;
                 if rest != replay_actor {
                     return Err(UslError::Media("two CHAIN lines".to_string()));
                 }
             } else if let Some(rest) = line.strip_prefix("NOT-BEFORE ") {
-                manifest.not_before = Some(rest.parse().map_err(|_| UslError::Media(format!("`{line}`")))?);
+                if seen_maturity[0] {
+                    return Err(UslError::Media("the NOT-BEFORE line appears twice".to_string()));
+                }
+                seen_maturity[0] = true;
+                manifest.not_before = Some(parse_canonical_u64(rest)?);
             } else if let Some(rest) = line.strip_prefix("NOT-AFTER ") {
-                manifest.not_after = Some(rest.parse().map_err(|_| UslError::Media(format!("`{line}`")))?);
+                if seen_maturity[1] {
+                    return Err(UslError::Media("the NOT-AFTER line appears twice".to_string()));
+                }
+                seen_maturity[1] = true;
+                manifest.not_after = Some(parse_canonical_u64(rest)?);
             } else if let Some(rest) = line.strip_prefix("FEE ") {
-                let (major, minor) = parse_amount(rest)
-                    .map_err(|_| UslError::Media(format!("`{line}`")))?;
+                if seen_fee {
+                    return Err(UslError::Media("the FEE line appears twice".to_string()));
+                }
+                seen_fee = true;
+                let (major, minor) =
+                    parse_amount(rest).map_err(|_| UslError::Media(format!("`{line}`")))?;
                 manifest.fee = Some((major, minor));
             } else if let Some(rest) = line.strip_prefix("PAY ") {
                 let mut parts = rest.splitn(3, ' ');
                 let to = parts.next().unwrap_or_default();
                 let amount = parts.next().unwrap_or_default();
                 let memo = parts.next().unwrap_or("");
-                manifest.payouts.push(Payout::new(to, amount, memo)?);
+                manifest.add_payout(Payout::new(to, amount, memo)?)?;
             } else {
                 return Err(UslError::Media(format!("unknown line `{line}`")));
             }
         }
+        if !seen_seq {
+            return Err(UslError::Media("no SEQ line".to_string()));
+        }
         manifest.check()?;
+        if manifest.entry_lines().iter().map(String::as_str).ne(entries.iter().copied()) {
+            return Err(UslError::Media(
+                "the lines parse, but they are not the lines this manifest would write".to_string(),
+            ));
+        }
         Ok(manifest)
     }
+}
+
+/// Writes the sealed media text into `dir` under [`media_file_name`],
+/// creating the directory if needed and REFUSING an existing file: media are
+/// append-only records at the wallet, and rewriting #7 under the number 7 is
+/// indistinguishable from editing what the last reader saw - so the second
+/// write fails instead of replacing the first. A new batch gets a new seq;
+/// there is no overwrite path to reach by mistake.
+///
+/// # Errors
+///
+/// The IO error itself - an existing file reports it as "already exists",
+/// which is the refusal, not an accident.
+pub fn write_media(dir: &std::path::Path, seq: u64, text: &str) -> Result<std::path::PathBuf, UslError> {
+    std::fs::create_dir_all(dir).map_err(|e| UslError::Media(format!("{}: {e}", dir.display())))?;
+    let path = dir.join(media_file_name(seq));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|e| UslError::Media(format!("{}: {e}", path.display())))?;
+    use std::io::Write;
+    file.write_all(text.as_bytes())
+        .map_err(|e| UslError::Media(format!("{}: {e}", path.display())))?;
+    Ok(path)
 }
 
 /// The file a media is written to, for a given envelope. The name carries
@@ -558,6 +662,74 @@ mod tests {
         assert!(matches!(m.add_payout(again), Err(UslError::BadField(_))));
         let other = Payout::new("bc1qaddr", "10.00", "rent again").unwrap();
         assert!(m.add_payout(other).is_ok());
+    }
+
+    /// The entries a sealed text carries, header and tail stripped - what an
+    /// editor would rewrite and re-tail.
+    fn entries_of(text: &str) -> Vec<String> {
+        let all: Vec<&str> = text.lines().collect();
+        assert!(all[0] == KIND && all[1].starts_with("GEN "));
+        assert!(all[all.len() - 1].starts_with("SEALED "));
+        all[2..all.len() - 1].iter().map(|l| (*l).to_string()).collect()
+    }
+
+    #[test]
+    fn a_resealed_media_cannot_smuggle_a_duplicate_line() {
+        // The forger here is competent: they recompute the tail (the digest
+        // is public arithmetic, not a key), so what must stop them is that
+        // the reader runs the WRITER's rules over what it parsed.
+        let text = built().to_media().unwrap();
+        let mut mid = entries_of(&text);
+        let pay = mid.iter().find(|l| l.starts_with("PAY ")).unwrap().clone();
+        mid.push(pay);
+        let err = Manifest::from_media(&resealed(&mid)).unwrap_err();
+        assert!(matches!(err, UslError::BadField(_)), "{err:?}");
+    }
+
+    #[test]
+    fn media_that_only_sort_of_parses_is_refused_not_rewritten() {
+        let text = built().to_media().unwrap();
+        let mut mid = entries_of(&text);
+        for line in &mut mid {
+            *line = line.replace("SEQ 7", "SEQ 007");
+        }
+        let err = Manifest::from_media(&resealed(&mid)).unwrap_err();
+        assert!(matches!(err, UslError::Media(_)), "{err:?}");
+    }
+
+    #[test]
+    fn a_media_is_never_written_over_another() {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("usl-test-{}-{}", std::process::id(), file!().len()));
+        let m = built();
+        let media = m.to_media().unwrap();
+        let first = write_media(&dir, 7, &media).unwrap();
+        let again = write_media(&dir, 7, &media);
+        assert!(again.is_err(), "seq 7 exists; overwrite must fail");
+        let next = write_media(&dir, 8, &media).unwrap();
+        assert_ne!(first, next);
+        let read = std::fs::read_to_string(&first).unwrap();
+        assert_eq!(read, media, "what was sealed is what is on the stick");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Re-runs the seal step over edited entries, the way anyone with the
+    /// public digest arithmetic could; the tests prove refusal does not rest
+    /// on the seal alone.
+    fn resealed(lines: &[String]) -> String {
+        use lubot_muhur::{Chain, Indexed};
+        let mut ix = Indexed::new(Chain::new(GENESIS));
+        for line in lines {
+            ix.append("mainnet", line).unwrap();
+        }
+        let seal = ix.finalize().hex();
+        let mut out = format!("{KIND}\nGEN {GENESIS}\n");
+        for line in lines {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push_str(&format!("SEALED {seal}\n"));
+        out
     }
 
     #[test]
