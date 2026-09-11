@@ -24,10 +24,6 @@ crates/takip/src/lib.rs:unclaimed
 crates/tools/src/chain.rs:jsonrpc_request
 crates/tools/src/chain.rs:to_corpus_line
 crates/tools/src/lib.rs:numerator
-crates/tools/src/operator.rs:compute_bond_ok
-crates/tools/src/operator.rs:old_active
-crates/tools/src/operator.rs:old_retired
-crates/tools/src/operator.rs:same_model_hash
 crates/yetenek/src/lib.rs:record_of
 crates/yetenek/src/lib.rs:reject_names
 crates/yetenek/src/lib.rs:with_capability
