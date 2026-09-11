@@ -127,7 +127,7 @@ low-ceiling run cannot be asked for a long answer.
 `lubot prompt` prints the Budlum-specific system prompt. It goes through the
 same schema validator every answer goes through, and
 `gates/check.py system-prompt-is-true` refuses a prompt that states a fact
-nothing here measured - the four ceilings, the eight RPC names, the effort
+nothing here measured - the four ceilings, the seven RPC names, the effort
 range and the consumption threshold are the load-bearing numbers.
 
 `--outputs <file>` appends the finalized-output handoff for every grounded or
