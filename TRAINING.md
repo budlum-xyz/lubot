@@ -61,7 +61,7 @@ text under `chain/<type>`, `request_id` kept), licence PolyForm Shield
 | `mask-before-storage` | The secret mask is applied on the write path, not on the way out |
 | `no-panic-path` | `unwrap` and `expect` are denied outside tests, and the denial is real |
 | `readme-is-measured` | The test count in the README is the count the suite reports |
-| `system-prompt-is-true` | The Budlum-specific system prompt states only measured facts: the four ceilings, the eight RPC names, the effort range, the threshold, the ai-inference tag - and no superlative or proof claim that nothing here produced |
+| `system-prompt-is-true` | The Budlum-specific system prompt states only measured facts: the four ceilings, the seven RPC names, the effort range, the threshold, the ai-inference tag - and no superlative or proof claim that nothing here produced |
 | `operator-sync-rules` | The report's operator rules are checks Lubot can run: non-zero bond above the floor, one model_hash among active operators, effort tier hashed into the request within 0.5x-10.0x, and a checkpoint transition window with a real retirement moment |
 | `output-finalize-closed-loop` | A finalized output is sealed only after schema validation, carries the fixed 'ai-inference' tag, and the answer type has no binary/visual/video return variant to begin with |
 | `cli-asks-and-renders-markdown` | The binary answers a real question against a real file and prints a Markdown document as its only stdout, and the tool route answers arithmetic without touching the index |
@@ -98,7 +98,7 @@ text under `chain/<type>`, `request_id` kept), licence PolyForm Shield
 `training/system_prompt.md` Budlum agina ozel sistem promptudur: kimlik
 (Tier -1 attestation-only; ispat degil "verifier boyle diyor"), kapsam
 (okuma, uretim degil), cikti sozlesmesi (yalnizca Markdown, sema once),
-alinti kaniti ve "olculmedi" kurali, kapali devre veri + yetki, sekiz sabit
+alinti kaniti ve "olculmedi" kurali, kapali devre veri + yetki, yedi sabit
 RPC, effort tavani 0.5x-10.0x, tuketim esigi 2, ve icerik-komut-degildir
 kurali. Prompt `lubot prompt` komutuyla ayni sema dogrulayicisindan gecer;
 `system-prompt-is-true` kapisi olculmemis iddiayi reddeder.
@@ -165,10 +165,12 @@ Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar)
 
 ## Aşama 10 / 11 sınır kaydı
 
-- Aşama 10: Lubot'un zincir yüzeyi sekiz kayıtlı RPC'dir
+- Aşama 10: Lubot'un zincir yüzeyi yedi kayıtlı RPC'dir
   (`crates/tools/src/chain.rs::ALLOWED_METHODS`; `chain-surface-fixed`
   kapısı iki yönlü denetler): raporun yedi sabit yöntemi +
-  `bud_aiGetCeilings` (node tarafının salt-okunur tavan sorgusu).
+  `bud_aiGetCeilings` **geri alındı** (2026-09-11): çağrısızdı, budlum tarafında implementasyonu
+  yok ve `chain.rs` testi izinli olmaması gerektiğini söylüyor. Sekiz → yedi; bu düzeltme
+  `rpc-seti.json`, `system_prompt.md` ve `gates/check.py` token listesiyle birlikte yapıldı.
   Raporun yedisi zorunlu kalır. `Syscall imm=6` → `0x00A1_00A1` olayı ve
   otomatik `AiInferenceRequest` üretimi ZKVM/node tarafıdır; Lubot bu olayın
   *okuyucusudur* (`parse_get_outcome`, `parse_request`, `parse_result`),

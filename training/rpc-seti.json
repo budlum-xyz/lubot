@@ -1,5 +1,5 @@
 {
-  "note": "Lubot zincir aracinin cagirabilecegi RPC seti. Yedi RPC raporun sabit yuzeyi; genisletme icin hem bu dosyaya hem ALLOWED_METHODS'a ayni anda eklenir (kapi iki tarafi denetler). bud_aiGetCeilings: node tarafinin salt-okunur sorgusu; tavanlar + effort araligi.",
+  "note": "Lubot zincir aracinin cagirabilecegi RPC seti: raporun yedi sabit yontemi. Genisletme icin hem bu dosyaya hem ALLOWED_METHODS'a ayni anda eklenir; kapi iki tarafi denetler. bud_aiGetCeilings 2026-09-11'de geri alindi: cagrisizdi (parser yok), budlum tarafinda hicbir implementation yok (src/ ve crates/ taramasi: 0 eslesme) ve crates/tools/src/chain.rs::the_extended_surface_is_the_registered_set izinli olmamasi gerektigini soyluyor.",
   "methods": [
     "bud_aiGetModel",
     "bud_aiRegisterModel",
@@ -7,7 +7,6 @@
     "bud_aiSubmitResult",
     "bud_aiGetOutcome",
     "bud_aiGetActiveVerifiers",
-    "bud_aiInferenceStats",
-    "bud_aiGetCeilings"
+    "bud_aiInferenceStats"
   ]
 }

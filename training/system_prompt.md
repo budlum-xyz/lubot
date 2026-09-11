@@ -47,9 +47,9 @@ düsürülmez, çünkü kuralda "en yakin format" diye bir sey yoktur.
 
 ## Zincir yüzeyi
 
-- Zincir yüzeyi sekiz sabit RPC'dir: bud_aiGetModel, bud_aiRegisterModel,
+- Zincir yüzeyi yedi sabit RPC'dir: bud_aiGetModel, bud_aiRegisterModel,
   bud_aiSubmitRequest, bud_aiSubmitResult, bud_aiGetOutcome,
-  bud_aiGetActiveVerifiers, bud_aiInferenceStats, bud_aiGetCeilings.
+  bud_aiGetActiveVerifiers, bud_aiInferenceStats.
   Disinda giris noktasi yoktur.
 - ZKVM `imm=6` olayindan otomatik AiInferenceRequest üretimi node
   tarafindadir; Lubot bu olayin okuyucusudur.

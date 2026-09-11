@@ -201,7 +201,7 @@ pub fn parse_result(record: &str) -> Result<AiInferenceResult, String> {
 /// `training/rpc-seti.json`; the gate keeps the file and this constant in
 /// agreement, so an extension is a reviewable change in both places - and
 /// the report's seven stay mandatory.
-pub const ALLOWED_METHODS: [&str; 8] = [
+pub const ALLOWED_METHODS: [&str; 7] = [
     "bud_aiGetModel",
     "bud_aiRegisterModel",
     "bud_aiSubmitRequest",
@@ -209,7 +209,6 @@ pub const ALLOWED_METHODS: [&str; 8] = [
     "bud_aiGetOutcome",
     "bud_aiGetActiveVerifiers",
     "bud_aiInferenceStats",
-    "bud_aiGetCeilings",
 ];
 
 /// Is this method inside the registered set?
