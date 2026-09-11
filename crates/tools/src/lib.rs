@@ -45,16 +45,6 @@ impl Rational {
         Self { num: n, den: 1 }
     }
 
-    #[must_use]
-    pub fn numerator(self) -> i128 {
-        self.num
-    }
-
-    #[must_use]
-    pub fn denominator(self) -> i128 {
-        self.den
-    }
-
     /// # Errors
     /// Returns a description on overflow.
     pub fn checked_add(self, other: Self) -> Result<Self, String> {
@@ -492,10 +482,8 @@ mod tests {
     #[test]
     fn rationals_are_kept_in_lowest_terms() {
         let r = Rational::new(6, 8).unwrap();
-        assert_eq!(r.numerator(), 3);
-        assert_eq!(r.denominator(), 4);
+        assert_eq!(r.to_string(), "3/4");
         let neg = Rational::new(1, -2).unwrap();
-        assert_eq!(neg.numerator(), -1);
-        assert_eq!(neg.denominator(), 2);
+        assert_eq!(neg.to_string(), "-1/2");
     }
 }
