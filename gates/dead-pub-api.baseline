@@ -16,7 +16,6 @@ crates/kanit/src/lib.rs:open_path
 crates/kuyruk/src/lib.rs:evictions
 crates/kuyruk/src/lib.rs:peek_due
 crates/kuyruk/src/lib.rs:submit
-crates/muhur/src/lib.rs:chain_mut
 crates/muhur/src/lib.rs:is_finalized
 crates/olcek/src/lib.rs:closing_used
 crates/olcek/src/lib.rs:headroom

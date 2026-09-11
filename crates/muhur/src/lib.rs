@@ -454,9 +454,15 @@ impl Indexed {
         &self.chain
     }
 
-    /// Mutable access for the caller's own bookkeeping.
-    pub fn chain_mut(&mut self) -> &mut Chain {
-        &mut self.chain
+    /// Seals the chain the index points at.
+    ///
+    /// The seal is what every later reader recomputes and compares, so it is
+    /// reached *through* the index: handing out `&mut Chain` would let a
+    /// caller append after sealing and move the tip under the index's feet.
+    ///
+    /// [`Self::verify`] remains the authority; this only fixes the moment.
+    pub fn finalize(&mut self) -> Digest {
+        self.chain.finalize()
     }
 
     /// Verifies the chain, then checks that the index did not drift from it: a
@@ -609,7 +615,7 @@ mod tests {
         let mut ix = Indexed::new(Chain::new("lubot"));
         ix.append("loop", "a").unwrap();
         ix.append("gate", "b").unwrap();
-        ix.chain_mut().finalize();
+        ix.finalize();
         assert_eq!(ix.verify(), Ok(()));
         assert_eq!(ix.by("loop"), &[1u64]);
         assert_eq!(ix.by("nobody"), &[] as &[u64]);
