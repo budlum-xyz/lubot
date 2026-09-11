@@ -17,12 +17,6 @@ crates/kuyruk/src/lib.rs:evictions
 crates/kuyruk/src/lib.rs:peek_due
 crates/kuyruk/src/lib.rs:submit
 crates/muhur/src/lib.rs:is_finalized
-crates/olcek/src/lib.rs:closing_used
-crates/olcek/src/lib.rs:headroom
-crates/olcek/src/lib.rs:is_granted
-crates/olcek/src/lib.rs:ordinary_used
-crates/olcek/src/lib.rs:pressure_admissions
-crates/olcek/src/lib.rs:was_truncated
 crates/read/src/perception.rs:is_known
 crates/takip/src/lib.rs:declare_unwired
 crates/takip/src/lib.rs:declare_wired
