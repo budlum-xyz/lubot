@@ -528,10 +528,7 @@ impl std::fmt::Display for LedgerViolation {
                 "plan `{plan}` was declared and no change carries it: an unfilled plan is a \
                  promise with no code behind it"
             ),
-            Self::DuplicateFlag { flag } => write!(
-                f,
-                "`{flag}` appears twice in the ledger"
-            ),
+            Self::DuplicateFlag { flag } => write!(f, "`{flag}` appears twice in the ledger"),
         }
     }
 }
@@ -983,21 +980,31 @@ fn check_flag_shape(flag: &str) -> Result<(), RegistryError> {
         rule,
     };
     if flag.len() < 5 {
-        return Err(malformed("at least five characters, so the name is searchable"));
+        return Err(malformed(
+            "at least five characters, so the name is searchable",
+        ));
     }
     if !flag.contains('_') {
-        return Err(malformed("an underscore between the owner prefix and the meaning"));
+        return Err(malformed(
+            "an underscore between the owner prefix and the meaning",
+        ));
     }
     let mut chars = flag.chars();
     let Some(first) = chars.next() else {
-        return Err(malformed("at least five characters, so the name is searchable"));
+        return Err(malformed(
+            "at least five characters, so the name is searchable",
+        ));
     };
     if !first.is_ascii_uppercase() {
-        return Err(malformed("the first character is an ASCII uppercase letter"));
+        return Err(malformed(
+            "the first character is an ASCII uppercase letter",
+        ));
     }
     for ch in chars {
         if !(ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_') {
-            return Err(malformed("letters are ASCII uppercase, digits and underscore only"));
+            return Err(malformed(
+                "letters are ASCII uppercase, digits and underscore only",
+            ));
         }
     }
     Ok(())
@@ -1225,9 +1232,7 @@ mod tests {
     #[test]
     fn the_comparison_is_inclusive_and_lives_in_one_place() {
         let reg = shipped();
-        let change = reg
-            .change(FLAG)
-            .unwrap_or_else(|| panic!("in the ledger"));
+        let change = reg.change(FLAG).unwrap_or_else(|| panic!("in the ledger"));
         assert!(change.is_live_at(AT));
         assert!(!change.is_live_at(AT - 1));
         assert_eq!(reg.counts_at(AT - 1).pending, 1);
@@ -1342,7 +1347,10 @@ mod tests {
             Some(Some(AT + 3)),
             "and the retirement is still readable"
         );
-        assert_eq!(reg.change(FLAG).map(|c| c.ratified_at()), Some(Some(AT - 10)));
+        assert_eq!(
+            reg.change(FLAG).map(|c| c.ratified_at()),
+            Some(Some(AT - 10))
+        );
     }
 
     #[test]
@@ -1396,7 +1404,9 @@ mod tests {
         reg.verify(AT)
             .unwrap_or_else(|why| panic!("nothing scheduled is not a violation: {why}"));
         assert_eq!(reg.counts_at(AT), Counts::default());
-        assert!(reg.render(AT).contains("0 active, 0 pending, 0 unratified, 0 retired"));
+        assert!(reg
+            .render(AT)
+            .contains("0 active, 0 pending, 0 unratified, 0 retired"));
         assert_eq!(reg.changes().len(), 0);
     }
 
@@ -1413,7 +1423,13 @@ mod tests {
     #[test]
     fn render_shows_the_schedule_and_the_overdue_line() {
         let ok = shipped().render(AT);
-        for needle in ["schedule at epoch", FLAG, "consensus", "placement-v1", "why:"] {
+        for needle in [
+            "schedule at epoch",
+            FLAG,
+            "consensus",
+            "placement-v1",
+            "why:",
+        ] {
             assert!(ok.contains(needle), "missing `{needle}` in:\n{ok}");
         }
         assert!(!ok.contains("OVERDUE"));

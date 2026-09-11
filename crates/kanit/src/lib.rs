@@ -167,7 +167,11 @@ impl Scope {
     /// True when `target` is inside the authorized set.
     #[must_use]
     pub fn is_authorized(&self, target: &str) -> bool {
-        !self.closed && self.authorized.iter().any(|t| target.starts_with(t.as_str()))
+        !self.closed
+            && self
+                .authorized
+                .iter()
+                .any(|t| target.starts_with(t.as_str()))
     }
 
     /// True when the session may act.
@@ -340,7 +344,10 @@ impl std::fmt::Display for ChainError {
             Self::UnknownFinding(id) => write!(f, "no finding {id}"),
             Self::UnknownEvidence(id) => write!(f, "no evidence {id}"),
             Self::OutOfScope { evidence, subject } => {
-                write!(f, "evidence {evidence} is about `{subject}`, outside the scope")
+                write!(
+                    f,
+                    "evidence {evidence} is about `{subject}`, outside the scope"
+                )
             }
             Self::NarrativeOnly { finding } => write!(
                 f,
@@ -351,7 +358,10 @@ impl std::fmt::Display for ChainError {
                 write!(f, "finding {id} promised a check that never ran")
             }
             Self::CheckMismatch { finding, got } => {
-                write!(f, "finding {finding}: the check produced {got}, not the promised digest")
+                write!(
+                    f,
+                    "finding {finding}: the check produced {got}, not the promised digest"
+                )
             }
             Self::AlreadyClosed(id) => write!(f, "finding {id} is already closed"),
             Self::ActWithoutPlan => write!(
@@ -701,7 +711,9 @@ mod tests {
             Err(ChainError::ActWithoutPlan)
         );
         assert!(chain.plan("anything"));
-        assert!(chain.observe(EvidenceKind::ObservedRun, "src/a.rs", "ok").is_ok());
+        assert!(chain
+            .observe(EvidenceKind::ObservedRun, "src/a.rs", "ok")
+            .is_ok());
     }
 
     #[test]
@@ -723,7 +735,11 @@ mod tests {
     fn prose_cannot_close_a_claim() {
         let mut chain = scoped();
         let note = chain
-            .observe(EvidenceKind::Narrative, "src/storage/deal.rs", "looks wrong")
+            .observe(
+                EvidenceKind::Narrative,
+                "src/storage/deal.rs",
+                "looks wrong",
+            )
             .unwrap();
         let finding = chain.claim("repair never fires");
         chain.support(finding, note).unwrap();
@@ -755,10 +771,7 @@ mod tests {
                 Expectation::DigestIs(Digest::of("1 passed")),
             )
             .unwrap();
-        assert_eq!(
-            chain.run(finding, "1 passed").unwrap(),
-            Outcome::Matched
-        );
+        assert_eq!(chain.run(finding, "1 passed").unwrap(), Outcome::Matched);
         chain.close(finding).unwrap();
         assert_eq!(chain.status(finding), Some(Status::Closed));
         assert_eq!(chain.verify(), Ok(()));
@@ -832,7 +845,10 @@ mod tests {
             .unwrap();
         chain.run(finding, "42").unwrap();
         chain.close(finding).unwrap();
-        assert_eq!(chain.close(finding), Err(ChainError::AlreadyClosed(finding)));
+        assert_eq!(
+            chain.close(finding),
+            Err(ChainError::AlreadyClosed(finding))
+        );
         assert!(matches!(
             chain.open_path(finding, "again", Expectation::AnyRun),
             Err(ChainError::AlreadyClosed(_))
@@ -876,8 +892,14 @@ mod tests {
     #[test]
     fn unknown_ids_are_refused_rather_than_ignored() {
         let mut chain = scoped();
-        assert_eq!(chain.support(1234, 1), Err(ChainError::UnknownFinding(1234)));
+        assert_eq!(
+            chain.support(1234, 1),
+            Err(ChainError::UnknownFinding(1234))
+        );
         let finding = chain.claim("x");
-        assert_eq!(chain.support(finding, 4321), Err(ChainError::UnknownEvidence(4321)));
+        assert_eq!(
+            chain.support(finding, 4321),
+            Err(ChainError::UnknownEvidence(4321))
+        );
     }
 }

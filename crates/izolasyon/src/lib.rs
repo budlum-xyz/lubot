@@ -181,7 +181,9 @@ mod tests {
             SessionBoundary::open(id(), String::new(), Workspace::empty()),
             Err(IsolationError::NoContract)
         );
-        let empty_id = SessionIdentity { token: String::new() };
+        let empty_id = SessionIdentity {
+            token: String::new(),
+        };
         assert_eq!(
             SessionBoundary::open(empty_id, "contract-a".to_owned(), Workspace::empty()),
             Err(IsolationError::EmptyIdentity)
@@ -192,8 +194,8 @@ mod tests {
     /// `verify`.
     #[test]
     fn verify_catches_mutation() {
-        let mut b = SessionBoundary::open(id(), "contract-a".to_owned(), Workspace::empty())
-            .expect("open");
+        let mut b =
+            SessionBoundary::open(id(), "contract-a".to_owned(), Workspace::empty()).expect("open");
         b.workspace = Workspace::with_entries(["leaked.txt"]);
         assert_eq!(
             b.verify(),

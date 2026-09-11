@@ -137,7 +137,9 @@ fn parse_canonical_u64(text: &str) -> Result<u64, UslError> {
         .parse()
         .map_err(|_| UslError::Media(format!("`{text}` is not a canonical number")))?;
     if format!("{value}") != text {
-        return Err(UslError::Media(format!("`{text}` is not canonical (`{value}` is)")));
+        return Err(UslError::Media(format!(
+            "`{text}` is not canonical (`{value}` is)"
+        )));
     }
     Ok(value)
 }
@@ -188,7 +190,12 @@ impl Payout {
         reject_hostile("address", to, false)?;
         reject_hostile("memo", memo, true)?;
         let (major, minor) = parse_amount(amount)?;
-        Ok(Self { to: to.to_string(), major, minor, memo: memo.to_string() })
+        Ok(Self {
+            to: to.to_string(),
+            major,
+            minor,
+            memo: memo.to_string(),
+        })
     }
 
     /// The address being paid.
@@ -305,16 +312,22 @@ impl Manifest {
                 "a media holds at most {MAX_PAYOUTS} payouts"
             )));
         }
-        let duplicate = self
-            .payouts
-            .iter()
-            .any(|p| p.to == payout.to && p.memo == payout.memo && p.major == payout.major && p.minor == payout.minor);
+        let duplicate = self.payouts.iter().any(|p| {
+            p.to == payout.to
+                && p.memo == payout.memo
+                && p.major == payout.major
+                && p.minor == payout.minor
+        });
         if duplicate {
             return Err(UslError::BadField(format!(
                 "payout to {} x{} `{}` appears twice",
                 payout.to,
                 payout.amount(),
-                if payout.memo.is_empty() { "no memo" } else { &payout.memo }
+                if payout.memo.is_empty() {
+                    "no memo"
+                } else {
+                    &payout.memo
+                }
             )));
         }
         self.payouts.push(payout);
@@ -343,7 +356,8 @@ impl Manifest {
     /// The canonical fee spelling.
     #[must_use]
     pub fn fee(&self) -> String {
-        self.fee.map_or_else(|| "0.00".to_string(), |(m, n)| format!("{m}.{n:02}"))
+        self.fee
+            .map_or_else(|| "0.00".to_string(), |(m, n)| format!("{m}.{n:02}"))
     }
 
     /// The payout lines.
@@ -355,7 +369,11 @@ impl Manifest {
     /// The sum of the payout lines, carried across the minor unit.
     #[must_use]
     pub fn total(&self) -> (u64, u64) {
-        let minors: u64 = self.payouts.iter().map(|p| p.major * MINOR_PER_MAJOR + p.minor).sum();
+        let minors: u64 = self
+            .payouts
+            .iter()
+            .map(|p| p.major * MINOR_PER_MAJOR + p.minor)
+            .sum();
         (minors / MINOR_PER_MAJOR, minors % MINOR_PER_MAJOR)
     }
 
@@ -369,13 +387,14 @@ impl Manifest {
         if self.payouts.is_empty() {
             return Err(UslError::Empty);
         }
-        let not_before = self
-            .not_before
-            .ok_or_else(|| UslError::Window("the media must carry a NOT-BEFORE line".to_string()))?;
+        let not_before = self.not_before.ok_or_else(|| {
+            UslError::Window("the media must carry a NOT-BEFORE line".to_string())
+        })?;
         let not_after = self
             .not_after
             .ok_or_else(|| UslError::Window("the media must carry a NOT-AFTER line".to_string()))?;
-        self.fee.ok_or_else(|| UslError::BadField("the media must carry a FEE line".to_string()))?;
+        self.fee
+            .ok_or_else(|| UslError::BadField("the media must carry a FEE line".to_string()))?;
         for (index, line) in self.payouts.iter().enumerate() {
             if self.payouts[..index].iter().any(|earlier| {
                 earlier.to == line.to
@@ -387,7 +406,11 @@ impl Manifest {
                     "payout to {} x{} `{}` appears twice",
                     line.to,
                     line.amount(),
-                    if line.memo.is_empty() { "no memo" } else { &line.memo }
+                    if line.memo.is_empty() {
+                        "no memo"
+                    } else {
+                        &line.memo
+                    }
                 )));
             }
         }
@@ -456,14 +479,18 @@ impl Manifest {
     pub fn from_media(text: &str) -> Result<Self, UslError> {
         let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
         if lines.len() < 4 || lines[0] != KIND || !lines[1].starts_with("GEN ") {
-            return Err(UslError::Media("header is not `USL1` then `GEN`".to_string()));
+            return Err(UslError::Media(
+                "header is not `USL1` then `GEN`".to_string(),
+            ));
         }
         if &lines[1][4..] != GENESIS {
             return Err(UslError::Media(format!("genesis label is not `{GENESIS}`")));
         }
         let tail = lines[lines.len() - 1];
         let Some(written_seal) = tail.strip_prefix("SEALED ") else {
-            return Err(UslError::Media("the last line is not the SEALED one".to_string()));
+            return Err(UslError::Media(
+                "the last line is not the SEALED one".to_string(),
+            ));
         };
         let entries = &lines[2..lines.len() - 1];
         let replay_actor = entries
@@ -483,7 +510,8 @@ impl Manifest {
                 "the entries hash to {recomputed}, the file carries {written_seal}"
             )));
         }
-        ix.verify().map_err(|b| UslError::Unsealed(format!("{b:?}")))?;
+        ix.verify()
+            .map_err(|b| UslError::Unsealed(format!("{b:?}")))?;
 
         let mut manifest = Manifest {
             seq: 0,
@@ -515,13 +543,17 @@ impl Manifest {
                 }
             } else if let Some(rest) = line.strip_prefix("NOT-BEFORE ") {
                 if seen_maturity[0] {
-                    return Err(UslError::Media("the NOT-BEFORE line appears twice".to_string()));
+                    return Err(UslError::Media(
+                        "the NOT-BEFORE line appears twice".to_string(),
+                    ));
                 }
                 seen_maturity[0] = true;
                 manifest.not_before = Some(parse_canonical_u64(rest)?);
             } else if let Some(rest) = line.strip_prefix("NOT-AFTER ") {
                 if seen_maturity[1] {
-                    return Err(UslError::Media("the NOT-AFTER line appears twice".to_string()));
+                    return Err(UslError::Media(
+                        "the NOT-AFTER line appears twice".to_string(),
+                    ));
                 }
                 seen_maturity[1] = true;
                 manifest.not_after = Some(parse_canonical_u64(rest)?);
@@ -547,7 +579,12 @@ impl Manifest {
             return Err(UslError::Media("no SEQ line".to_string()));
         }
         manifest.check()?;
-        if manifest.entry_lines().iter().map(String::as_str).ne(entries.iter().copied()) {
+        if manifest
+            .entry_lines()
+            .iter()
+            .map(String::as_str)
+            .ne(entries.iter().copied())
+        {
             return Err(UslError::Media(
                 "the lines parse, but they are not the lines this manifest would write".to_string(),
             ));
@@ -567,7 +604,11 @@ impl Manifest {
 ///
 /// The IO error itself - an existing file reports it as "already exists",
 /// which is the refusal, not an accident.
-pub fn write_media(dir: &std::path::Path, seq: u64, text: &str) -> Result<std::path::PathBuf, UslError> {
+pub fn write_media(
+    dir: &std::path::Path,
+    seq: u64,
+    text: &str,
+) -> Result<std::path::PathBuf, UslError> {
     std::fs::create_dir_all(dir).map_err(|e| UslError::Media(format!("{}: {e}", dir.display())))?;
     let path = dir.join(media_file_name(seq));
     let mut file = std::fs::OpenOptions::new()
@@ -597,17 +638,31 @@ mod tests {
         let mut m = Manifest::new(7, "mainnet").unwrap();
         m.with_maturity(100, 200).unwrap();
         m.with_fee(0, 21).unwrap();
-        m.add_payout(Payout::new("bc1qaddr", "10.00", "rent").unwrap()).unwrap();
-        m.add_payout(Payout::new("bc1qother", "0.50", "").unwrap()).unwrap();
+        m.add_payout(Payout::new("bc1qaddr", "10.00", "rent").unwrap())
+            .unwrap();
+        m.add_payout(Payout::new("bc1qother", "0.50", "").unwrap())
+            .unwrap();
         m
     }
 
     #[test]
     fn only_canonical_amounts_are_paid() {
-        assert!(matches!(Payout::new("addr", "1.5", ""), Err(UslError::BadAmount(_))));
-        assert!(matches!(Payout::new("addr", "1.500", ""), Err(UslError::BadAmount(_))));
-        assert!(matches!(Payout::new("a d d r", "1.00", ""), Err(UslError::BadField(_))));
-        assert!(matches!(Payout::new("addr", "1.00", "with \"quote\""), Err(UslError::BadField(_))));
+        assert!(matches!(
+            Payout::new("addr", "1.5", ""),
+            Err(UslError::BadAmount(_))
+        ));
+        assert!(matches!(
+            Payout::new("addr", "1.500", ""),
+            Err(UslError::BadAmount(_))
+        ));
+        assert!(matches!(
+            Payout::new("a d d r", "1.00", ""),
+            Err(UslError::BadField(_))
+        ));
+        assert!(matches!(
+            Payout::new("addr", "1.00", "with \"quote\""),
+            Err(UslError::BadField(_))
+        ));
         let p = Payout::new("addr", "3.40", "ok").unwrap();
         assert_eq!(p.amount(), "3.40");
         assert_eq!(p.to(), "addr");
@@ -645,12 +700,18 @@ mod tests {
     fn windows_open_after_genesis_and_fees_are_spelled_once() {
         let mut m = built();
         assert!(matches!(m.with_maturity(0, 200), Err(UslError::Window(_))));
-        assert!(matches!(m.with_maturity(200, 200), Err(UslError::Window(_))));
+        assert!(matches!(
+            m.with_maturity(200, 200),
+            Err(UslError::Window(_))
+        ));
         assert!(matches!(
             Manifest::new(9, "c").unwrap().to_media(),
             Err(UslError::Empty)
         ));
-        assert!(matches!(Manifest::new(1, "c").unwrap().check(), Err(UslError::Empty)));
+        assert!(matches!(
+            Manifest::new(1, "c").unwrap().check(),
+            Err(UslError::Empty)
+        ));
         let mut lone = Manifest::new(1, "c").unwrap();
         assert!(lone.with_fee(1, 100).is_err());
     }
@@ -670,7 +731,10 @@ mod tests {
         let all: Vec<&str> = text.lines().collect();
         assert!(all[0] == KIND && all[1].starts_with("GEN "));
         assert!(all[all.len() - 1].starts_with("SEALED "));
-        all[2..all.len() - 1].iter().map(|l| (*l).to_string()).collect()
+        all[2..all.len() - 1]
+            .iter()
+            .map(|l| (*l).to_string())
+            .collect()
     }
 
     #[test]

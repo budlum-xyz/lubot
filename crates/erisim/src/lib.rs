@@ -241,10 +241,9 @@ impl std::fmt::Display for GrantError {
                 "an empty scope matches every path under a prefix test; say what you mean \
                  and grant nothing instead"
             ),
-            Self::EmptyCapability => write!(
-                f,
-                "an empty capability is how a typo becomes a wildcard"
-            ),
+            Self::EmptyCapability => {
+                write!(f, "an empty capability is how a typo becomes a wildcard")
+            }
             Self::EmptyHolder => write!(f, "an unattributable grant is not auditable"),
             Self::Backwards {
                 issued_at,
@@ -272,14 +271,12 @@ impl std::fmt::Display for GrantError {
                 "grant {grant} permits `{got}` and was asked for `{want}`: no translation \
                  between capability strings, ever"
             ),
-            Self::ScopeEscape { grant, want, got } => write!(
-                f,
-                "grant {grant} covers `{got}` and was used on `{want}`"
-            ),
-            Self::UseLimitReached { grant, limit } => write!(
-                f,
-                "grant {grant} allowed {limit} uses and has spent them"
-            ),
+            Self::ScopeEscape { grant, want, got } => {
+                write!(f, "grant {grant} covers `{got}` and was used on `{want}`")
+            }
+            Self::UseLimitReached { grant, limit } => {
+                write!(f, "grant {grant} allowed {limit} uses and has spent them")
+            }
             Self::DelegateWidens { parent, dimension } => write!(
                 f,
                 "a grant delegated from {parent} tried to widen its {dimension}: a delegate \
@@ -587,10 +584,7 @@ impl Ledger {
         if let Some(limit) = g.uses_left {
             if g.uses_used >= limit {
                 self.push_event(at, "refuse", id, format!("limit {limit} spent"));
-                return Err(GrantError::UseLimitReached {
-                    grant: id,
-                    limit,
-                });
+                return Err(GrantError::UseLimitReached { grant: id, limit });
             }
         }
         let Some(record) = self.grants.get_mut(&id) else {
@@ -654,10 +648,7 @@ impl Ledger {
             }
             if g.uses_used > g.uses_left.unwrap_or(u32::MAX) {
                 return Err(GrantError::Inconsistent {
-                    detail: format!(
-                        "grant {} spent {} of {:?}",
-                        g.id, g.uses_used, g.uses_left
-                    ),
+                    detail: format!("grant {} spent {} of {:?}", g.id, g.uses_used, g.uses_left),
                 });
             }
             if g.issued_at >= g.expires_at {
@@ -669,9 +660,9 @@ impl Ledger {
                 let Some(p) = self.grants.get(&parent) else {
                     return Err(GrantError::Inconsistent {
                         detail: format!(
-                        "grant {} names a parent {} that is not here",
-                        g.id, parent
-                    ),
+                            "grant {} names a parent {} that is not here",
+                            g.id, parent
+                        ),
                     });
                 };
                 if g.capability != p.capability
@@ -692,11 +683,7 @@ impl Ledger {
                 }
             }
         }
-        consumed += self
-            .grants
-            .values()
-            .map(|g| g.uses_used)
-            .sum::<u32>();
+        consumed += self.grants.values().map(|g| g.uses_used).sum::<u32>();
         if consumed != self.uses_consumed {
             return Err(GrantError::Inconsistent {
                 detail: format!(
@@ -800,7 +787,10 @@ mod tests {
     #[test]
     fn expiry_is_inclusive_of_the_boundary_epoch() {
         let (mut l, id) = ledger();
-        assert_eq!(l.consume(id, 109, "read", "src/storage/deal.rs").unwrap(), ());
+        assert_eq!(
+            l.consume(id, 109, "read", "src/storage/deal.rs").unwrap(),
+            ()
+        );
         assert_eq!(
             l.consume(id, 110, "read", "src/storage/deal.rs"),
             Err(GrantError::Expired {
@@ -818,7 +808,10 @@ mod tests {
         l.consume(id, 12, "read", "src/storage").unwrap();
         assert_eq!(
             l.consume(id, 13, "read", "src/storage"),
-            Err(GrantError::UseLimitReached { grant: id, limit: 2 })
+            Err(GrantError::UseLimitReached {
+                grant: id,
+                limit: 2
+            })
         );
     }
 
