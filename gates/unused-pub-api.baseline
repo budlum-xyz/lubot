@@ -1,0 +1,94 @@
+# Public items reached from nowhere outside their own crate.
+#
+# This is a ratchet, not a permission. gates/check.py::pub-api-is-used fails the
+# moment an entry is added, and fails again when an entry becomes used and is not
+# removed. The list may only shrink.
+#
+# Two different situations land here and they need different answers:
+#   - the item is meant to be `pub(crate)`, and the fix is to narrow it;
+#   - the item encodes a rule the project decided on and is waiting for a caller,
+#     and the fix is to write the caller.
+# Deleting an entry is a judgement call about which of those it is, so the gate
+# reports rather than removes.
+#
+# The binary crate is searched as a consumer but reported on by nothing: it is
+# the main caller of the libraries, so excluding it from the search would make
+# every item it calls look unused.
+anlama:Abstention
+anlama:BucketReport
+anlama:CALIBRATION_BUCKETS
+anlama:Calibration
+anlama:ClassifierError
+anlama:Outcome
+anlama:Signal
+anlama:TIE_EPSILON
+answer:OUTPUT_TAG
+answer:OutputRecord
+denetim:AuditError
+esik:QuorumError
+esik:byzantine_floor
+grant:AuditEntry
+grant:EpochBook
+grant:EpochEntry
+grant:EpochOutcome
+grant:EpochRefusal
+grant:Id
+grant:MAX_TRAINING_GRANT_EPOCHS
+grant:TrainingDataGrant
+index:BM25_B
+index:BM25_K1
+index:MIN_TERM_COVERAGE
+index:compact
+index:mask_secrets
+index:normalize
+kanit:ProofError
+kanit:ProofRecord
+kanit:Status
+kuyruk:DeadItem
+kuyruk:QueueError
+mimari:Component
+muhur:LINK_HEX_LEN
+muhur:SEAL_TAG
+olcek:PolicyError
+read:MAX_OUTPUT_BYTES
+read:PerceptionKind
+read:PerceptionRefusal
+read:is_known
+read:source_kind
+sikistir:CCR_ASLI
+sikistir:CCR_TUR
+sikistir:Hata
+sikistir:IcerikTuru
+sikistir:OgrenSatiri
+sikistir:Sikistirma
+sikistir:yonlendir
+takip:TrackError
+tools:ALLOWED_METHODS
+tools:AiInferenceRequest
+tools:AiInferenceResult
+tools:CeilingsReport
+tools:ChainOutcome
+tools:CheckpointWindow
+tools:OPERATOR_THRESHOLD
+tools:OVERWRITE_PATTERNS
+tools:OperatorRecord
+tools:Rational
+tools:ScopeRefusal
+tools:ceilings_request
+tools:compute_bond_ok
+tools:effort_hash
+tools:effort_tag_ok
+tools:eval
+tools:is_allowed_method
+tools:jsonrpc_request
+tools:parse_ceilings
+tools:parse_get_outcome
+tools:parse_request
+tools:parse_result
+tools:same_model_hash
+tools:scan_line
+tools:to_corpus_line
+usl:MEDIA_TAG
+yetenek:CapabilityError
+yetenek:Handle
+yetenek:State
