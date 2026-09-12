@@ -2329,6 +2329,113 @@ def selftest_rpc_surface_consistent() -> None:
 
 
 
+# --------------------------------------------------------------------------
+# gate: public API is used outside its own crate, on a shrinking list
+# --------------------------------------------------------------------------
+# A `pub` item nothing outside its crate reaches is either meant to be
+# `pub(crate)` or is code waiting for a caller. Both are worth knowing; neither
+# is worth arguing about, so it is measured and ratcheted.
+#
+# Deleting uncalled API is a judgement call about what the code is for - these
+# are the encoded form of rules the project decided on, not leftovers - so the
+# gate reports rather than removes, and fails only when the list grows.
+
+
+def _pub_items(path: Path) -> list[str]:
+    """Names declared `pub` at the top level of a file."""
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^pub (?:const |static |fn |struct |enum |trait |type )([A-Za-z0-9_]+)", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def _crate_of(path: Path) -> str:
+    parts = path.relative_to(ROOT).parts
+    return parts[1] if len(parts) > 1 and parts[0] == "crates" else parts[0]
+
+
+def _externally_used(name: str, own_crate: str, texts: dict[str, str]) -> bool:
+    pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])")
+    for crate, text in texts.items():
+        if crate == own_crate:
+            continue
+        if pattern.search(text):
+            return True
+    return False
+
+
+# The binary crate has nothing above it, so none of its items can be reached
+# from outside by construction. Counting them drowns the signal from the
+# libraries, which is what the gate is about.
+BINARY_CRATES = {"cli"}
+
+
+def gate_pub_api_is_used() -> str:
+    """Every `pub` item in a library crate is reached from outside it, or is listed."""
+    everything = sorted((ROOT / "crates").rglob("*.rs"))
+    # The binary is excluded from what is *reported* but kept in what is
+    # *searched*: it is the main consumer of the libraries, and dropping it from
+    # the corpus would make every item it calls look unused.
+    sources = [p for p in everything if _crate_of(p) not in BINARY_CRATES]
+    texts: dict[str, list[str]] = {}
+    for path in everything:
+        texts.setdefault(_crate_of(path), []).append(path.read_text(encoding="utf-8"))
+    joined = {crate: "\n".join(parts) for crate, parts in texts.items()}
+    unused: list[str] = []
+    for path in sources:
+        crate = _crate_of(path)
+        for name in _pub_items(path):
+            if not _externally_used(name, crate, joined):
+                unused.append(f"{crate}:{name}")
+    unused.sort()
+    baseline_path = ROOT / "gates/unused-pub-api.baseline"
+    baseline: set[str] = set()
+    if baseline_path.is_file():
+        baseline = {
+            line.strip()
+            for line in baseline_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    stale = sorted(baseline - set(unused))
+    if stale:
+        raise SystemExit(
+            "these entries are used now, so shrink the baseline:\n  "
+            + "\n  ".join(stale)
+            + "\n  remove them from gates/unused-pub-api.baseline"
+        )
+    regressed = sorted(set(unused) - baseline)
+    if regressed:
+        raise SystemExit(
+            "these public items are reached from nowhere outside their crate:\n  "
+            + "\n  ".join(regressed)
+        )
+    return f"{len(unused)} public items are crate-internal by use; the list has not grown"
+
+
+def selftest_pub_api_is_used() -> None:
+    sample = "pub fn used_elsewhere() {}\npub struct AlsoUsed;\nfn private() {}\n"
+    names = _pub_items_from_text(sample)
+    assert names == ["used_elsewhere", "AlsoUsed"], f"pub scanning broke: {names}"
+    # An item only its own crate mentions has to be caught.
+    texts = {"a": "x.used_elsewhere()", "b": "unrelated"}
+    assert _externally_used("used_elsewhere", "c", texts) is True
+    assert _externally_used("AlsoUsed", "c", texts) is False
+    # The same name inside its own crate does not count as external use.
+    assert _externally_used("used_elsewhere", "a", texts) is False
+
+
+def _pub_items_from_text(text: str) -> list[str]:
+    names: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^pub (?:const |static |fn |struct |enum |trait |type )([A-Za-z0-9_]+)", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2370,6 +2477,7 @@ GATES_EXTRA = {
     "crates-are-reachable": (gate_crates_are_reachable, selftest_crates_are_reachable),
     "crates-doc-is-measured": (gate_crates_doc_is_measured, selftest_crates_doc_is_measured),
     "rpc-surface-consistent": (gate_rpc_surface_consistent, selftest_rpc_surface_consistent),
+    "pub-api-is-used": (gate_pub_api_is_used, selftest_pub_api_is_used),
 }
 
 
