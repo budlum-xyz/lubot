@@ -138,6 +138,7 @@ impl ArchitectureReport {
 pub fn check_architecture(dependencies: &BTreeMap<String, Vec<String>>) -> ArchitectureReport {
     let mut report = ArchitectureReport::default();
     let mut blueprint = Blueprint::new();
+    let mut cycle_blueprint = Blueprint::new();
     for name in dependencies.keys() {
         report.crates.push(name.clone());
         let Some(layer) = layer_of(name) else {
@@ -146,21 +147,27 @@ pub fn check_architecture(dependencies: &BTreeMap<String, Vec<String>>) -> Archi
             // An unclassified crate is not exempt from the graph, only from the
             // layer rule.
             let _ = blueprint.add(name, u32::MAX);
+            let _ = cycle_blueprint.add(name, 0);
             continue;
         };
         let _ = blueprint.add(name, layer);
+        let _ = cycle_blueprint.add(name, 0);
     }
     for (name, deps) in dependencies {
-        // Unclassified crates are skipped for the layer rule: an assumed layer
-        // produces violations that mean nothing.
-        if report.unclassified.iter().any(|u| u == name) {
-            continue;
-        }
         for dependency in deps {
             if !dependencies.contains_key(dependency) {
                 continue;
             }
-            if report.unclassified.iter().any(|u| u == dependency) {
+            if let Err(WiringError::Cycle { .. }) = cycle_blueprint.connect(name, dependency) {
+                report
+                    .cycles
+                    .push(format!("{name} depends on {dependency} in a cycle"));
+            }
+            // Unclassified crates are skipped for the layer rule: an assumed
+            // layer produces violations that mean nothing.
+            if report.unclassified.iter().any(|u| u == name)
+                || report.unclassified.iter().any(|u| u == dependency)
+            {
                 continue;
             }
             match blueprint.connect(name, dependency) {
@@ -170,11 +177,7 @@ pub fn check_architecture(dependencies: &BTreeMap<String, Vec<String>>) -> Archi
                         .violations
                         .push(format!("{name} depends upward on {dependency}"));
                 }
-                Err(WiringError::Cycle { .. }) => {
-                    report
-                        .cycles
-                        .push(format!("{name} depends on {dependency} in a cycle"));
-                }
+                Err(WiringError::Cycle { .. }) => {}
                 Err(other) => {
                     report
                         .violations
@@ -195,7 +198,8 @@ pub fn check_architecture(dependencies: &BTreeMap<String, Vec<String>>) -> Archi
 pub fn check_repository() -> Result<ArchitectureReport, String> {
     let crates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .ok_or("the cli crate has no parent directory")?
+        .and_then(std::path::Path::parent)
+        .ok_or("the cli crate is not inside a workspace")?
         .join("crates");
     let mut dependencies = BTreeMap::new();
     let entries =
