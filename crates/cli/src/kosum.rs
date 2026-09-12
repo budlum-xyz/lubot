@@ -188,10 +188,20 @@ impl RunRecord {
                     detail: "an entry carries a height that is not a number".to_string(),
                 });
             };
+            let Some(kind) = imported_kind(fields[2]) else {
+                return Err(RunError::RecordTampered {
+                    detail: format!("the entry kind {:?} is not emitted by this run", fields[2]),
+                });
+            };
+            let Ok(sequence) = fields[0].parse::<u64>() else {
+                return Err(RunError::RecordTampered {
+                    detail: "an entry carries a sequence that is not a number".to_string(),
+                });
+            };
             if let Err(err) = replay.append_imported(
-                fields[0].parse::<u64>().unwrap_or(u64::MAX),
+                sequence,
                 fields[1],
-                "replayed",
+                kind,
                 fields[3],
                 at_height,
                 fields[5],
@@ -216,6 +226,21 @@ impl RunRecord {
             });
         }
         Ok(())
+    }
+}
+
+/// The audit trail keeps stable static labels. Replaying only accepts labels
+/// this supervisor itself emits, so a record cannot smuggle an arbitrary kind
+/// into the trusted replay path.
+fn imported_kind(kind: &str) -> Option<&'static str> {
+    match kind {
+        "queue-refusal" => Some("queue-refusal"),
+        "refused-activation" => Some("refused-activation"),
+        "refused-capability" => Some("refused-capability"),
+        "refused-malformed" => Some("refused-malformed"),
+        "refused-session" => Some("refused-session"),
+        "completed" => Some("completed"),
+        _ => None,
     }
 }
 
