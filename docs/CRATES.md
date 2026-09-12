@@ -35,7 +35,7 @@ No dependencies inside the workspace. Each one holds a single rule.
 | crate | lines | tests | the rule it holds |
 |---|---|---|---|
 | `muhur` | 348 | 10 | A seal is not a signature - it has no key. It is a chain, not a concatenation, so it can name *where* it broke rather than merely that something did. |
-| `esik` | 506 | 13 | A quorum over a set that includes the requester is not a quorum. `n >= 3f + 1`. A threshold that would drop below the Byzantine floor is refused, so `5 of 7` cannot become `5 of 40`. |
+| `esik` | 540 | 13 | A quorum over a set that includes the requester is not a quorum. `n >= 3f + 1`. A threshold that would drop below the Byzantine floor is refused, so `5 of 7` cannot become `5 of 40`. |
 | `izolasyon` | 424 | 12 | A session opens onto an empty workspace, with a **fresh** identity checked against a register of issued ones. Results leave as copies. Documented limit: a checkable contract cannot observe what happens between open and close. |
 | `kanit` | 563 | 13 | A proof is a fact *about a state root*, so a valid proof against a stale state is refused. There is **no path from Verified back to Pending** - not guarded, absent. Expiry is not failure: a pending record that goes stale is rejected as never-verified, never marked expired. |
 | `kuyruk` | 613 | 15 | A full queue **refuses rather than evicting**, because which item to lose belongs to the submitter. Aging stops starvation. `take()` removes on take, so an in-flight item cannot go to a second worker. |
