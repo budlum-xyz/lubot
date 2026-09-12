@@ -7,3 +7,6 @@ license-file.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+lubot-muhur = { path = "../muhur" }
