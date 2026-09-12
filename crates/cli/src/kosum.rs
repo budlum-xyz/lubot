@@ -35,7 +35,7 @@ use lubot_erisim::{AccessError, Capability, RevocationList};
 use lubot_izolasyon::{Contract, IsolationError, Session};
 use lubot_kanit::Ledger as ProofLedger;
 use lubot_kuyruk::{Item, Queue};
-use lubot_muhur::{Sealer, SealError};
+use lubot_muhur::{SealError, Sealer};
 use lubot_yetenek::{Declaration, Registry as CapabilityRegistry, SelfTest};
 
 use crate::activation::{ActivationError, ActivationLedger, Policy, Seconds};
@@ -389,8 +389,8 @@ impl RunSupervisor {
         actions: &[&str],
         expires_at: u64,
     ) -> Result<(), RunError> {
-        let capability =
-            Capability::mint(&self.reader, scope, actions, expires_at).map_err(RunError::NoCapability)?;
+        let capability = Capability::mint(&self.reader, scope, actions, expires_at)
+            .map_err(RunError::NoCapability)?;
         self.capability = Some(capability);
         Ok(())
     }
@@ -484,7 +484,12 @@ impl RunSupervisor {
         let Some(payload) = payload_of(&item) else {
             self.refused += 1;
             outcome.refused += 1;
-            self.record("refused-malformed", "the payload has no marker", now, &item.key);
+            self.record(
+                "refused-malformed",
+                "the payload has no marker",
+                now,
+                &item.key,
+            );
             return Err(RunError::MalformedPayload { key: item.key });
         };
         // The work happens inside an isolated session with a fresh identity. A
@@ -544,7 +549,12 @@ impl RunSupervisor {
     /// for.
     fn record_proof(&mut self, item: &Item, produced: &[u8], now: Seconds) {
         let id = self.proofs.len() as u64;
-        let proof_digest = digest32(&format!("{}:{}:{}", item.key, item.attempts, produced.len()));
+        let proof_digest = digest32(&format!(
+            "{}:{}:{}",
+            item.key,
+            item.attempts,
+            produced.len()
+        ));
         // The state root is the corpus digest the run was activated against, so a
         // proof claimed here cannot be presented against another corpus.
         let state_root = digest32(&self.corpus_digest);
@@ -605,10 +615,7 @@ impl RunSupervisor {
     /// one. A trail that cannot be written to is the one thing that must not pass
     /// silently.
     fn record(&mut self, kind: &'static str, reason: &str, now: Seconds, subject: &str) {
-        if let Err(err) = self
-            .trail
-            .append(&self.reader, kind, reason, now, subject)
-        {
+        if let Err(err) = self.trail.append(&self.reader, kind, reason, now, subject) {
             // There is nowhere left to record this, so the only honest thing is to
             // make the run unusable rather than to continue as though the trail
             // were intact.
@@ -741,8 +748,8 @@ fn cmd_denetle(args: &[String]) -> Result<(), String> {
             .map_err(|_| "--restricted-ceiling is not a number".to_string())?,
         lifetime,
     };
-    let mut run = RunSupervisor::open(&reader, &corpus, epoch, policy, 0)
-        .map_err(|err| err.to_string())?;
+    let mut run =
+        RunSupervisor::open(&reader, &corpus, epoch, policy, 0).map_err(|err| err.to_string())?;
     let scope_values: Vec<String> = option(args, "scope")
         .unwrap_or_default()
         .split(',')
@@ -765,7 +772,9 @@ fn cmd_denetle(args: &[String]) -> Result<(), String> {
         }
         let fields: Vec<&str> = line.split('\t').collect();
         if fields.len() < 4 {
-            return Err(format!("expected priority<TAB>key<TAB>R|O<TAB>payload, got {line:?}"));
+            return Err(format!(
+                "expected priority<TAB>key<TAB>R|O<TAB>payload, got {line:?}"
+            ));
         }
         let priority: u32 = fields[0]
             .parse()
@@ -784,7 +793,10 @@ fn cmd_denetle(args: &[String]) -> Result<(), String> {
         outcome.dead,
         run.queued()
     );
-    println!("{}", serde_json::to_string(&record_json(&record)).map_err(|err| err.to_string())?);
+    println!(
+        "{}",
+        serde_json::to_string(&record_json(&record)).map_err(|err| err.to_string())?
+    );
     Ok(())
 }
 
@@ -893,13 +905,17 @@ mod tests {
     fn restricted_work_without_a_capability_is_refused_not_allowed() {
         // A run holding no capability is not thereby allowed.
         let mut run = open_run(4, 4);
-        run.submit("secret", 5, b"payload", true, 1).expect("submit");
+        run.submit("secret", 5, b"payload", true, 1)
+            .expect("submit");
         let outcome = run.drain(2);
         assert_eq!(outcome.completed, 0);
         assert_eq!(outcome.refused, 1);
         let record = run.finish(2).expect("finish");
         assert!(
-            record.entries.iter().any(|e| e.contains("refused-capability")),
+            record
+                .entries
+                .iter()
+                .any(|e| e.contains("refused-capability")),
             "the refusal was not in the trail"
         );
     }
@@ -907,10 +923,15 @@ mod tests {
     #[test]
     fn restricted_work_with_a_capability_completes() {
         let mut run = open_run(4, 4);
-        run.grant_capability(&["secret"], &["open"], 100).expect("grant");
-        run.submit("secret", 5, b"payload", true, 1).expect("submit");
+        run.grant_capability(&["secret"], &["open"], 100)
+            .expect("grant");
+        run.submit("secret", 5, b"payload", true, 1)
+            .expect("submit");
         let outcome = run.drain(2);
-        assert_eq!(outcome.completed, 1, "the capability did not authorize its own scope");
+        assert_eq!(
+            outcome.completed, 1,
+            "the capability did not authorize its own scope"
+        );
     }
 
     #[test]
@@ -918,8 +939,10 @@ mod tests {
         // Scope is exact strings, so a capability for one key does not cover
         // another.
         let mut run = open_run(4, 4);
-        run.grant_capability(&["other"], &["open"], 100).expect("grant");
-        run.submit("secret", 5, b"payload", true, 1).expect("submit");
+        run.grant_capability(&["other"], &["open"], 100)
+            .expect("grant");
+        run.submit("secret", 5, b"payload", true, 1)
+            .expect("submit");
         let outcome = run.drain(2);
         assert_eq!(outcome.completed, 0);
         assert_eq!(outcome.refused, 1);
@@ -928,9 +951,11 @@ mod tests {
     #[test]
     fn a_revoked_capability_stops_working() {
         let mut run = open_run(4, 4);
-        run.grant_capability(&["secret"], &["open"], 100).expect("grant");
+        run.grant_capability(&["secret"], &["open"], 100)
+            .expect("grant");
         run.revoke_capability();
-        run.submit("secret", 5, b"payload", true, 1).expect("submit");
+        run.submit("secret", 5, b"payload", true, 1)
+            .expect("submit");
         let outcome = run.drain(2);
         assert_eq!(outcome.completed, 0);
         assert_eq!(outcome.refused, 1);
@@ -1009,7 +1034,10 @@ mod tests {
         run.drain(2);
         let mut record = run.finish(2).expect("finish");
         record.trail_length = 99;
-        assert!(matches!(record.verify(), Err(RunError::RecordTampered { .. })));
+        assert!(matches!(
+            record.verify(),
+            Err(RunError::RecordTampered { .. })
+        ));
     }
 
     #[test]
@@ -1072,8 +1100,16 @@ mod tests {
         assert_eq!(outcome.completed, 2);
         let counts: std::collections::BTreeMap<String, u64> =
             run.proof_counts().into_iter().collect();
-        assert_eq!(counts.get("verified"), Some(&2), "the proofs were {counts:?}");
-        assert_eq!(counts.get("pending"), Some(&0), "a proof was left unverified");
+        assert_eq!(
+            counts.get("verified"),
+            Some(&2),
+            "the proofs were {counts:?}"
+        );
+        assert_eq!(
+            counts.get("pending"),
+            Some(&0),
+            "a proof was left unverified"
+        );
     }
 
     #[test]

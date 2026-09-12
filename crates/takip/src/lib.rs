@@ -79,7 +79,11 @@ pub enum TrackError {
     /// The requested move is backwards.
     Regression { id: String, from: Phase, to: Phase },
     /// A dependency has not completed, so this task cannot start or complete.
-    DependencyIncomplete { id: String, dependency: String, phase: Phase },
+    DependencyIncomplete {
+        id: String,
+        dependency: String,
+        phase: Phase,
+    },
     /// The dependency edge would close a cycle.
     Cycle { from: String, to: String },
     /// A task cannot depend on itself.
@@ -362,7 +366,9 @@ impl Tracker {
             .filter(|t| {
                 t.phase == Phase::Pending
                     && t.dependencies.iter().all(|d| {
-                        self.tasks.get(d).is_some_and(|dep| dep.phase == Phase::Completed)
+                        self.tasks
+                            .get(d)
+                            .is_some_and(|dep| dep.phase == Phase::Completed)
                     })
             })
             .map(|t| t.id.as_str())
@@ -413,7 +419,10 @@ mod tests {
                 to: Phase::Pending,
             })
         );
-        assert_eq!(t.refused_regressions, 1, "a refused regression was not counted");
+        assert_eq!(
+            t.refused_regressions, 1,
+            "a refused regression was not counted"
+        );
         assert_eq!(t.get("a").map(|x| x.phase), Some(Phase::Completed));
     }
 
@@ -474,7 +483,10 @@ mod tests {
         t.advance("a", Phase::Failed).expect("fail");
         assert!(matches!(
             t.advance("b", Phase::Started),
-            Err(TrackError::DependencyIncomplete { phase: Phase::Failed, .. })
+            Err(TrackError::DependencyIncomplete {
+                phase: Phase::Failed,
+                ..
+            })
         ));
     }
 
@@ -537,7 +549,10 @@ mod tests {
         t.advance("b", Phase::Started).expect("start b");
         assert!(matches!(
             t.advance("c", Phase::Started),
-            Err(TrackError::TooManyInFlight { in_flight: 2, bound: 2 })
+            Err(TrackError::TooManyInFlight {
+                in_flight: 2,
+                bound: 2
+            })
         ));
         assert_eq!(t.in_flight(), 2);
         t.advance("a", Phase::Completed).expect("finish a");
@@ -580,7 +595,10 @@ mod tests {
         t.advance("a", Phase::Started).expect("start");
         t.advance("a", Phase::Failed).expect("fail");
         assert!(Phase::Failed.is_terminal());
-        assert!(t.ready().is_empty(), "a failed task looked like pending work");
+        assert!(
+            t.ready().is_empty(),
+            "a failed task looked like pending work"
+        );
         assert_eq!(t.get("a").map(|x| x.phase), Some(Phase::Failed));
     }
 

@@ -61,15 +61,24 @@ impl std::fmt::Display for QueueError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Full { capacity } => {
-                write!(f, "the queue is at its capacity of {capacity} and does not evict to make room")
+                write!(
+                    f,
+                    "the queue is at its capacity of {capacity} and does not evict to make room"
+                )
             }
             Self::AlreadyQueued { key } => write!(f, "{key:?} is already queued"),
             Self::DeadLettered { key } => {
-                write!(f, "{key:?} is in the dead-letter list and must be re-queued explicitly")
+                write!(
+                    f,
+                    "{key:?} is in the dead-letter list and must be re-queued explicitly"
+                )
             }
             Self::Unknown { key } => write!(f, "there is no queued item {key:?}"),
             Self::Empty => write!(f, "the queue is empty"),
-            Self::ZeroCapacity => write!(f, "a capacity of zero is not a small queue, it is one that refuses everything"),
+            Self::ZeroCapacity => write!(
+                f,
+                "a capacity of zero is not a small queue, it is one that refuses everything"
+            ),
         }
     }
 }
@@ -101,7 +110,8 @@ impl Item {
     /// problem that wrapping its priority to zero would hide.
     #[must_use]
     pub fn effective_priority(&self, aging_step: u32) -> u64 {
-        u64::from(self.base_priority).saturating_add(self.passes.saturating_mul(u64::from(aging_step)))
+        u64::from(self.base_priority)
+            .saturating_add(self.passes.saturating_mul(u64::from(aging_step)))
     }
 }
 
@@ -138,7 +148,12 @@ impl Queue {
     /// # Errors
     ///
     /// [`QueueError::ZeroCapacity`].
-    pub fn new(capacity: usize, aging_step: u32, max_attempts: u64, dead_letter_capacity: usize) -> Result<Self, QueueError> {
+    pub fn new(
+        capacity: usize,
+        aging_step: u32,
+        max_attempts: u64,
+        dead_letter_capacity: usize,
+    ) -> Result<Self, QueueError> {
         if capacity == 0 {
             return Err(QueueError::ZeroCapacity);
         }
@@ -160,12 +175,22 @@ impl Queue {
     ///
     /// [`QueueError::Full`], [`QueueError::AlreadyQueued`], or
     /// [`QueueError::DeadLettered`].
-    pub fn enqueue(&mut self, key: &str, base_priority: u32, enqueued_at: u64, body: &[u8]) -> Result<(), QueueError> {
+    pub fn enqueue(
+        &mut self,
+        key: &str,
+        base_priority: u32,
+        enqueued_at: u64,
+        body: &[u8],
+    ) -> Result<(), QueueError> {
         if self.dead.iter().any(|d| d.key == key) {
-            return Err(QueueError::DeadLettered { key: key.to_string() });
+            return Err(QueueError::DeadLettered {
+                key: key.to_string(),
+            });
         }
         if self.items.contains_key(key) {
-            return Err(QueueError::AlreadyQueued { key: key.to_string() });
+            return Err(QueueError::AlreadyQueued {
+                key: key.to_string(),
+            });
         }
         if self.items.len() >= self.capacity {
             self.refused_full = self.refused_full.saturating_add(1);
@@ -206,7 +231,9 @@ impl Queue {
     /// Called when the worker takes something else instead. Without this, a
     /// low-priority item never runs while high-priority work keeps arriving.
     pub fn pass_over(&mut self, key: &str) -> Result<u64, QueueError> {
-        let item = self.items.get_mut(key).ok_or_else(|| QueueError::Unknown { key: key.to_string() })?;
+        let item = self.items.get_mut(key).ok_or_else(|| QueueError::Unknown {
+            key: key.to_string(),
+        })?;
         item.passes = item.passes.saturating_add(1);
         Ok(item.effective_priority(self.aging_step))
     }
@@ -274,9 +301,17 @@ impl Queue {
     ///
     /// [`QueueError::Unknown`] if the key is not dead-lettered, or
     /// [`QueueError::Full`].
-    pub fn requeue_dead(&mut self, key: &str, base_priority: u32, enqueued_at: u64, body: &[u8]) -> Result<(), QueueError> {
+    pub fn requeue_dead(
+        &mut self,
+        key: &str,
+        base_priority: u32,
+        enqueued_at: u64,
+        body: &[u8],
+    ) -> Result<(), QueueError> {
         let Some(position) = self.dead.iter().position(|d| d.key == key) else {
-            return Err(QueueError::Unknown { key: key.to_string() });
+            return Err(QueueError::Unknown {
+                key: key.to_string(),
+            });
         };
         if self.items.len() >= self.capacity {
             return Err(QueueError::Full {
@@ -377,7 +412,8 @@ mod tests {
         // to lose belongs to whoever submitted them.
         let mut q = queue();
         for i in 0..4 {
-            q.enqueue(&format!("k{i}"), 5, u64::from(i as u32), b"x").expect("enqueue");
+            q.enqueue(&format!("k{i}"), 5, u64::from(i as u32), b"x")
+                .expect("enqueue");
         }
         assert_eq!(q.len(), 4);
         assert_eq!(
@@ -403,7 +439,11 @@ mod tests {
             })
         );
         assert_eq!(q.len(), 1);
-        assert_eq!(q.take().expect("take").body, b"x", "the second submit overwrote the first");
+        assert_eq!(
+            q.take().expect("take").body,
+            b"x",
+            "the second submit overwrote the first"
+        );
     }
 
     #[test]
@@ -426,7 +466,11 @@ mod tests {
         for _ in 0..2 {
             q.pass_over("low").expect("pass");
         }
-        assert_eq!(q.peek(), Ok("low"), "aging did not outrank a fresh high-priority item");
+        assert_eq!(
+            q.peek(),
+            Ok("low"),
+            "aging did not outrank a fresh high-priority item"
+        );
     }
 
     #[test]
@@ -505,8 +549,15 @@ mod tests {
         q.enqueue("a", 5, 0, b"x").expect("enqueue");
         let a = q.take().expect("take");
         q.enqueue("b", 5, 1, b"y").expect("fills the single slot");
-        assert!(matches!(q.retry(a, "transient"), Err(QueueError::Full { .. })));
-        assert_eq!(q.dead_letters().len(), 1, "the work vanished instead of being recorded");
+        assert!(matches!(
+            q.retry(a, "transient"),
+            Err(QueueError::Full { .. })
+        ));
+        assert_eq!(
+            q.dead_letters().len(),
+            1,
+            "the work vanished instead of being recorded"
+        );
         assert!(q.dead_letters().first().is_some_and(|d| d.key == "a"));
     }
 
@@ -514,12 +565,20 @@ mod tests {
     fn the_dead_letter_list_is_bounded() {
         let mut q = Queue::new(4, 1, 1, 2).expect("queue");
         for i in 0..5 {
-            q.enqueue(&format!("k{i}"), 5, u64::from(i as u32), b"x").expect("enqueue");
+            q.enqueue(&format!("k{i}"), 5, u64::from(i as u32), b"x")
+                .expect("enqueue");
             let item = q.take().expect("take");
             q.retry(item, "fails").ok();
         }
-        assert_eq!(q.dead_letters().len(), 2, "the dead-letter list grew without limit");
-        assert_eq!(q.dead_lettered, 5, "the counter still records everything that was lettered");
+        assert_eq!(
+            q.dead_letters().len(),
+            2,
+            "the dead-letter list grew without limit"
+        );
+        assert_eq!(
+            q.dead_lettered, 5,
+            "the counter still records everything that was lettered"
+        );
     }
 
     #[test]

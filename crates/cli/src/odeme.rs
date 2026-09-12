@@ -28,7 +28,7 @@
 //! never produce, which is exactly how two nodes come to disagree about a file
 //! that both of them accept.
 
-use lubot_muhur::{Sealer, SealError};
+use lubot_muhur::{SealError, Sealer};
 use lubot_usl::{Amount, EnvelopeError, Manifest, Payout};
 
 /// What verification found.
@@ -76,11 +76,7 @@ pub struct MediaSummary {
 pub fn verify_media(media: &str) -> Result<MediaSummary, MediaFault> {
     let manifest = Manifest::from_media(media).map_err(MediaFault::Unparsable)?;
     manifest.check().map_err(MediaFault::Invalid)?;
-    let entries: Vec<String> = manifest
-        .payouts
-        .iter()
-        .map(Payout::render)
-        .collect();
+    let entries: Vec<String> = manifest.payouts.iter().map(Payout::render).collect();
     let references: Vec<&str> = entries.iter().map(String::as_str).collect();
     Sealer::verify(&references, &manifest.links).map_err(MediaFault::SealBroken)?;
     // `to_media` re-seals as it renders, so a parse that dropped or reordered
@@ -188,9 +184,7 @@ fn cmd_yaz(args: &[String]) -> Result<(), String> {
             continue;
         }
         let payout = parse_payout(spec)?;
-        manifest
-            .add_payout(payout)
-            .map_err(|err| err.to_string())?;
+        manifest.add_payout(payout).map_err(|err| err.to_string())?;
     }
     manifest.check().map_err(|err| err.to_string())?;
     let media = manifest.to_media().map_err(|err| err.to_string())?;
