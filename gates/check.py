@@ -2252,6 +2252,83 @@ def selftest_crates_doc_is_measured() -> None:
 
 
 
+# --------------------------------------------------------------------------
+# gate: the RPC surface is one surface, stated in three places
+# --------------------------------------------------------------------------
+# The allowed-method array, the JSON set and the system prompt all state the
+# same list. They were inconsistent - the JSON note said seven while the array
+# held eight - and an inconsistency between a document and the code it describes
+# is only visible to whoever reads both.
+
+
+TURKISH_NUMBERS = {
+    "bir": 1, "iki": 2, "uc": 3, "dort": 4, "bes": 5,
+    "alti": 6, "yedi": 7, "sekiz": 8, "dokuz": 9, "on": 10,
+}
+
+
+def gate_rpc_surface_consistent() -> str:
+    """`ALLOWED_METHODS`, `rpc-seti.json` and the system prompt agree."""
+    chain = read("crates/tools/src/chain.rs")
+    match = re.search(
+        r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", chain, re.DOTALL
+    )
+    if not match:
+        raise SystemExit("ALLOWED_METHODS could not be found in crates/tools/src/chain.rs")
+    declared_length = int(match.group(1))
+    allowed = re.findall(r'"([^"]+)"', match.group(2))
+    if len(allowed) != declared_length:
+        raise SystemExit(
+            f"ALLOWED_METHODS declares {declared_length} entries and holds {len(allowed)}"
+        )
+    listed = json.loads(read("training/rpc-seti.json"))["methods"]
+    if sorted(listed) != sorted(allowed):
+        raise SystemExit(
+            "training/rpc-seti.json and ALLOWED_METHODS disagree:\n"
+            f"  only in the JSON: {sorted(set(listed) - set(allowed))}\n"
+            f"  only in the array: {sorted(set(allowed) - set(listed))}"
+        )
+    # The note states the count in words, in two files.
+    prompt = read("training/system_prompt.md")
+    spoken = re.search(r"Zincir yüzeyi (\w+) sabit RPC", prompt)
+    if not spoken:
+        raise SystemExit("training/system_prompt.md no longer states the RPC count")
+    word = spoken.group(1).lower()
+    # The prompt is written with Turkish diacritics; the count word is not one of
+    # the words that carries one, but fold them anyway so a rewrite cannot break
+    # the match for a reason unrelated to the count.
+    folded = word.replace("\u00fc", "u").replace("\u00e7", "c").replace("\u0131", "i")
+    if folded not in TURKISH_NUMBERS:
+        raise SystemExit(f"the system prompt states the count as {word!r}, which is not a number")
+    if TURKISH_NUMBERS[folded] != len(allowed):
+        raise SystemExit(
+            f"training/system_prompt.md says {word} ({TURKISH_NUMBERS[folded]}) and the surface has {len(allowed)}"
+        )
+    note = json.loads(read("training/rpc-seti.json"))["note"]
+    digits = re.findall(r"\b(\d+)\b", note)
+    if str(len(allowed)) not in digits:
+        raise SystemExit(
+            f"the rpc-seti.json note does not state the count {len(allowed)} anywhere"
+        )
+    return f"the {len(allowed)}-method surface is stated identically in all three places"
+
+
+def selftest_rpc_surface_consistent() -> None:
+    chain = 'pub const ALLOWED_METHODS: [&str; 2] = [\n    "a",\n    "b",\n];\n'
+    match = re.search(r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", chain, re.DOTALL)
+    assert match is not None, "the array pattern does not match its own fixture"
+    assert int(match.group(1)) == 2 and re.findall(r'"([^"]+)"', match.group(2)) == ["a", "b"]
+    # A length that disagrees with the contents has to be caught.
+    lying = 'pub const ALLOWED_METHODS: [&str; 3] = [\n    "a",\n    "b",\n];\n'
+    m2 = re.search(r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", lying, re.DOTALL)
+    assert int(m2.group(1)) != len(re.findall(r'"([^"]+)"', m2.group(2)))
+    # Turkish number words, with and without diacritics.
+    assert TURKISH_NUMBERS["sekiz"] == 8
+    assert TURKISH_NUMBERS["yedi"] == 7
+    assert "sekiz".replace("\u00fc", "u") in TURKISH_NUMBERS
+
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2292,6 +2369,7 @@ GATES_EXTRA = {
     "delimiters-balance": (gate_delimiters_balance, selftest_delimiters_balance),
     "crates-are-reachable": (gate_crates_are_reachable, selftest_crates_are_reachable),
     "crates-doc-is-measured": (gate_crates_doc_is_measured, selftest_crates_doc_is_measured),
+    "rpc-surface-consistent": (gate_rpc_surface_consistent, selftest_rpc_surface_consistent),
 }
 
 
