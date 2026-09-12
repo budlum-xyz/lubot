@@ -21,6 +21,7 @@ members = [
     "crates/olcek",
     "crates/yetenek",
     "crates/mimari",
+    "crates/anlama",
 ]
 
 # The panic limit: a reader that panics is a reader that stops answering.
