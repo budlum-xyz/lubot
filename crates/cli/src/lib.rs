@@ -3,7 +3,7 @@
 //!
 //! The library behind the `lubot` binary. It is deliberately thin over the
 //! five crates: load a corpus (with the same fail-closed rules the corpus was
-//! built with), answer through [`Reader::ask`], render through the single
+//! built with), answer through [`lubot_answer::Reader::ask`], render through the single
 //! [`Answer::render_markdown`] exit, and keep a grant book plus an output
 //! audit on disk.
 //!
