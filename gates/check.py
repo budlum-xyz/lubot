@@ -2085,6 +2085,104 @@ def selftest_delimiters_balance() -> None:
 
 
 
+# --------------------------------------------------------------------------
+# gate: crates are reachable from the binary, and the unwired set only shrinks
+# --------------------------------------------------------------------------
+# A crate that nothing calls is code that has never been run. That is worth
+# measuring rather than assuming, and worth ratcheting rather than merely
+# reporting: the number is only interesting if it cannot go up.
+
+
+def _path_deps(manifest: str) -> set[str]:
+    """The crate directories this manifest depends on through `path`."""
+    found: set[str] = set()
+    for match in re.finditer(r'path\s*=\s*"([^"]+)"', manifest):
+        target = Path(match.group(1)).name
+        if target:
+            found.add(target)
+    return found
+
+
+def _reachable_from(root_crate: str) -> set[str]:
+    seen: set[str] = set()
+    stack = [root_crate]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        manifest = ROOT / "crates" / current / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        for dependency in _path_deps(manifest.read_text(encoding="utf-8")):
+            stack.append(dependency)
+    return seen
+
+
+UNWIRED_BASELINE = "gates/unwired.baseline"
+
+
+def gate_crates_are_reachable() -> str:
+    """Every crate is reachable from the binary, or it is on the shrinking list.
+
+    The list is a ratchet, not a permission. A crate may be added to it when it
+    is written; the gate fails the moment the list grows, so wiring can only ever
+    catch up.
+    """
+    crates = set(_crate_dirs())
+    reachable = _reachable_from("cli")
+    unwired = sorted(crates - reachable)
+    baseline_path = ROOT / UNWIRED_BASELINE
+    baseline: set[str] = set()
+    if baseline_path.is_file():
+        baseline = {
+            line.strip()
+            for line in baseline_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    # A baseline naming a crate that no longer exists is stale, and a stale
+    # baseline silently permits whatever replaces it.
+    stale = sorted(baseline - crates)
+    if stale:
+        raise SystemExit(
+            f"{UNWIRED_BASELINE} names crates that do not exist: {', '.join(stale)}"
+        )
+    regressed = sorted(set(unwired) - baseline)
+    if regressed:
+        raise SystemExit(
+            "these crates are reachable from nothing and are not on the baseline:\n  "
+            + "\n  ".join(regressed)
+            + f"\n  add them to {UNWIRED_BASELINE} only while they are being wired"
+        )
+    wired_since = sorted(baseline - set(unwired))
+    if wired_since:
+        raise SystemExit(
+            "these crates are now reachable, so shrink the baseline:\n  "
+            + "\n  ".join(wired_since)
+            + f"\n  remove them from {UNWIRED_BASELINE}"
+        )
+    return (
+        f"{len(reachable & crates)} of {len(crates)} crates are reachable from the binary; "
+        f"{len(unwired)} are on the baseline"
+    )
+
+
+def selftest_crates_are_reachable() -> None:
+    manifest = """
+[dependencies]
+lubot-read = { path = "../read" }
+lubot-answer = { path = "../answer" }
+serde = "1"
+"""
+    deps = _path_deps(manifest)
+    assert deps == {"read", "answer"}, f"path dependency parsing broke: {deps}"
+    # The ratchet has to be able to see a regression.
+    assert set(["yeni"]) - set(["eski"]) == {"yeni"}, "a new unwired crate went unnoticed"
+    # And it has to be able to see the list shrinking.
+    assert set(["eski"]) - set([]) == {"eski"}, "a wired crate was not reported"
+
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2123,6 +2221,7 @@ GATES_EXTRA = {
     "doc-links-resolve": (gate_doc_links_resolve, selftest_doc_links_resolve),
     "no-bool-comparison": (gate_no_bool_comparison, selftest_no_bool_comparison),
     "delimiters-balance": (gate_delimiters_balance, selftest_delimiters_balance),
+    "crates-are-reachable": (gate_crates_are_reachable, selftest_crates_are_reachable),
 }
 
 
