@@ -62,6 +62,7 @@ fn usage() -> String {
         "  lubot olcum takip [--bound n]  (stdin: gorev[,bagimlilik...])",
         "  lubot odeme yaz --seq n --chain n --fee 1.50 [--open h --close h] [--payout a:10.00:ref,...] [--out f]",
         "  lubot odeme dogrula --media <f>",
+        "  lubot olcum olcek --up 0.8 --down 0.4 [--cooldown 3 --min 1 --max 10 --step 0.5 --replicas n --window n --load 1.0,0.9,...]",
         "  lubot olcum sinif --weights kategori=sinyal:agirlik,...;kategori=... --signals ad=gucluluk,... [--floor 0.6]",
         "  lubot sikistir --path <f> [--igne desen ...] [--depo dir]",
         "  lubot sikistir --geri-getir <ozet-dosya> [--depo dir]",
