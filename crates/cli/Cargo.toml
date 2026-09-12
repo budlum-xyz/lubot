@@ -26,6 +26,9 @@ lubot-takip = { path = "../takip" }
 lubot-anlama = { path = "../anlama" }
 lubot-usl = { path = "../usl" }
 lubot-olcek = { path = "../olcek" }
+lubot-izolasyon = { path = "../izolasyon" }
+lubot-kanit = { path = "../kanit" }
+lubot-yetenek = { path = "../yetenek" }
 
 [lints]
 workspace = true

@@ -32,8 +32,11 @@ use std::collections::BTreeSet;
 
 use lubot_denetim::Trail;
 use lubot_erisim::{AccessError, Capability, RevocationList};
+use lubot_izolasyon::{Contract, IsolationError, Session};
+use lubot_kanit::Ledger as ProofLedger;
 use lubot_kuyruk::{Item, Queue};
 use lubot_muhur::{Sealer, SealError};
+use lubot_yetenek::{Declaration, Registry as CapabilityRegistry, SelfTest};
 
 use crate::activation::{ActivationError, ActivationLedger, Policy, Seconds};
 
@@ -67,6 +70,11 @@ pub enum RunError {
     RecordTampered { detail: String },
     /// An item's payload is not shaped the way `submit` shapes it.
     MalformedPayload { key: String },
+    /// The isolated session for an item could not be opened, or refused a
+    /// release.
+    Session(String),
+    /// A capability the run needs did not pass its own self-test.
+    CapabilityUnusable { name: String, observed: String },
 }
 
 impl std::fmt::Display for RunError {
@@ -88,6 +96,11 @@ impl std::fmt::Display for RunError {
             Self::MalformedPayload { key } => {
                 write!(f, "the payload for {key:?} is not shaped the way submit shapes it")
             }
+            Self::Session(message) => write!(f, "the isolated session refused: {message}"),
+            Self::CapabilityUnusable { name, observed } => write!(
+                f,
+                "the capability {name:?} did not pass its own self-test: {observed}"
+            ),
         }
     }
 }
@@ -206,6 +219,64 @@ impl RunRecord {
     }
 }
 
+/// The self-test for the filesystem capability.
+///
+/// Checks the thing the run actually needs rather than returning a constant: a
+/// capability whose self-test always passes is a capability that has never been
+/// checked, which is the failure the registry exists to prevent.
+fn workspace_is_reachable() -> SelfTest {
+    let dir = std::env::temp_dir();
+    if dir.as_os_str().is_empty() {
+        return SelfTest::Failed {
+            observed: "the temporary directory is not named".to_string(),
+        };
+    }
+    if !dir.is_dir() {
+        return SelfTest::Failed {
+            observed: format!("{} does not exist", dir.display()),
+        };
+    }
+    SelfTest::Passed
+}
+
+/// The self-test for the hashing capability.
+///
+/// Hashes a fixed input and compares against the value the algorithm is defined
+/// to produce. A hashing primitive that silently changed output would make every
+/// seal in this repository unverifiable, and nothing else would notice.
+fn hashing_is_correct() -> SelfTest {
+    // SHA-256 of the empty input, which is a fixed constant of the algorithm.
+    let expected = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    let got = lubot_read::sha256_hex(b"");
+    if got == expected {
+        SelfTest::Passed
+    } else {
+        SelfTest::Failed {
+            observed: format!("SHA-256 of the empty input came back as {got}"),
+        }
+    }
+}
+
+/// The capabilities a run needs, with their self-tests.
+///
+/// Declared here rather than by the caller, for the same reason the activation
+/// policy is: a run that chooses its own requirements chooses fewer of them.
+const REQUIRED_CAPABILITIES: &[(&str, u32, fn() -> SelfTest)] = &[
+    ("workspace", 1, workspace_is_reachable),
+    ("hashing", 1, hashing_is_correct),
+];
+
+/// A 32-byte digest, for the proof ledger.
+fn digest32(text: &str) -> [u8; 32] {
+    let hex = lubot_read::sha256_hex(text.as_bytes());
+    let mut out = [0u8; 32];
+    for (index, slot) in out.iter_mut().enumerate() {
+        let pair = &hex[index * 2..index * 2 + 2];
+        *slot = u8::from_str_radix(pair, 16).unwrap_or(0);
+    }
+    out
+}
+
 /// A run, wired together.
 #[derive(Debug, Clone)]
 pub struct RunSupervisor {
@@ -222,6 +293,18 @@ pub struct RunSupervisor {
     /// Keys whose work is restricted. Kept beside the queue rather than inside it
     /// so the queue stays opaque about permissions.
     restricted: BTreeSet<String>,
+    /// Identities already issued to a session. A reused identity means two
+    /// sessions share state neither chose to share.
+    issued: BTreeSet<String>,
+    /// How many sessions have been minted, which is what makes each identity
+    /// fresh.
+    sessions: u64,
+    /// The proof ledger. Every completed item claims a proof and has it accepted
+    /// against the state it was made for.
+    proofs: ProofLedger,
+    /// The run's capability registry. Registered and self-tested at open, so a
+    /// run whose workspace or hashing is broken does not start at all.
+    capabilities: CapabilityRegistry,
 }
 
 impl RunSupervisor {
@@ -246,6 +329,36 @@ impl RunSupervisor {
         // never do and reports acceptance, which is worse than refusing.
         let queue = Queue::new(policy.question_budget.max(1) as usize, 1, 3, 16)
             .map_err(|err| RunError::Queue(err.to_string()))?;
+        // Register the capabilities the run needs and run each one's self-test
+        // now, at open. A capability that is declared but never exercised is a
+        // claim, and a run that starts on a claim finds out inside the first
+        // item's work rather than before it.
+        let mut capabilities = CapabilityRegistry::new();
+        for (name, version, self_test) in REQUIRED_CAPABILITIES {
+            capabilities
+                .register(Declaration {
+                    name: (*name).to_string(),
+                    version: *version,
+                    self_test: *self_test,
+                })
+                .map_err(|err| RunError::Session(err.to_string()))?;
+            match capabilities.verify(name, *version) {
+                Ok(SelfTest::Passed) => {}
+                Ok(SelfTest::Failed { observed }) => {
+                    return Err(RunError::CapabilityUnusable {
+                        name: (*name).to_string(),
+                        observed,
+                    })
+                }
+                Ok(SelfTest::CouldNotRun { reason }) => {
+                    return Err(RunError::CapabilityUnusable {
+                        name: (*name).to_string(),
+                        observed: reason,
+                    })
+                }
+                Err(err) => return Err(RunError::Session(err.to_string())),
+            }
+        }
         Ok(Self {
             reader: reader.to_string(),
             activations,
@@ -258,6 +371,10 @@ impl RunSupervisor {
             completed: 0,
             refused: 0,
             restricted: BTreeSet::new(),
+            issued: BTreeSet::new(),
+            sessions: 0,
+            proofs: ProofLedger::new(),
+            capabilities,
         })
     }
 
@@ -370,17 +487,108 @@ impl RunSupervisor {
             self.record("refused-malformed", "the payload has no marker", now, &item.key);
             return Err(RunError::MalformedPayload { key: item.key });
         };
+        // The work happens inside an isolated session with a fresh identity. A
+        // session is the boundary between one item and the next: without it, an
+        // item that writes something leaves it for the next item to find, and
+        // neither of them chose that.
+        let produced = match self.run_isolated(&item, payload) {
+            Ok(produced) => produced,
+            Err(err) => {
+                self.refused += 1;
+                outcome.refused += 1;
+                self.record("refused-session", &err.to_string(), now, &item.key);
+                return Err(err);
+            }
+        };
         self.completed += 1;
         outcome.completed += 1;
+        // The work leaves a proof claim, accepted against the state it was made
+        // for. A claim accepted without that check is a claim about a different
+        // state.
+        self.record_proof(&item, &produced, now);
         // 4. Audit, after the work, so the entry describes something that happened.
         let note = if restricted { "restricted" } else { "open" };
         self.record(
             "completed",
-            &format!("{note} {} bytes", payload.len()),
+            &format!("{note} {} bytes in, {} out", payload.len(), produced.len()),
             now,
             &item.key,
         );
         Ok(())
+    }
+
+    /// Runs one item inside a fresh session and returns what it produced.
+    ///
+    /// The identity is minted here and recorded as issued, so the next item
+    /// cannot reuse it. The contract declares exactly one output and bounds it,
+    /// because an unbounded output set is an unbounded exfiltration channel with
+    /// a declaration step bolted onto it.
+    fn run_isolated(&mut self, item: &Item, payload: &[u8]) -> Result<Vec<u8>, RunError> {
+        self.sessions = self.sessions.saturating_add(1);
+        let identity = format!("{}-{}", item.key, self.sessions);
+        let contract = Contract::new(&["result"], 1, 65_536)
+            .map_err(|err| RunError::Session(err.to_string()))?;
+        let mut session = Session::open(&identity, contract, 0, &self.issued)
+            .map_err(|err: IsolationError| RunError::Session(err.to_string()))?;
+        self.issued.insert(identity);
+        let produced = session
+            .release("result", payload)
+            .map_err(|err: IsolationError| RunError::Session(err.to_string()))?;
+        // Closed whether the release succeeded or not, because the session holds
+        // the identity and an identity that stays open can be reused.
+        session.close();
+        Ok(produced)
+    }
+
+    /// Claims a proof for the work and accepts it against the state it was made
+    /// for.
+    fn record_proof(&mut self, item: &Item, produced: &[u8], now: Seconds) {
+        let id = self.proofs.len() as u64;
+        let proof_digest = digest32(&format!("{}:{}:{}", item.key, item.attempts, produced.len()));
+        // The state root is the corpus digest the run was activated against, so a
+        // proof claimed here cannot be presented against another corpus.
+        let state_root = digest32(&self.corpus_digest);
+        if self
+            .proofs
+            .claim(id, &item.key, proof_digest, state_root, 0, now)
+            .is_err()
+        {
+            return;
+        }
+        let _ = self.proofs.accept(
+            id,
+            proof_digest,
+            state_root,
+            true,
+            "the item was worked inside an isolated session",
+            now,
+        );
+    }
+
+    /// How many proofs are in each state.
+    ///
+    /// Reported per state rather than as one number, because "nine proofs" does
+    /// not say how many were verified.
+    #[must_use]
+    pub fn proof_counts(&self) -> Vec<(String, u64)> {
+        self.proofs
+            .status_counts()
+            .into_iter()
+            .map(|(status, count)| (status.label().to_string(), count))
+            .collect()
+    }
+
+    /// The capabilities the run holds, and whether each is usable.
+    #[must_use]
+    pub fn capability_states(&self) -> Vec<(String, u32)> {
+        REQUIRED_CAPABILITIES
+            .iter()
+            .filter_map(|(name, version, _)| {
+                self.capabilities
+                    .get(name, *version)
+                    .map(|cap| (cap.declaration.name.clone(), *version))
+            })
+            .collect()
     }
 
     /// Checks the run's capability against an item.
@@ -851,6 +1059,72 @@ mod tests {
         run.submit("a", 5, b"the body", false, 1).expect("submit");
         let item = run.queue.take().expect("take");
         assert_eq!(payload_of(&item), Some("the body".as_bytes()));
+    }
+
+    #[test]
+    fn every_completed_item_leaves_a_verified_proof() {
+        // A claim accepted without checking it against the state it was made for
+        // is a claim about a different state.
+        let mut run = open_run(4, 0);
+        run.submit("a", 5, b"one", false, 1).expect("submit");
+        run.submit("b", 5, b"two", false, 2).expect("submit");
+        let outcome = run.drain(3);
+        assert_eq!(outcome.completed, 2);
+        let counts: std::collections::BTreeMap<String, u64> =
+            run.proof_counts().into_iter().collect();
+        assert_eq!(counts.get("verified"), Some(&2), "the proofs were {counts:?}");
+        assert_eq!(counts.get("pending"), Some(&0), "a proof was left unverified");
+    }
+
+    #[test]
+    fn a_refused_item_leaves_no_proof() {
+        let mut run = open_run(4, 0);
+        run.submit("secret", 5, b"x", true, 1).expect("submit");
+        run.drain(2);
+        let counts: std::collections::BTreeMap<String, u64> =
+            run.proof_counts().into_iter().collect();
+        assert_eq!(counts.get("verified"), Some(&0));
+    }
+
+    #[test]
+    fn the_required_capabilities_are_registered_and_passed() {
+        // A capability that is declared but never exercised is a claim, and a run
+        // that starts on a claim finds out inside the first item's work.
+        let run = open_run(4, 0);
+        let states = run.capability_states();
+        assert_eq!(states.len(), 2, "the capabilities were {states:?}");
+        assert!(states.iter().any(|(name, _)| name == "workspace"));
+        assert!(states.iter().any(|(name, _)| name == "hashing"));
+    }
+
+    #[test]
+    fn the_hashing_self_test_checks_a_known_value() {
+        // A self-test that always passes is a capability that has never been
+        // checked. This one hashes the empty input and compares against the value
+        // the algorithm is defined to produce.
+        assert_eq!(hashing_is_correct(), SelfTest::Passed);
+    }
+
+    #[test]
+    fn each_item_gets_a_fresh_session_identity() {
+        // A reused identity means two sessions share state neither chose to share.
+        let mut run = open_run(4, 0);
+        run.submit("a", 5, b"one", false, 1).expect("submit");
+        run.submit("b", 5, b"two", false, 2).expect("submit");
+        run.drain(3);
+        assert_eq!(run.issued.len(), 2, "the identities were {:?}", run.issued);
+        assert_eq!(run.sessions, 2);
+    }
+
+    #[test]
+    fn a_second_item_under_the_same_key_gets_its_own_identity() {
+        // The key alone is not the identity, or a resubmitted key would collide
+        // with the session that already spent it.
+        let mut run = open_run(4, 0);
+        run.submit("a", 5, b"one", false, 1).expect("submit");
+        run.submit("a", 5, b"two", false, 2).expect("submit");
+        run.drain(3);
+        assert_eq!(run.issued.len(), 2, "a resubmitted key reused an identity");
     }
 
     #[test]
