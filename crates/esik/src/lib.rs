@@ -312,7 +312,7 @@ impl Quorum {
             .filter(|(member, _)| !answered.contains(member))
             .map(|(_, weight)| *weight)
             .sum();
-        let reached = self
+        let reached: u64 = self
             .weights
             .iter()
             .filter(|(member, _)| answered.contains(member))
