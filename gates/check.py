@@ -2183,6 +2183,67 @@ serde = "1"
 
 
 
+# --------------------------------------------------------------------------
+# gate: the crate documentation is measured
+# --------------------------------------------------------------------------
+# A table of crate sizes that nobody checks is a table that goes stale the first
+# time a crate changes, and a stale table is worse than no table because it is
+# read as current.
+
+
+def _crate_measurements() -> dict[str, tuple[int, int]]:
+    """Crate name to (source lines, test count)."""
+    measured: dict[str, tuple[int, int]] = {}
+    for manifest in sorted((ROOT / "crates").glob("*/Cargo.toml")):
+        name = manifest.parent.name
+        lines = 0
+        tests = 0
+        for source in sorted(manifest.parent.rglob("*.rs")):
+            text = source.read_text(encoding="utf-8")
+            lines += len(text.splitlines())
+            tests += len(re.findall(r"#\[test\]", text))
+        measured[name] = (lines, tests)
+    return measured
+
+
+def gate_crates_doc_is_measured() -> str:
+    """`docs/CRATES.md` names every crate and its figures match the source."""
+    doc = read("docs/CRATES.md")
+    measured = _crate_measurements()
+    missing = sorted(set(measured) - set(re.findall(r"`([a-z0-9_]+)`", doc)))
+    if missing:
+        raise SystemExit(
+            "these crates are not documented in docs/CRATES.md:\n  " + "\n  ".join(missing)
+        )
+    wrong: list[str] = []
+    for name, (lines, tests) in sorted(measured.items()):
+        # The tables read `| `name` | 664 | 16 |`.
+        row = re.search(
+            r"\|\s*`" + re.escape(name) + r"`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc
+        )
+        if not row:
+            continue
+        claimed_lines, claimed_tests = int(row.group(1)), int(row.group(2))
+        if claimed_lines != lines:
+            wrong.append(f"{name}: documented as {claimed_lines} lines, has {lines}")
+        if claimed_tests != tests:
+            wrong.append(f"{name}: documented as {claimed_tests} tests, has {tests}")
+    if wrong:
+        raise SystemExit("docs/CRATES.md is stale:\n  " + "\n  ".join(wrong))
+    return f"all {len(measured)} crates are documented and their figures match"
+
+
+def selftest_crates_doc_is_measured() -> None:
+    doc = "| `read` | 848 | 28 | x |\n| `muhur` | 1 | 1 | y |\n"
+    row = re.search(r"\|\s*`read`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc)
+    assert row is not None, "the row pattern does not match its own fixture"
+    assert (int(row.group(1)), int(row.group(2))) == (848, 28)
+    # The gate has to be able to see a crate that is not mentioned.
+    documented = set(re.findall(r"`([a-z0-9_]+)`", doc))
+    assert set(["read", "muhur", "ghost"]) - documented == {"ghost"}
+
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2222,6 +2283,7 @@ GATES_EXTRA = {
     "no-bool-comparison": (gate_no_bool_comparison, selftest_no_bool_comparison),
     "delimiters-balance": (gate_delimiters_balance, selftest_delimiters_balance),
     "crates-are-reachable": (gate_crates_are_reachable, selftest_crates_are_reachable),
+    "crates-doc-is-measured": (gate_crates_doc_is_measured, selftest_crates_doc_is_measured),
 }
 
 
