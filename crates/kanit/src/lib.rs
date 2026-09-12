@@ -236,7 +236,11 @@ impl Ledger {
         if record.state_root != presented_root {
             return Err(ProofError::WrongStateRoot { id });
         }
-        let to = if verified { Status::Verified } else { Status::Rejected };
+        let to = if verified {
+            Status::Verified
+        } else {
+            Status::Rejected
+        };
         self.apply(id, to, reason, at_height)
     }
 
@@ -259,7 +263,11 @@ impl Ledger {
             .collect();
         let mut changed = 0;
         for id in due {
-            let to = if self.records.get(&id).is_some_and(|r| r.status == Status::Verified) {
+            let to = if self
+                .records
+                .get(&id)
+                .is_some_and(|r| r.status == Status::Verified)
+            {
                 Status::Expired
             } else {
                 // Never checked and now stale. Rejected, not expired, because
@@ -281,7 +289,13 @@ impl Ledger {
     /// Applies a transition. Private: every entry point that reaches it has
     /// already checked the preconditions, and a public version would be a way to
     /// skip them.
-    fn apply(&mut self, id: u64, to: Status, reason: &str, at_height: u64) -> Result<Status, ProofError> {
+    fn apply(
+        &mut self,
+        id: u64,
+        to: Status,
+        reason: &str,
+        at_height: u64,
+    ) -> Result<Status, ProofError> {
         if reason.is_empty() {
             return Err(ProofError::NoReason);
         }
@@ -349,7 +363,8 @@ mod tests {
 
     fn ledger_with_one() -> Ledger {
         let mut l = Ledger::new();
-        l.claim(1, "the batch settles", PROOF, ROOT_A, 100, 10).expect("claim");
+        l.claim(1, "the batch settles", PROOF, ROOT_A, 100, 10)
+            .expect("claim");
         l
     }
 
@@ -380,7 +395,11 @@ mod tests {
             l.accept(1, PROOF, ROOT_B, true, "checked", 20),
             Err(ProofError::WrongStateRoot { id: 1 })
         );
-        assert_eq!(l.get(1).map(|r| r.status), Some(Status::Pending), "a refused verdict changed the status");
+        assert_eq!(
+            l.get(1).map(|r| r.status),
+            Some(Status::Pending),
+            "a refused verdict changed the status"
+        );
     }
 
     #[test]
@@ -398,7 +417,10 @@ mod tests {
         // information, and nobody can tell whether it was re-opened deliberately
         // or overwritten by a bug.
         let mut l = ledger_with_one();
-        assert_eq!(l.accept(1, PROOF, ROOT_A, true, "checked", 20), Ok(Status::Verified));
+        assert_eq!(
+            l.accept(1, PROOF, ROOT_A, true, "checked", 20),
+            Ok(Status::Verified)
+        );
         assert_eq!(
             l.accept(1, PROOF, ROOT_A, false, "changed my mind", 21),
             Err(ProofError::AlreadyDecided {
@@ -413,12 +435,19 @@ mod tests {
         // An expired proof was checked and held; the state has since moved. A
         // rejected one was checked and did not hold. The two are different facts.
         let mut l = ledger_with_one();
-        l.accept(1, PROOF, ROOT_A, true, "checked", 20).expect("verify");
+        l.accept(1, PROOF, ROOT_A, true, "checked", 20)
+            .expect("verify");
         assert_eq!(l.expire(150, "state moved"), 1);
         assert_eq!(l.get(1).map(|r| r.status), Some(Status::Expired));
         let counts = l.status_counts();
-        let expired = counts.iter().find(|(s, _)| *s == Status::Expired).map(|(_, n)| *n);
-        let rejected = counts.iter().find(|(s, _)| *s == Status::Rejected).map(|(_, n)| *n);
+        let expired = counts
+            .iter()
+            .find(|(s, _)| *s == Status::Expired)
+            .map(|(_, n)| *n);
+        let rejected = counts
+            .iter()
+            .find(|(s, _)| *s == Status::Rejected)
+            .map(|(_, n)| *n);
         assert_eq!(expired, Some(1));
         assert_eq!(rejected, Some(0));
     }
@@ -430,7 +459,9 @@ mod tests {
         let mut l = ledger_with_one();
         assert_eq!(l.expire(150, "state moved"), 1);
         assert_eq!(l.get(1).map(|r| r.status), Some(Status::Rejected));
-        let reason = l.get(1).and_then(|r| r.transitions.last().map(|t| t.reason.clone()));
+        let reason = l
+            .get(1)
+            .and_then(|r| r.transitions.last().map(|t| t.reason.clone()));
         assert!(
             reason.is_some_and(|r| r.contains("never verified")),
             "the rejection does not say it was never checked: {reason:?}"
@@ -442,7 +473,8 @@ mod tests {
         // It is re-claimed as a new proof instead. Reviving it would make the
         // earlier expiry meaningless.
         let mut l = ledger_with_one();
-        l.accept(1, PROOF, ROOT_A, true, "checked", 20).expect("verify");
+        l.accept(1, PROOF, ROOT_A, true, "checked", 20)
+            .expect("verify");
         l.expire(150, "state moved");
         assert!(matches!(
             l.accept(1, PROOF, ROOT_A, true, "again", 160),
@@ -455,20 +487,33 @@ mod tests {
         // A transition nobody can explain afterwards is indistinguishable from
         // one that happened by accident.
         let mut l = ledger_with_one();
-        assert_eq!(l.accept(1, PROOF, ROOT_A, true, "", 20), Err(ProofError::NoReason));
+        assert_eq!(
+            l.accept(1, PROOF, ROOT_A, true, "", 20),
+            Err(ProofError::NoReason)
+        );
         assert_eq!(l.get(1).map(|r| r.status), Some(Status::Pending));
     }
 
     #[test]
     fn every_transition_is_recorded_in_order() {
         let mut l = ledger_with_one();
-        l.accept(1, PROOF, ROOT_A, true, "checked", 20).expect("verify");
+        l.accept(1, PROOF, ROOT_A, true, "checked", 20)
+            .expect("verify");
         l.expire(150, "state moved");
         let record = l.get(1).expect("record");
         assert_eq!(record.transitions.len(), 3, "claim, verdict, expiry");
-        assert_eq!(record.transitions.first().map(|t| t.to), Some(Status::Pending));
-        assert_eq!(record.transitions.get(1).map(|t| t.to), Some(Status::Verified));
-        assert_eq!(record.transitions.get(2).map(|t| t.to), Some(Status::Expired));
+        assert_eq!(
+            record.transitions.first().map(|t| t.to),
+            Some(Status::Pending)
+        );
+        assert_eq!(
+            record.transitions.get(1).map(|t| t.to),
+            Some(Status::Verified)
+        );
+        assert_eq!(
+            record.transitions.get(2).map(|t| t.to),
+            Some(Status::Expired)
+        );
     }
 
     #[test]
@@ -476,9 +521,15 @@ mod tests {
         // Zero means "does not expire by height", and it is a choice the caller
         // makes rather than something that happens by default.
         let mut l = Ledger::new();
-        l.claim(1, "permanent", PROOF, ROOT_A, 0, 10).expect("claim");
-        l.accept(1, PROOF, ROOT_A, true, "checked", 20).expect("verify");
-        assert_eq!(l.expire(u64::MAX, "state moved"), 0, "a non-expiring proof expired");
+        l.claim(1, "permanent", PROOF, ROOT_A, 0, 10)
+            .expect("claim");
+        l.accept(1, PROOF, ROOT_A, true, "checked", 20)
+            .expect("verify");
+        assert_eq!(
+            l.expire(u64::MAX, "state moved"),
+            0,
+            "a non-expiring proof expired"
+        );
         assert_eq!(l.get(1).map(|r| r.status), Some(Status::Verified));
     }
 
@@ -488,8 +539,10 @@ mod tests {
         let mut l = Ledger::new();
         l.claim(1, "a", [1; 32], ROOT_A, 0, 10).expect("claim");
         l.claim(2, "b", [2; 32], ROOT_A, 0, 10).expect("claim");
-        l.accept(1, [1; 32], ROOT_A, true, "ok", 11).expect("verify");
-        l.accept(2, [2; 32], ROOT_A, false, "bad", 11).expect("reject");
+        l.accept(1, [1; 32], ROOT_A, true, "ok", 11)
+            .expect("verify");
+        l.accept(2, [2; 32], ROOT_A, false, "bad", 11)
+            .expect("reject");
         let counts: BTreeMap<Status, u64> = l.status_counts().into_iter().collect();
         assert_eq!(counts.get(&Status::Verified), Some(&1));
         assert_eq!(counts.get(&Status::Rejected), Some(&1));
@@ -501,7 +554,10 @@ mod tests {
         assert!(!Status::Pending.is_verdict());
         assert!(Status::Verified.is_verdict());
         assert!(Status::Rejected.is_verdict());
-        assert!(Status::Expired.is_verdict(), "expiry is a verdict about a past state");
+        assert!(
+            Status::Expired.is_verdict(),
+            "expiry is a verdict about a past state"
+        );
         assert_eq!(Status::Expired.label(), "expired");
     }
 }

@@ -66,26 +66,45 @@ pub enum IsolationError {
     /// The contract is empty. A session runs exactly one, non-empty contract.
     EmptyContract,
     /// A resource bound was exceeded.
-    BoundExceeded { what: &'static str, limit: u64, got: u64 },
+    BoundExceeded {
+        what: &'static str,
+        limit: u64,
+        got: u64,
+    },
 }
 
 impl std::fmt::Display for IsolationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NonEmptyWorkspace { count } => {
-                write!(f, "the workspace is not empty at session start ({count} entries)")
+                write!(
+                    f,
+                    "the workspace is not empty at session start ({count} entries)"
+                )
             }
             Self::IdentityReused { identity } => {
-                write!(f, "the identity {identity:?} has been issued before; a session needs a fresh one")
+                write!(
+                    f,
+                    "the identity {identity:?} has been issued before; a session needs a fresh one"
+                )
             }
             Self::EmptyIdentity => write!(f, "the session identity is empty"),
             Self::SessionClosed { identity } => {
-                write!(f, "the session {identity:?} has ended and cannot be resumed")
+                write!(
+                    f,
+                    "the session {identity:?} has ended and cannot be resumed"
+                )
             }
             Self::OutputNotDeclared { name } => {
-                write!(f, "{name:?} is not a declared output of this session's contract")
+                write!(
+                    f,
+                    "{name:?} is not a declared output of this session's contract"
+                )
             }
-            Self::EmptyContract => write!(f, "the contract is empty; a session runs exactly one, non-empty contract"),
+            Self::EmptyContract => write!(
+                f,
+                "the contract is empty; a session runs exactly one, non-empty contract"
+            ),
             Self::BoundExceeded { what, limit, got } => {
                 write!(f, "{what} reached {got}, the bound is {limit}")
             }
@@ -117,7 +136,11 @@ impl Contract {
     /// # Errors
     ///
     /// [`IsolationError::EmptyContract`] when the set is empty.
-    pub fn new(declared_outputs: &[&str], max_outputs: u64, max_release_bytes: u64) -> Result<Self, IsolationError> {
+    pub fn new(
+        declared_outputs: &[&str],
+        max_outputs: u64,
+        max_release_bytes: u64,
+    ) -> Result<Self, IsolationError> {
         if declared_outputs.is_empty() {
             return Err(IsolationError::EmptyContract);
         }
@@ -339,7 +362,10 @@ mod tests {
         assert!(s.release("answer", b"12345678").is_ok());
         assert!(matches!(
             s.release("answer", b"9"),
-            Err(IsolationError::BoundExceeded { what: "released bytes", .. })
+            Err(IsolationError::BoundExceeded {
+                what: "released bytes",
+                ..
+            })
         ));
     }
 
@@ -377,7 +403,10 @@ mod tests {
         // The returned value owns its bytes: mutating it cannot reach back.
         let mut owned = out;
         owned.push(b'!');
-        assert_eq!(s.released_bytes, 2, "the session's accounting moved with the copy");
+        assert_eq!(
+            s.released_bytes, 2,
+            "the session's accounting moved with the copy"
+        );
     }
 
     #[test]

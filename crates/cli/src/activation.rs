@@ -84,7 +84,11 @@ pub enum ActivationError {
         requested: String,
     },
     /// The activation's lifetime has passed.
-    Expired { id: u64, expires_at: Seconds, now: Seconds },
+    Expired {
+        id: u64,
+        expires_at: Seconds,
+        now: Seconds,
+    },
     /// The activation was closed, by supersession or by hand.
     Closed { id: u64, reason: String },
     /// The policy has no room for another question.
@@ -206,8 +210,7 @@ impl ActivationLedger {
     /// Called when grants are issued, not when a run starts. That ordering is the
     /// point: the binding has to exist before anything can be checked against it.
     pub fn bind_epoch(&mut self, epoch: u64, corpus_digest: &str) {
-        self.epoch_bindings
-            .insert(epoch, corpus_digest.to_string());
+        self.epoch_bindings.insert(epoch, corpus_digest.to_string());
     }
 
     /// Activates a run.
@@ -433,7 +436,10 @@ mod tests {
         let id = ledger
             .activate("alice", CORPUS, 1, policy(), 0)
             .expect("activate");
-        assert_eq!(ledger.get(id).map(|a| a.corpus_digest.clone()), Some(CORPUS.to_string()));
+        assert_eq!(
+            ledger.get(id).map(|a| a.corpus_digest.clone()),
+            Some(CORPUS.to_string())
+        );
     }
 
     #[test]
@@ -502,7 +508,10 @@ mod tests {
             .activate("alice", CORPUS, 1, policy(), 10)
             .expect("activate");
         let record = ledger.get(first).expect("record");
-        assert_eq!(record.questions_used, 1, "the old record lost its own count");
+        assert_eq!(
+            record.questions_used, 1,
+            "the old record lost its own count"
+        );
         assert_eq!(record.activated_at, 0);
         assert!(record.closed_reason.contains("superseded"));
     }
@@ -541,10 +550,7 @@ mod tests {
         }
         assert_eq!(
             ledger.authorize(id, 4),
-            Err(ActivationError::QuestionBudgetSpent {
-                id,
-                budget: 3
-            })
+            Err(ActivationError::QuestionBudgetSpent { id, budget: 3 })
         );
     }
 
@@ -561,7 +567,9 @@ mod tests {
             Err(ActivationError::RestrictedCeilingReached { id, ceiling: 1 })
         );
         // The question budget is untouched by the restricted refusal.
-        ledger.authorize(id, 3).expect("a question is still allowed");
+        ledger
+            .authorize(id, 3)
+            .expect("a question is still allowed");
     }
 
     #[test]

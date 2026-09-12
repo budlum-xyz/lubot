@@ -46,7 +46,10 @@ pub enum AccessError {
     /// The capability has expired. Checked at use, not at issue.
     Expired { expires_at: u64, now: u64 },
     /// The action is not among the capability's actions.
-    ActionNotGranted { action: String, granted: Vec<String> },
+    ActionNotGranted {
+        action: String,
+        granted: Vec<String>,
+    },
     /// The resource is outside the capability's scope.
     OutsideScope { resource: String },
     /// The token does not match the capability's fields. This means a field was
@@ -65,10 +68,16 @@ impl std::fmt::Display for AccessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Expired { expires_at, now } => {
-                write!(f, "the capability expired at {expires_at} and it is now {now}")
+                write!(
+                    f,
+                    "the capability expired at {expires_at} and it is now {now}"
+                )
             }
             Self::ActionNotGranted { action, granted } => {
-                write!(f, "{action:?} is not granted; this capability allows {granted:?}")
+                write!(
+                    f,
+                    "{action:?} is not granted; this capability allows {granted:?}"
+                )
             }
             Self::OutsideScope { resource } => {
                 write!(f, "{resource:?} is outside this capability's scope")
@@ -79,7 +88,10 @@ impl std::fmt::Display for AccessError {
             ),
             Self::Revoked => write!(f, "this capability has been revoked"),
             Self::NotAnAttenuation { axis } => {
-                write!(f, "the requested {axis} is not a subset of what this capability holds")
+                write!(
+                    f,
+                    "the requested {axis} is not a subset of what this capability holds"
+                )
             }
             Self::EmptyScope => write!(f, "a capability over an empty scope cannot be used"),
         }
@@ -283,7 +295,13 @@ impl RevocationList {
     ///
     /// [`AccessError::Revoked`] or anything
     /// [`Capability::authorizes`] returns.
-    pub fn check(&self, cap: &Capability, action: &str, resource: &str, now: u64) -> Result<(), AccessError> {
+    pub fn check(
+        &self,
+        cap: &Capability,
+        action: &str,
+        resource: &str,
+        now: u64,
+    ) -> Result<(), AccessError> {
         cap.authorizes(action, resource, now)?;
         if self.is_revoked(cap) {
             return Err(AccessError::Revoked);
@@ -297,8 +315,13 @@ mod tests {
     use super::*;
 
     fn cap() -> Capability {
-        Capability::mint("worker-1", &["folder/a", "folder/b"], &["read", "list"], 1000)
-            .expect("mint")
+        Capability::mint(
+            "worker-1",
+            &["folder/a", "folder/b"],
+            &["read", "list"],
+            1000,
+        )
+        .expect("mint")
     }
 
     #[test]
@@ -351,7 +374,10 @@ mod tests {
         let mut c = cap();
         c.scope.insert("folder/secret".to_string());
         assert!(!c.token_is_bound());
-        assert_eq!(c.authorizes("read", "folder/secret", 500), Err(AccessError::TokenMismatch));
+        assert_eq!(
+            c.authorizes("read", "folder/secret", 500),
+            Err(AccessError::TokenMismatch)
+        );
     }
 
     #[test]
@@ -370,11 +396,22 @@ mod tests {
     #[test]
     fn a_capability_can_be_narrowed() {
         let c = cap();
-        let narrow = c.attenuate(&["folder/a"], &["read"], 500).expect("attenuate");
+        let narrow = c
+            .attenuate(&["folder/a"], &["read"], 500)
+            .expect("attenuate");
         assert!(narrow.authorizes("read", "folder/a", 100).is_ok());
-        assert!(narrow.authorizes("read", "folder/b", 100).is_err(), "the attenuation kept the parent's scope");
-        assert!(narrow.authorizes("list", "folder/a", 100).is_err(), "the attenuation kept the parent's actions");
-        assert_ne!(narrow.token, c.token, "the derived capability shares its parent's token");
+        assert!(
+            narrow.authorizes("read", "folder/b", 100).is_err(),
+            "the attenuation kept the parent's scope"
+        );
+        assert!(
+            narrow.authorizes("list", "folder/a", 100).is_err(),
+            "the attenuation kept the parent's actions"
+        );
+        assert_ne!(
+            narrow.token, c.token,
+            "the derived capability shares its parent's token"
+        );
     }
 
     #[test]
@@ -429,7 +466,10 @@ mod tests {
             Capability::mint("w", &[], &["read"], 100),
             Err(AccessError::EmptyScope)
         );
-        assert_eq!(cap().attenuate(&[], &["read"], 100), Err(AccessError::EmptyScope));
+        assert_eq!(
+            cap().attenuate(&[], &["read"], 100),
+            Err(AccessError::EmptyScope)
+        );
     }
 
     #[test]
@@ -438,7 +478,10 @@ mod tests {
         let mut list = RevocationList::new();
         assert!(list.check(&c, "read", "folder/a", 500).is_ok());
         list.revoke(&c.token);
-        assert_eq!(list.check(&c, "read", "folder/a", 500), Err(AccessError::Revoked));
+        assert_eq!(
+            list.check(&c, "read", "folder/a", 500),
+            Err(AccessError::Revoked)
+        );
     }
 
     #[test]

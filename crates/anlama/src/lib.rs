@@ -200,7 +200,10 @@ impl std::fmt::Display for ClassifierError {
                 write!(f, "the confidence floor {floor} is not within 0..=1")
             }
             Self::NoCategories => {
-                write!(f, "the classifier declares no categories, so it can never answer")
+                write!(
+                    f,
+                    "the classifier declares no categories, so it can never answer"
+                )
             }
         }
     }
@@ -251,17 +254,27 @@ impl Classifier {
                 .signals
                 .iter()
                 .filter_map(|signal| {
-                    table.get(&signal.name).map(|weight| weight * signal.strength)
+                    table
+                        .get(&signal.name)
+                        .map(|weight| weight * signal.strength)
                 })
                 .sum();
             scores.push((category.clone(), score));
         }
         // Sort by score descending, then by name, so the order is deterministic
         // even though the tie rule below does not depend on it.
-        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+        scores.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.cmp(&b.0))
+        });
 
         let (best_name, best_score) = scores[0].clone();
-        let positive_total: f64 = scores.iter().filter(|(_, s)| *s > 0.0).map(|(_, s)| *s).sum();
+        let positive_total: f64 = scores
+            .iter()
+            .filter(|(_, s)| *s > 0.0)
+            .map(|(_, s)| *s)
+            .sum();
         if positive_total <= 0.0 {
             return Verdict::Abstain {
                 reason: Abstention::NoSupport,
@@ -560,15 +573,26 @@ mod tests {
             .with("stack_trace", 0.1)
             .with("feature_request", 1.0);
         let high = match c.classify(&strong) {
-            Verdict::Category { category, confidence, .. } => {
+            Verdict::Category {
+                category,
+                confidence,
+                ..
+            } => {
                 assert_eq!(category, "bug");
                 confidence
             }
             other => panic!("expected a category, got {other:?}"),
         };
         let low = match c.classify(&weak) {
-            Verdict::Category { category, confidence, .. } => {
-                assert_eq!(category, "request", "a tenth-strength signal should not win");
+            Verdict::Category {
+                category,
+                confidence,
+                ..
+            } => {
+                assert_eq!(
+                    category, "request",
+                    "a tenth-strength signal should not win"
+                );
                 confidence
             }
             other => panic!("expected a category, got {other:?}"),

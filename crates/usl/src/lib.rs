@@ -129,7 +129,9 @@ impl Amount {
     ///
     /// [`EnvelopeError::AmountNotCanonical`] carrying the offending text.
     pub fn parse(text: &str) -> Result<Self, EnvelopeError> {
-        let err = || EnvelopeError::AmountNotCanonical { got: text.to_string() };
+        let err = || EnvelopeError::AmountNotCanonical {
+            got: text.to_string(),
+        };
         let Some((whole, frac)) = text.split_once('.') else {
             return Err(err());
         };
@@ -203,7 +205,12 @@ impl Payout {
     /// contain a tab.
     #[must_use]
     pub fn render(&self) -> String {
-        format!("PAY\t{}\t{}\t{}", self.recipient, self.amount.render(), self.reference)
+        format!(
+            "PAY\t{}\t{}\t{}",
+            self.recipient,
+            self.amount.render(),
+            self.reference
+        )
     }
 }
 
@@ -399,20 +406,27 @@ impl Manifest {
             let fields: Vec<&str> = line.split('\t').collect();
             let head = fields.first().copied().unwrap_or("");
             let at = |n: usize| -> Result<&str, EnvelopeError> {
-                fields.get(n).copied().ok_or_else(|| EnvelopeError::MalformedLine {
-                    index,
-                    reason: format!("expected a field at position {n}"),
-                })
+                fields
+                    .get(n)
+                    .copied()
+                    .ok_or_else(|| EnvelopeError::MalformedLine {
+                        index,
+                        reason: format!("expected a field at position {n}"),
+                    })
             };
             match head {
-                "SEQ" => sequence = Some(at(1)?.parse().map_err(|_| EnvelopeError::MalformedLine {
-                    index,
-                    reason: "SEQ is not a number".to_string(),
-                })?),
-                "CHAIN" => chain_id = Some(at(1)?.parse().map_err(|_| EnvelopeError::MalformedLine {
-                    index,
-                    reason: "CHAIN is not a number".to_string(),
-                })?),
+                "SEQ" => {
+                    sequence = Some(at(1)?.parse().map_err(|_| EnvelopeError::MalformedLine {
+                        index,
+                        reason: "SEQ is not a number".to_string(),
+                    })?)
+                }
+                "CHAIN" => {
+                    chain_id = Some(at(1)?.parse().map_err(|_| EnvelopeError::MalformedLine {
+                        index,
+                        reason: "CHAIN is not a number".to_string(),
+                    })?)
+                }
                 "WINDOW" => {
                     window = Some((
                         at(1)?.parse().map_err(|_| EnvelopeError::MalformedLine {
@@ -428,11 +442,7 @@ impl Manifest {
                 "FEE" => fee = Some(Amount::parse(at(1)?)?),
                 "PAY" => {
                     payout_entries.push(line.to_string());
-                    payouts.push(Payout::new(
-                        at(1)?,
-                        Amount::parse(at(2)?)?,
-                        at(3)?,
-                    )?);
+                    payouts.push(Payout::new(at(1)?, Amount::parse(at(2)?)?, at(3)?)?);
                 }
                 other => {
                     return Err(EnvelopeError::MalformedLine {
@@ -517,7 +527,11 @@ mod tests {
     fn an_amount_round_trips_through_its_canonical_form() {
         for text in ["0.00", "1.50", "10.05", "123456.78"] {
             let parsed = Amount::parse(text).expect("canonical");
-            assert_eq!(parsed.render(), text, "the canonical form is not a fixed point");
+            assert_eq!(
+                parsed.render(),
+                text,
+                "the canonical form is not a fixed point"
+            );
         }
     }
 
@@ -541,7 +555,10 @@ mod tests {
         // Two spellings of the same amount means two files that settle the same
         // thing differently.
         assert!(Amount::parse("01.00").is_err());
-        assert!(Amount::parse("0.00").is_ok(), "a single leading zero is the canonical zero");
+        assert!(
+            Amount::parse("0.00").is_ok(),
+            "a single leading zero is the canonical zero"
+        );
     }
 
     #[test]

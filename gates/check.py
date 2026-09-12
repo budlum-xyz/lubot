@@ -1800,7 +1800,10 @@ def _enum_variants(text: str, enum_name: str) -> list[str]:
     names: list[str] = []
     for line in body.splitlines():
         stripped = line.strip()
-        match = re.match(r"^([A-Z][A-Za-z0-9_]*)\s*(\{|,|$)", stripped)
+        # `(` has to be here: a tuple variant is `Variant(Type)`, and without it
+        # every tuple variant looks undeclared, which reads as a compile error
+        # that is not one.
+        match = re.match(r"^([A-Z][A-Za-z0-9_]*)\s*(\{|\(|,|$)", stripped)
         if match:
             names.append(match.group(1))
     return names
@@ -1825,22 +1828,40 @@ def _is_construction(text: str, enum_name: str, variant: str) -> bool:
 
 
 def gate_no_dead_error_variant() -> str:
-    """Every variant of every `*Error` enum is constructed by some code path."""
+    """Every error variant is both declared and constructed.
+
+    Both directions, because each half alone has a blind spot. A declared variant
+    nothing constructs is a variant no caller can handle. A constructed variant
+    that is not declared does not compile - and the first half cannot see it,
+    since it only ever looks at names it found in the declaration.
+    """
     offenders: list[str] = []
     checked = 0
     for path in rust_sources():
         text = path.read_text(encoding="utf-8")
-        for enum_name in sorted(set(re.findall(r"pub enum ([A-Za-z0-9_]*Error)\b", text))):
-            for variant in _enum_variants(text, enum_name):
+        enums = sorted(set(re.findall(r"pub enum ([A-Za-z0-9_]*Error)\b", text)))
+        for enum_name in enums:
+            declared = _enum_variants(text, enum_name)
+            for variant in declared:
                 checked += 1
                 if not _is_construction(text, enum_name, variant):
-                    offenders.append(f"{path.relative_to(ROOT)} {enum_name}::{variant}")
+                    offenders.append(
+                        f"{path.relative_to(ROOT)} {enum_name}::{variant} is declared but never produced"
+                    )
+            # The other half: every `Enum::Variant` the file writes must be one of
+            # the variants it declares.
+            for variant in sorted(set(re.findall(
+                r"(?<![A-Za-z0-9_])" + re.escape(enum_name) + r"::([A-Z][A-Za-z0-9_]*)", text
+            ))):
+                checked += 1
+                if variant not in declared:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)} {enum_name}::{variant} is used but not declared"
+                    )
     if offenders:
-        raise SystemExit(
-            "these error variants are never produced, so no caller handles them:\n  "
-            + "\n  ".join(offenders)
-        )
-    return f"all {checked} error variants are constructed somewhere"
+        raise SystemExit("an error variant is declared or used without the other:\n  "
+            + "\n  ".join(offenders))
+    return f"{checked} error-variant checks pass in both directions"
 
 
 def selftest_no_dead_error_variant() -> None:
@@ -1866,8 +1887,23 @@ fn build() -> Result<(), DemoError> {
 """
     variants = _enum_variants(sample, "DemoError")
     assert variants == ["Live", "Dead"], f"variant parsing broke: {variants}"
+    # Tuple and unit variants, not just struct variants.
+    shapes = "pub enum E {\n    Tuple(String),\n    Unit,\n    Struct { a: u8 },\n}\n"
+    assert _enum_variants(shapes, "E") == ["Tuple", "Unit", "Struct"], (
+        f"tuple and unit variants were missed: {_enum_variants(shapes, 'E')}"
+    )
     assert _is_construction(sample, "DemoError", "Live"), "a constructed variant looked dead"
     assert not _is_construction(sample, "DemoError", "Dead"), "a dead variant looked constructed"
+    # The other direction: a variant used but never declared. This is the half
+    # whose absence let a compile error through.
+    used = set(re.findall(r"(?<![A-Za-z0-9_])DemoError::([A-Z][A-Za-z0-9_]*)", sample))
+    assert used == {"Live"}, f"usage scanning broke: {used}"
+    missing_sample = sample.replace("    Dead { reason: String },\n", "")
+    declared = set(_enum_variants(missing_sample, "DemoError"))
+    assert "Dead" in used or "Dead" not in declared, "fixture is not exercising the gap"
+    ghost = "Err(DemoError::Ghost { reason: String::new() })"
+    assert set(re.findall(r"(?<![A-Za-z0-9_])DemoError::([A-Z][A-Za-z0-9_]*)", ghost)) == {"Ghost"}
+    assert "Ghost" not in _enum_variants(sample, "DemoError")
 
 
 # --------------------------------------------------------------------------

@@ -125,7 +125,9 @@ impl Policy {
             return Err(PolicyError::NotANumber { which: "scale-up" });
         }
         if scale_down_at.is_nan() {
-            return Err(PolicyError::NotANumber { which: "scale-down" });
+            return Err(PolicyError::NotANumber {
+                which: "scale-down",
+            });
         }
         for value in [scale_up_at, scale_down_at] {
             if !(0.0..=1.0).contains(&value) {
@@ -166,7 +168,12 @@ impl Policy {
     /// controller last acted; a controller that has never acted passes a value
     /// large enough to be past any cooldown.
     #[must_use]
-    pub fn decide(&self, sustained_load: f64, replicas: u32, intervals_since_last_change: u32) -> Decision {
+    pub fn decide(
+        &self,
+        sustained_load: f64,
+        replicas: u32,
+        intervals_since_last_change: u32,
+    ) -> Decision {
         // Cooldown first. Acting inside the window means reacting to the previous
         // action as though it were new information.
         if intervals_since_last_change < self.cooldown_intervals {
@@ -176,19 +183,25 @@ impl Policy {
         }
         if sustained_load >= self.scale_up_at {
             if replicas >= self.max_replicas {
-                return Decision::Hold { reason: "already at the maximum replica count" };
+                return Decision::Hold {
+                    reason: "already at the maximum replica count",
+                };
             }
             let to = self.step_up(replicas).min(self.max_replicas);
             return Decision::ScaleUp { from: replicas, to };
         }
         if sustained_load <= self.scale_down_at {
             if replicas <= self.min_replicas {
-                return Decision::Hold { reason: "already at the minimum replica count" };
+                return Decision::Hold {
+                    reason: "already at the minimum replica count",
+                };
             }
             let to = self.step_down(replicas).max(self.min_replicas);
             return Decision::ScaleDown { from: replicas, to };
         }
-        Decision::Hold { reason: "load is between the two thresholds" }
+        Decision::Hold {
+            reason: "load is between the two thresholds",
+        }
     }
 
     /// One step up. Always at least one replica, or a controller at the top of
@@ -253,11 +266,7 @@ impl Load {
         if self.samples.is_empty() {
             return 0.0;
         }
-        let above = self
-            .samples
-            .iter()
-            .filter(|v| **v >= threshold)
-            .count();
+        let above = self.samples.iter().filter(|v| **v >= threshold).count();
         above as f64 / self.samples.len() as f64
     }
 

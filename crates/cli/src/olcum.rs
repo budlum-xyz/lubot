@@ -85,13 +85,21 @@ pub fn layer_of(crate_name: &str) -> Option<u32> {
 pub fn path_dependencies(manifest: &str) -> Vec<String> {
     let mut found = Vec::new();
     for line in manifest.lines() {
-        let Some(at) = line.find("path") else { continue };
+        let Some(at) = line.find("path") else {
+            continue;
+        };
         let rest = &line[at..];
-        let Some(quote) = rest.find('"') else { continue };
+        let Some(quote) = rest.find('"') else {
+            continue;
+        };
         let after = &rest[quote + 1..];
-        let Some(close) = after.find('"') else { continue };
+        let Some(close) = after.find('"') else {
+            continue;
+        };
         let path = &after[..close];
-        let Some(name) = path.rsplit('/').next() else { continue };
+        let Some(name) = path.rsplit('/').next() else {
+            continue;
+        };
         if !name.is_empty() && !found.iter().any(|existing: &String| existing == name) {
             found.push(name.to_string());
         }
@@ -163,10 +171,14 @@ pub fn check_architecture(dependencies: &BTreeMap<String, Vec<String>>) -> Archi
                         .push(format!("{name} depends upward on {dependency}"));
                 }
                 Err(WiringError::Cycle { .. }) => {
-                    report.cycles.push(format!("{name} depends on {dependency} in a cycle"));
+                    report
+                        .cycles
+                        .push(format!("{name} depends on {dependency} in a cycle"));
                 }
                 Err(other) => {
-                    report.violations.push(format!("{name} -> {dependency}: {other}"));
+                    report
+                        .violations
+                        .push(format!("{name} -> {dependency}: {other}"));
                 }
             }
         }
@@ -186,8 +198,8 @@ pub fn check_repository() -> Result<ArchitectureReport, String> {
         .ok_or("the cli crate has no parent directory")?
         .join("crates");
     let mut dependencies = BTreeMap::new();
-    let entries = std::fs::read_dir(&crates_dir)
-        .map_err(|err| format!("{}: {err}", crates_dir.display()))?;
+    let entries =
+        std::fs::read_dir(&crates_dir).map_err(|err| format!("{}: {err}", crates_dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|err| err.to_string())?;
         let manifest = entry.path().join("Cargo.toml");
@@ -318,7 +330,10 @@ fn olcum_esik(args: &[String]) -> Result<(), String> {
     );
     match quorum.count_excluding(&signers, requester) {
         Ok(reached) => {
-            println!("OK   {reached} of {} signed, excluding the requester", quorum.threshold());
+            println!(
+                "OK   {reached} of {} signed, excluding the requester",
+                quorum.threshold()
+            );
             Ok(())
         }
         Err(err) => Err(err.to_string()),
@@ -379,9 +394,8 @@ fn olcum_takip(args: &[String]) -> Result<(), String> {
 
 /// Classifies signals given as `name=strength` pairs.
 fn olcum_sinif(args: &[String]) -> Result<(), String> {
-    let weights = option(args, "weights").ok_or(
-        "olcum sinif needs --weights category=signal:weight,signal:weight;category=...",
-    )?;
+    let weights = option(args, "weights")
+        .ok_or("olcum sinif needs --weights category=signal:weight,signal:weight;category=...")?;
     let floor: f64 = option(args, "floor")
         .unwrap_or_else(|| "0.6".to_string())
         .parse()
@@ -493,19 +507,23 @@ fn olcum_olcek(args: &[String]) -> Result<(), String> {
                 println!("{:>4} load {value:.2} -> scale up {from} to {to}", interval)
             }
             Decision::ScaleDown { from, to } => {
-                println!("{:>4} load {value:.2} -> scale down {from} to {to}", interval)
+                println!(
+                    "{:>4} load {value:.2} -> scale down {from} to {to}",
+                    interval
+                )
             }
             Decision::Hold { reason } => {
-                println!("{:>4} load {value:.2} -> hold ({}), {} replicas", interval, reason, controller.replicas)
+                println!(
+                    "{:>4} load {value:.2} -> hold ({}), {} replicas",
+                    interval, reason, controller.replicas
+                )
             }
         }
         interval = interval.saturating_add(1);
     }
     println!(
         "final {} replicas, {} direction reversal(s) over {} intervals",
-        controller.replicas,
-        controller.flaps,
-        interval
+        controller.replicas, controller.flaps, interval
     );
     if controller.flaps > 0 {
         return Err(format!(
@@ -550,7 +568,10 @@ lubot-answer = { path = "../answer" }
         dependencies.insert("answer".to_string(), vec!["index".to_string()]);
         dependencies.insert("cli".to_string(), vec!["answer".to_string()]);
         let report = check_architecture(&dependencies);
-        assert!(report.is_clean(), "a downward graph was reported dirty: {report:?}");
+        assert!(
+            report.is_clean(),
+            "a downward graph was reported dirty: {report:?}"
+        );
         assert_eq!(report.start_order.first().map(String::as_str), Some("read"));
         assert_eq!(report.start_order.last().map(String::as_str), Some("cli"));
     }
@@ -668,8 +689,14 @@ lubot-answer = { path = "../answer" }
             load.record(0.95);
             controller.tick(&load);
         }
-        assert_eq!(controller.flaps, 0, "a steady load made the controller oscillate");
-        assert!(controller.replicas > 4, "a steady high load did not scale up");
+        assert_eq!(
+            controller.flaps, 0,
+            "a steady load made the controller oscillate"
+        );
+        assert!(
+            controller.replicas > 4,
+            "a steady high load did not scale up"
+        );
     }
 
     #[test]
@@ -683,7 +710,10 @@ lubot-answer = { path = "../answer" }
             load.record(if i % 2 == 0 { 1.0 } else { 0.0 });
             controller.tick(&load);
         }
-        assert!(controller.flaps > 0, "alternating load was not detected as flapping");
+        assert!(
+            controller.flaps > 0,
+            "alternating load was not detected as flapping"
+        );
     }
 
     #[test]
