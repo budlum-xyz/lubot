@@ -1597,6 +1597,881 @@ def selftest_eval_runs_are_mechanical() -> None:
     assert _eval_run_finding(unmeasured) is not None, "a run without duration accounting passed"
 
 
+# --------------------------------------------------------------------------
+# gate: every crate directory is a workspace member
+# --------------------------------------------------------------------------
+# A crate written but not registered compiles nowhere and is invisible to CI.
+# That is silent, so it is gated.
+
+
+def _member_names(manifest: str) -> set[str]:
+    body = manifest.split("[workspace]", 1)[1]
+    body = body.split("\n[", 1)[0]
+    return set(re.findall(r'"([^"]+)"', body.split("members", 1)[1].split("]", 1)[0]))
+
+
+def _crate_dirs() -> list[str]:
+    return sorted(
+        p.parent.name
+        for p in (ROOT / "crates").glob("*/Cargo.toml")
+    )
+
+
+def gate_every_crate_is_a_member() -> str:
+    """Every directory under `crates/` holding a Cargo.toml is a workspace member."""
+    members = _member_names(read("Cargo.toml"))
+    orphaned = [c for c in _crate_dirs() if f"crates/{c}" not in members]
+    if orphaned:
+        raise SystemExit(
+            "these crates compile nowhere, so CI has never seen them:\n  "
+            + "\n  ".join(orphaned)
+        )
+    return f"all {len(_crate_dirs())} crate directories are workspace members"
+
+
+def selftest_every_crate_is_a_member() -> None:
+    members = _member_names('[workspace]\nmembers = ["crates/read"]\n\n[profile]\nx = 1\n')
+    assert members == {"crates/read"}, f"member parsing broke: {members}"
+    # The gate must be able to see an orphan.
+    orphans = [c for c in ["read", "ghost"] if f"crates/{c}" not in members]
+    assert orphans == ["ghost"], f"an orphan was not detected: {orphans}"
+
+
+# --------------------------------------------------------------------------
+# gate: assert macros carry the arguments they take
+# --------------------------------------------------------------------------
+# `assert_eq!` takes two values, or two values and a format message. Three
+# values is a compile error that reads like a working assertion until it is
+# built, and nothing before the build notices.
+
+
+def _split_top_level(body: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    in_str = False
+    escaped = False
+    for ch in body:
+        if in_str:
+            current.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            current.append(ch)
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current)
+    if tail.strip():
+        parts.append(tail)
+    return parts
+
+
+def _macro_call_args(text: str, macro: str) -> list[tuple[int, list[str]]]:
+    """Returns (line number, argument list) for every `macro!(...)` call."""
+    found: list[tuple[int, list[str]]] = []
+    needle = macro + "!"
+    start = 0
+    while True:
+        at = text.find(needle, start)
+        if at < 0:
+            return found
+        open_at = text.find("(", at)
+        if open_at < 0:
+            return found
+        depth = 0
+        in_str = False
+        escaped = False
+        end = open_at
+        while end < len(text):
+            ch = text[end]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+            elif ch == '"':
+                in_str = True
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+                if depth == 0:
+                    break
+            end += 1
+        found.append((text.count("\n", 0, at) + 1, _split_top_level(text[open_at + 1 : end])))
+        start = end + 1
+
+
+def _strip_tests_and_comments(text: str) -> str:
+    """Keeps test bodies (the assertions live there) but drops comment lines."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("//")
+    )
+
+
+def gate_assert_arity() -> str:
+    """`assert_eq!` carries two values, then optionally a format string.
+
+    More than three arguments is legal only when the third is the format string
+    and the rest are its arguments, so that is what is checked. Three values
+    with no format string does not compile, and it reads like a working
+    assertion until it is built.
+    """
+    offenders: list[str] = []
+    for path in rust_sources():
+        text = _strip_tests_and_comments(path.read_text(encoding="utf-8"))
+        for macro in ("assert_eq", "assert_ne", "debug_assert_eq"):
+            for line, args in _macro_call_args(text, macro):
+                if len(args) < 2:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{line} {macro}! has {len(args)} argument(s)"
+                    )
+                    continue
+                if len(args) > 2 and not args[2].lstrip().startswith('"'):
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{line} {macro}! has a third argument "
+                        f"that is not a format string: {args[2].strip()[:60]}"
+                    )
+    if offenders:
+        raise SystemExit("an assertion that will not compile:\n  " + "\n  ".join(offenders))
+    checked = sum(
+        len(_macro_call_args(_strip_tests_and_comments(p.read_text(encoding="utf-8")), "assert_eq"))
+        for p in rust_sources()
+    )
+    return f"{checked} assert_eq! calls carry a valid argument count"
+
+
+def selftest_assert_arity() -> None:
+    assert _split_top_level("a, b") == ["a", " b"]
+    assert _split_top_level("f(1, 2), g(3)") == ["f(1, 2)", " g(3)"]
+    assert _split_top_level('"a, b", c') == ['"a, b"', " c"]
+    # Three values and no format string: the shape that does not compile.
+    bad = _macro_call_args('assert_eq!(a, b, c)', "assert_eq")[0][1]
+    assert len(bad) == 3, f"the canary was not parsed as three arguments: {bad}"
+    assert not bad[2].lstrip().startswith('"'), f"the canary stopped being bad: {bad}"
+    # A format string with commas inside it must stay one argument.
+    ok = _macro_call_args('assert_eq!(a, b, "x {} {}", y, z)', "assert_eq")[0][1]
+    assert len(ok) == 5, f"a message with commas was split: {ok}"
+    assert ok[2].strip().startswith('"'), "the format string was not recognised"
+    # Two values is the normal case.
+    assert len(_macro_call_args('assert_eq!(a, b)', "assert_eq")[0][1]) == 2
+
+
+# --------------------------------------------------------------------------
+# gate: no error variant that nothing produces
+# --------------------------------------------------------------------------
+# A variant declared, displayed and asserted but never constructed is a variant
+# no caller can ever handle. It reads as coverage and is not.
+
+
+def _enum_variants(text: str, enum_name: str) -> list[str]:
+    at = text.find(f"enum {enum_name}")
+    if at < 0:
+        return []
+    open_at = text.find("{", at)
+    depth = 0
+    end = open_at
+    while end < len(text):
+        if text[end] == "{":
+            depth += 1
+        elif text[end] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        end += 1
+    body = text[open_at + 1 : end]
+    body = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("//"))
+    names: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        # `(` has to be here: a tuple variant is `Variant(Type)`, and without it
+        # every tuple variant looks undeclared, which reads as a compile error
+        # that is not one.
+        match = re.match(r"^([A-Z][A-Za-z0-9_]*)\s*(\{|\(|,|$)", stripped)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def _is_construction(text: str, enum_name: str, variant: str) -> bool:
+    """True when the variant is built somewhere, not merely named.
+
+    Match arms are excluded: `Self::Variant { .. } => ...` mentions the variant
+    without producing it, which is exactly the shape that made a dead variant
+    look covered.
+    """
+    pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(enum_name) + r"::" + re.escape(variant) + r"(?![A-Za-z0-9_])")
+    for line in text.splitlines():
+        if line.lstrip().startswith("//") or line.lstrip().startswith("///"):
+            continue
+        if "=>" in line:
+            continue
+        if pattern.search(line):
+            return True
+    return False
+
+
+def gate_no_dead_error_variant() -> str:
+    """Every error variant is both declared and constructed.
+
+    Both directions, because each half alone has a blind spot. A declared variant
+    nothing constructs is a variant no caller can handle. A constructed variant
+    that is not declared does not compile - and the first half cannot see it,
+    since it only ever looks at names it found in the declaration.
+    """
+    offenders: list[str] = []
+    checked = 0
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        enums = sorted(set(re.findall(r"pub enum ([A-Za-z0-9_]*Error)\b", text)))
+        for enum_name in enums:
+            declared = _enum_variants(text, enum_name)
+            for variant in declared:
+                checked += 1
+                if not _is_construction(text, enum_name, variant):
+                    offenders.append(
+                        f"{path.relative_to(ROOT)} {enum_name}::{variant} is declared but never produced"
+                    )
+            # The other half: every `Enum::Variant` the file writes must be one of
+            # the variants it declares.
+            for variant in sorted(set(re.findall(
+                r"(?<![A-Za-z0-9_])" + re.escape(enum_name) + r"::([A-Z][A-Za-z0-9_]*)", text
+            ))):
+                checked += 1
+                if variant not in declared:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)} {enum_name}::{variant} is used but not declared"
+                    )
+    if offenders:
+        raise SystemExit("an error variant is declared or used without the other:\n  "
+            + "\n  ".join(offenders))
+    return f"{checked} error-variant checks pass in both directions"
+
+
+def selftest_no_dead_error_variant() -> None:
+    sample = """
+pub enum DemoError {
+    /// documented
+    Live { reason: String },
+    Dead { reason: String },
+}
+
+impl std::fmt::Display for DemoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Live { .. } => write!(f, "live"),
+            Self::Dead { .. } => write!(f, "dead"),
+        }
+    }
+}
+
+fn build() -> Result<(), DemoError> {
+    Err(DemoError::Live { reason: "x".to_string() })
+}
+"""
+    variants = _enum_variants(sample, "DemoError")
+    assert variants == ["Live", "Dead"], f"variant parsing broke: {variants}"
+    # Tuple and unit variants, not just struct variants.
+    shapes = "pub enum E {\n    Tuple(String),\n    Unit,\n    Struct { a: u8 },\n}\n"
+    assert _enum_variants(shapes, "E") == ["Tuple", "Unit", "Struct"], (
+        f"tuple and unit variants were missed: {_enum_variants(shapes, 'E')}"
+    )
+    assert _is_construction(sample, "DemoError", "Live"), "a constructed variant looked dead"
+    assert not _is_construction(sample, "DemoError", "Dead"), "a dead variant looked constructed"
+    # The other direction: a variant used but never declared. This is the half
+    # whose absence let a compile error through.
+    used = set(re.findall(r"(?<![A-Za-z0-9_])DemoError::([A-Z][A-Za-z0-9_]*)", sample))
+    assert used == {"Live"}, f"usage scanning broke: {used}"
+    missing_sample = sample.replace("    Dead { reason: String },\n", "")
+    declared = set(_enum_variants(missing_sample, "DemoError"))
+    assert "Dead" in used or "Dead" not in declared, "fixture is not exercising the gap"
+    ghost = "Err(DemoError::Ghost { reason: String::new() })"
+    assert set(re.findall(r"(?<![A-Za-z0-9_])DemoError::([A-Z][A-Za-z0-9_]*)", ghost)) == {"Ghost"}
+    assert "Ghost" not in _enum_variants(sample, "DemoError")
+
+
+# --------------------------------------------------------------------------
+# gate: intra-doc links resolve
+# --------------------------------------------------------------------------
+# A link left behind by a deleted variant is a rustdoc warning, and a warning
+# that is not an error is a warning nobody reads.
+
+
+def _doc_links(line: str) -> list[str]:
+    """The intra-doc links on a doc-comment line.
+
+    Both `[Type]` and `[`Type::Variant`]` are links; rustdoc documents the
+    backticked form. A lowercase single segment is not: it is prose naming
+    something, and a TOML `[package]` heading is indistinguishable from a link
+    by shape alone.
+    """
+    found: list[str] = []
+    for backtick, path in re.findall(
+        r"\[(`?)([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z0-9_]+)*)\1\]", line
+    ):
+        del backtick
+        head = path.partition("::")[0]
+        if "::" not in path and not head[0].isupper() and head != "Self":
+            continue
+        found.append(path)
+    return found
+
+
+KNOWN_EXTERNAL_LINK_TARGETS = {
+    "Self", "Vec", "VecDeque", "BTreeMap", "BTreeSet", "HashMap", "HashSet",
+    "Option", "Result", "String", "str", "u8", "u16", "u32", "u64", "u128",
+    "i64", "usize", "f64", "bool", "Iterator", "Copy", "Eq", "Debug", "Clone",
+    "Default", "PartialEq", "Ord", "Display",
+}
+
+
+def gate_doc_links_resolve() -> str:
+    """Every `[Type::Thing]` doc link names something this file declares."""
+    offenders: list[str] = []
+    checked = 0
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        declared = set(re.findall(r"\b(?:pub\s+)?(?:enum|struct|trait|type|const|fn)\s+([A-Za-z0-9_]+)", text))
+        # A link can name something this file imported rather than declared, and
+        # rustdoc resolves it through the import. Without this the gate reports
+        # every cross-crate reference as broken.
+        for use_line in re.findall(r"^\s*use\s+([^;]+);", text, re.MULTILINE):
+            for part in re.findall(r"[A-Za-z0-9_]+", use_line):
+                declared.add(part)
+        for line in text.splitlines():
+            if not line.lstrip().startswith("///") and not line.lstrip().startswith("//!"):
+                continue
+            # Scan inside code spans too: `[`Type::Variant`]` is the idiom
+            # rustdoc documents. What is skipped instead is a lowercase single
+            # segment, which is prose naming something rather than a link.
+            for link in _doc_links(line):
+                head, _, tail = link.partition("::")
+                if head in KNOWN_EXTERNAL_LINK_TARGETS:
+                    continue
+                # A path-qualified link (`crate::X`, `lubot_read::X`) is resolved
+                # by rustdoc against the crate graph, not against this file.
+                if head in ("crate", "self", "super") or "::" in head:
+                    continue
+                if head not in declared and re.match(r"^[a-z][a-z0-9_]*$", head):
+                    # A crate name: `lubot_read::perception::MAX_TEXT_BYTES`.
+                    continue
+                checked += 1
+                if head not in declared:
+                    offenders.append(f"{path.relative_to(ROOT)} [{link}]: no `{head}` in this file")
+                    continue
+                if tail and not re.search(r"(?<![A-Za-z0-9_])" + re.escape(tail) + r"(?![A-Za-z0-9_])", text):
+                    offenders.append(f"{path.relative_to(ROOT)} [{link}]: no `{tail}` in this file")
+    if offenders:
+        raise SystemExit("broken intra-doc links:\n  " + "\n  ".join(offenders))
+    return f"{checked} intra-doc links resolve"
+
+
+def selftest_doc_links_resolve() -> None:
+    sample = "pub enum Thing {\n    Gone,\n}\n/// see [Thing::Gone] and [Thing::Missing]\n"
+    declared = set(re.findall(r"\b(?:pub\s+)?(?:enum|struct|trait|type|const|fn)\s+([A-Za-z0-9_]+)", sample))
+    assert declared == {"Thing"}, f"declaration scanning broke: {declared}"
+    links = re.findall(r"\[([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z0-9_]+)*)\]", sample)
+    assert links == ["Thing::Gone", "Thing::Missing"], f"link scanning broke: {links}"
+    # The backticked form is the idiom rustdoc documents, so it must be scanned.
+    backticked = _doc_links("/// see [`Thing::Gone`] for the refusal")
+    assert backticked == ["Thing::Gone"], f"a backticked link was skipped: {backticked}"
+    # A lowercase single segment is prose naming something, not a link.
+    prose = _doc_links("/// the manifest's `[package]` block")
+    assert prose == [], f"prose was read as a link: {prose}"
+    # The canary: the removed variant must be caught.
+    assert not re.search(r"(?<![A-Za-z0-9_])Missing(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
+    assert re.search(r"(?<![A-Za-z0-9_])Gone(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
+
+
+# --------------------------------------------------------------------------
+# gate: no boolean compared to a literal
+# --------------------------------------------------------------------------
+# `flag == false` is a clippy failure under the workspace lint set, and it reads
+# as a comparison rather than as the negation it is.
+
+
+def gate_no_bool_comparison() -> str:
+    """No `== true` or `== false` in any Rust source."""
+    offenders: list[str] = []
+    for path in rust_sources():
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("//"):
+                continue
+            if re.search(r"==\s*(true|false)\b", line) or re.search(r"!=\s*(true|false)\b", line):
+                offenders.append(f"{path.relative_to(ROOT)}:{i}")
+    if offenders:
+        raise SystemExit("a boolean compared to a literal:\n  " + "\n  ".join(offenders))
+    return f"no boolean is compared to a literal in {len(rust_sources())} files"
+
+
+def selftest_no_bool_comparison() -> None:
+    assert re.search(r"==\s*(true|false)\b", "assert!(x.is_ready() == false)")
+    assert not re.search(r"==\s*(true|false)\b", "assert!(!x.is_ready())")
+    assert re.search(r"!=\s*(true|false)\b", "if flag != true {")
+
+
+def _starts_char_literal(text: str, at: int) -> bool:
+    """Whether the apostrophe at `at` opens a character literal.
+
+    Rust reuses the apostrophe for lifetimes, so the one in `fn f<'a>()` does not
+    open a literal. Treating it as one makes the scanner consume everything up to
+    the next apostrophe, which is how balanced files came out unbalanced.
+    """
+    rest = text[at + 1:]
+    if rest.startswith("'"):
+        return True
+    if rest.startswith("\\"):
+        return len(rest) > 2 and rest[2] == "'"
+    return len(rest) > 1 and rest[1] == "'"
+
+
+# --------------------------------------------------------------------------
+# gate: delimiters balance
+# --------------------------------------------------------------------------
+# A brace-balance check is not a type check, but an unbalanced file cannot be
+# one, and it costs nothing to run before anything more expensive.
+
+
+def gate_delimiters_balance() -> str:
+    """Braces, parentheses and brackets balance in every Rust source."""
+    offenders: list[str] = []
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        code: list[str] = []
+        in_str = False
+        in_char = False
+        in_line_comment = False
+        in_block_comment = 0
+        previous = ""
+        for i, ch in enumerate(text):
+            if in_line_comment:
+                if ch == "\n":
+                    in_line_comment = False
+                    code.append(ch)
+                previous = ch
+                continue
+            if in_block_comment:
+                if previous == "*" and ch == "/":
+                    in_block_comment -= 1
+                previous = ch
+                continue
+            if in_str:
+                if ch == '"' and previous != "\\":
+                    in_str = False
+                previous = ch
+                continue
+            if in_char:
+                if ch == "'" and previous != "\\":
+                    in_char = False
+                previous = ch
+                continue
+            if previous == "/" and ch == "/":
+                in_line_comment = True
+                previous = ch
+                continue
+            if previous == "/" and ch == "*":
+                in_block_comment += 1
+                previous = ch
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "'" and _starts_char_literal(text, i):
+                in_char = True
+            else:
+                code.append(ch)
+            previous = ch
+        body = "".join(code)
+        for open_ch, close_ch in (("{", "}"), ("(", ")"), ("[", "]")):
+            delta = body.count(open_ch) - body.count(close_ch)
+            if delta:
+                offenders.append(
+                    f"{path.relative_to(ROOT)} {open_ch}{close_ch} off by {delta}"
+                )
+    if offenders:
+        raise SystemExit("unbalanced delimiters:\n  " + "\n  ".join(offenders))
+    return f"delimiters balance in {len(rust_sources())} files"
+
+
+def selftest_delimiters_balance() -> None:
+    # A lifetime is not a character literal. This is the case that made
+    # balanced files report as unbalanced.
+    lifetimes = "fn f<'a>(x: &'a str) {}"
+    assert not _starts_char_literal(lifetimes, 5), "a lifetime opened a literal"
+    assert not _starts_char_literal(lifetimes, 14), "a reference lifetime opened a literal"
+    plain = "let c = 'x';"
+    assert _starts_char_literal(plain, 8), "a real character literal was missed"
+    escaped = "let c = '\\n';"
+    assert _starts_char_literal(escaped, 8), "an escaped literal was missed"
+
+
+
+# --------------------------------------------------------------------------
+# gate: crates are reachable from the binary, and the unwired set only shrinks
+# --------------------------------------------------------------------------
+# A crate that nothing calls is code that has never been run. That is worth
+# measuring rather than assuming, and worth ratcheting rather than merely
+# reporting: the number is only interesting if it cannot go up.
+
+
+def _path_deps(manifest: str) -> set[str]:
+    """The crate directories this manifest depends on through `path`."""
+    found: set[str] = set()
+    for match in re.finditer(r'path\s*=\s*"([^"]+)"', manifest):
+        target = Path(match.group(1)).name
+        if target:
+            found.add(target)
+    return found
+
+
+def _reachable_from(root_crate: str) -> set[str]:
+    seen: set[str] = set()
+    stack = [root_crate]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        manifest = ROOT / "crates" / current / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        for dependency in _path_deps(manifest.read_text(encoding="utf-8")):
+            stack.append(dependency)
+    return seen
+
+
+UNWIRED_BASELINE = "gates/unwired.baseline"
+
+
+def gate_crates_are_reachable() -> str:
+    """Every crate is reachable from the binary, or it is on the shrinking list.
+
+    The list is a ratchet, not a permission. A crate may be added to it when it
+    is written; the gate fails the moment the list grows, so wiring can only ever
+    catch up.
+    """
+    crates = set(_crate_dirs())
+    reachable = _reachable_from("cli")
+    unwired = sorted(crates - reachable)
+    baseline_path = ROOT / UNWIRED_BASELINE
+    baseline: set[str] = set()
+    if baseline_path.is_file():
+        baseline = {
+            line.strip()
+            for line in baseline_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    # A baseline naming a crate that no longer exists is stale, and a stale
+    # baseline silently permits whatever replaces it.
+    stale = sorted(baseline - crates)
+    if stale:
+        raise SystemExit(
+            f"{UNWIRED_BASELINE} names crates that do not exist: {', '.join(stale)}"
+        )
+    regressed = sorted(set(unwired) - baseline)
+    if regressed:
+        raise SystemExit(
+            "these crates are reachable from nothing and are not on the baseline:\n  "
+            + "\n  ".join(regressed)
+            + f"\n  add them to {UNWIRED_BASELINE} only while they are being wired"
+        )
+    wired_since = sorted(baseline - set(unwired))
+    if wired_since:
+        raise SystemExit(
+            "these crates are now reachable, so shrink the baseline:\n  "
+            + "\n  ".join(wired_since)
+            + f"\n  remove them from {UNWIRED_BASELINE}"
+        )
+    return (
+        f"{len(reachable & crates)} of {len(crates)} crates are reachable from the binary; "
+        f"{len(unwired)} are on the baseline"
+    )
+
+
+def selftest_crates_are_reachable() -> None:
+    manifest = """
+[dependencies]
+lubot-read = { path = "../read" }
+lubot-answer = { path = "../answer" }
+serde = "1"
+"""
+    deps = _path_deps(manifest)
+    assert deps == {"read", "answer"}, f"path dependency parsing broke: {deps}"
+    # The ratchet has to be able to see a regression.
+    assert set(["yeni"]) - set(["eski"]) == {"yeni"}, "a new unwired crate went unnoticed"
+    # And it has to be able to see the list shrinking.
+    assert set(["eski"]) - set([]) == {"eski"}, "a wired crate was not reported"
+
+
+
+# --------------------------------------------------------------------------
+# gate: the crate documentation is measured
+# --------------------------------------------------------------------------
+# A table of crate sizes that nobody checks is a table that goes stale the first
+# time a crate changes, and a stale table is worse than no table because it is
+# read as current.
+
+
+def _crate_measurements() -> dict[str, tuple[int, int]]:
+    """Crate name to (source lines, test count)."""
+    measured: dict[str, tuple[int, int]] = {}
+    for manifest in sorted((ROOT / "crates").glob("*/Cargo.toml")):
+        name = manifest.parent.name
+        lines = 0
+        tests = 0
+        for source in sorted(manifest.parent.rglob("*.rs")):
+            text = source.read_text(encoding="utf-8")
+            lines += len(text.splitlines())
+            tests += len(re.findall(r"#\[test\]", text))
+        measured[name] = (lines, tests)
+    return measured
+
+
+def gate_crates_doc_is_measured() -> str:
+    """`docs/CRATES.md` names every crate and its figures match the source."""
+    doc = read("docs/CRATES.md")
+    measured = _crate_measurements()
+    missing = sorted(set(measured) - set(re.findall(r"`([a-z0-9_]+)`", doc)))
+    if missing:
+        raise SystemExit(
+            "these crates are not documented in docs/CRATES.md:\n  " + "\n  ".join(missing)
+        )
+    wrong: list[str] = []
+    for name, (lines, tests) in sorted(measured.items()):
+        # The tables read `| `name` | 664 | 16 |`.
+        row = re.search(
+            r"\|\s*`" + re.escape(name) + r"`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc
+        )
+        if not row:
+            # Prose figures are not checked, so a crate documented only in prose
+            # is a crate whose figures nobody verifies. Requiring the row is what
+            # makes the table the single place a figure can be stated.
+            wrong.append(f"{name}: documented without a `| crate | lines | tests |` row")
+            continue
+        claimed_lines, claimed_tests = int(row.group(1)), int(row.group(2))
+        if claimed_lines != lines:
+            wrong.append(f"{name}: documented as {claimed_lines} lines, has {lines}")
+        if claimed_tests != tests:
+            wrong.append(f"{name}: documented as {claimed_tests} tests, has {tests}")
+    if wrong:
+        raise SystemExit("docs/CRATES.md is stale:\n  " + "\n  ".join(wrong))
+    return f"all {len(measured)} crates are documented and their figures match"
+
+
+def selftest_crates_doc_is_measured() -> None:
+    doc = "| `read` | 848 | 28 | x |\n| `muhur` | 1 | 1 | y |\n"
+    row = re.search(r"\|\s*`read`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc)
+    assert row is not None, "the row pattern does not match its own fixture"
+    assert (int(row.group(1)), int(row.group(2))) == (848, 28)
+    # The gate has to be able to see a crate that is not mentioned.
+    documented = set(re.findall(r"`([a-z0-9_]+)`", doc))
+    assert set(["read", "muhur", "ghost"]) - documented == {"ghost"}
+    # A crate mentioned in prose but absent from the tables must be caught.
+    prose_only = set(re.findall(r"`([a-z0-9_]+)`", "and `cli` has 6818 lines"))
+    assert prose_only == {"cli"}
+    assert re.search(r"\|\s*`cli`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc) is None
+
+
+
+# --------------------------------------------------------------------------
+# gate: the RPC surface is one surface, stated in three places
+# --------------------------------------------------------------------------
+# The allowed-method array, the JSON set and the system prompt all state the
+# same list. They were inconsistent - the JSON note said seven while the array
+# held eight - and an inconsistency between a document and the code it describes
+# is only visible to whoever reads both.
+
+
+TURKISH_NUMBERS = {
+    "bir": 1, "iki": 2, "uc": 3, "dort": 4, "bes": 5,
+    "alti": 6, "yedi": 7, "sekiz": 8, "dokuz": 9, "on": 10,
+}
+
+
+def gate_rpc_surface_consistent() -> str:
+    """`ALLOWED_METHODS`, `rpc-seti.json` and the system prompt agree."""
+    chain = read("crates/tools/src/chain.rs")
+    match = re.search(
+        r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", chain, re.DOTALL
+    )
+    if not match:
+        raise SystemExit("ALLOWED_METHODS could not be found in crates/tools/src/chain.rs")
+    declared_length = int(match.group(1))
+    allowed = re.findall(r'"([^"]+)"', match.group(2))
+    if len(allowed) != declared_length:
+        raise SystemExit(
+            f"ALLOWED_METHODS declares {declared_length} entries and holds {len(allowed)}"
+        )
+    listed = json.loads(read("training/rpc-seti.json"))["methods"]
+    if sorted(listed) != sorted(allowed):
+        raise SystemExit(
+            "training/rpc-seti.json and ALLOWED_METHODS disagree:\n"
+            f"  only in the JSON: {sorted(set(listed) - set(allowed))}\n"
+            f"  only in the array: {sorted(set(allowed) - set(listed))}"
+        )
+    # The note states the count in words, in two files.
+    prompt = read("training/system_prompt.md")
+    spoken = re.search(r"Zincir yüzeyi (\w+) sabit RPC", prompt)
+    if not spoken:
+        raise SystemExit("training/system_prompt.md no longer states the RPC count")
+    word = spoken.group(1).lower()
+    # The prompt is written with Turkish diacritics; the count word is not one of
+    # the words that carries one, but fold them anyway so a rewrite cannot break
+    # the match for a reason unrelated to the count.
+    folded = word.replace("\u00fc", "u").replace("\u00e7", "c").replace("\u0131", "i")
+    if folded not in TURKISH_NUMBERS:
+        raise SystemExit(f"the system prompt states the count as {word!r}, which is not a number")
+    if TURKISH_NUMBERS[folded] != len(allowed):
+        raise SystemExit(
+            f"training/system_prompt.md says {word} ({TURKISH_NUMBERS[folded]}) and the surface has {len(allowed)}"
+        )
+    note = json.loads(read("training/rpc-seti.json"))["note"]
+    digits = re.findall(r"\b(\d+)\b", note)
+    if str(len(allowed)) not in digits:
+        raise SystemExit(
+            f"the rpc-seti.json note does not state the count {len(allowed)} anywhere"
+        )
+    return f"the {len(allowed)}-method surface is stated identically in all three places"
+
+
+def selftest_rpc_surface_consistent() -> None:
+    chain = 'pub const ALLOWED_METHODS: [&str; 2] = [\n    "a",\n    "b",\n];\n'
+    match = re.search(r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", chain, re.DOTALL)
+    assert match is not None, "the array pattern does not match its own fixture"
+    assert int(match.group(1)) == 2 and re.findall(r'"([^"]+)"', match.group(2)) == ["a", "b"]
+    # A length that disagrees with the contents has to be caught.
+    lying = 'pub const ALLOWED_METHODS: [&str; 3] = [\n    "a",\n    "b",\n];\n'
+    m2 = re.search(r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", lying, re.DOTALL)
+    assert int(m2.group(1)) != len(re.findall(r'"([^"]+)"', m2.group(2)))
+    # Turkish number words, with and without diacritics.
+    assert TURKISH_NUMBERS["sekiz"] == 8
+    assert TURKISH_NUMBERS["yedi"] == 7
+    assert "sekiz".replace("\u00fc", "u") in TURKISH_NUMBERS
+
+
+
+# --------------------------------------------------------------------------
+# gate: public API is used outside its own crate, on a shrinking list
+# --------------------------------------------------------------------------
+# A `pub` item nothing outside its crate reaches is either meant to be
+# `pub(crate)` or is code waiting for a caller. Both are worth knowing; neither
+# is worth arguing about, so it is measured and ratcheted.
+#
+# Deleting uncalled API is a judgement call about what the code is for - these
+# are the encoded form of rules the project decided on, not leftovers - so the
+# gate reports rather than removes, and fails only when the list grows.
+
+
+def _pub_items(path: Path) -> list[str]:
+    """Names declared `pub` at the top level of a file."""
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^pub (?:const |static |fn |struct |enum |trait |type )([A-Za-z0-9_]+)", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def _crate_of(path: Path) -> str:
+    parts = path.relative_to(ROOT).parts
+    return parts[1] if len(parts) > 1 and parts[0] == "crates" else parts[0]
+
+
+def _externally_used(name: str, own_crate: str, texts: dict[str, str]) -> bool:
+    pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])")
+    for crate, text in texts.items():
+        if crate == own_crate:
+            continue
+        if pattern.search(text):
+            return True
+    return False
+
+
+# The binary crate has nothing above it, so none of its items can be reached
+# from outside by construction. Counting them drowns the signal from the
+# libraries, which is what the gate is about.
+BINARY_CRATES = {"cli"}
+
+
+def gate_pub_api_is_used() -> str:
+    """Every `pub` item in a library crate is reached from outside it, or is listed."""
+    everything = sorted((ROOT / "crates").rglob("*.rs"))
+    # The binary is excluded from what is *reported* but kept in what is
+    # *searched*: it is the main consumer of the libraries, and dropping it from
+    # the corpus would make every item it calls look unused.
+    sources = [p for p in everything if _crate_of(p) not in BINARY_CRATES]
+    texts: dict[str, list[str]] = {}
+    for path in everything:
+        texts.setdefault(_crate_of(path), []).append(path.read_text(encoding="utf-8"))
+    joined = {crate: "\n".join(parts) for crate, parts in texts.items()}
+    unused: list[str] = []
+    for path in sources:
+        crate = _crate_of(path)
+        for name in _pub_items(path):
+            if not _externally_used(name, crate, joined):
+                unused.append(f"{crate}:{name}")
+    unused.sort()
+    baseline_path = ROOT / "gates/unused-pub-api.baseline"
+    baseline: set[str] = set()
+    if baseline_path.is_file():
+        baseline = {
+            line.strip()
+            for line in baseline_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    stale = sorted(baseline - set(unused))
+    if stale:
+        raise SystemExit(
+            "these entries are used now, so shrink the baseline:\n  "
+            + "\n  ".join(stale)
+            + "\n  remove them from gates/unused-pub-api.baseline"
+        )
+    regressed = sorted(set(unused) - baseline)
+    if regressed:
+        raise SystemExit(
+            "these public items are reached from nowhere outside their crate:\n  "
+            + "\n  ".join(regressed)
+        )
+    return f"{len(unused)} public items are crate-internal by use; the list has not grown"
+
+
+def selftest_pub_api_is_used() -> None:
+    sample = "pub fn used_elsewhere() {}\npub struct AlsoUsed;\nfn private() {}\n"
+    names = _pub_items_from_text(sample)
+    assert names == ["used_elsewhere", "AlsoUsed"], f"pub scanning broke: {names}"
+    # An item only its own crate mentions has to be caught.
+    texts = {"a": "x.used_elsewhere()", "b": "unrelated"}
+    assert _externally_used("used_elsewhere", "c", texts) is True
+    assert _externally_used("AlsoUsed", "c", texts) is False
+    # The same name inside its own crate does not count as external use.
+    assert _externally_used("used_elsewhere", "a", texts) is False
+
+
+def _pub_items_from_text(text: str) -> list[str]:
+    names: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^pub (?:const |static |fn |struct |enum |trait |type )([A-Za-z0-9_]+)", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -1629,6 +2504,16 @@ GATES_EXTRA = {
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
+    "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
+    "assert-arity": (gate_assert_arity, selftest_assert_arity),
+    "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),
+    "doc-links-resolve": (gate_doc_links_resolve, selftest_doc_links_resolve),
+    "no-bool-comparison": (gate_no_bool_comparison, selftest_no_bool_comparison),
+    "delimiters-balance": (gate_delimiters_balance, selftest_delimiters_balance),
+    "crates-are-reachable": (gate_crates_are_reachable, selftest_crates_are_reachable),
+    "crates-doc-is-measured": (gate_crates_doc_is_measured, selftest_crates_doc_is_measured),
+    "rpc-surface-consistent": (gate_rpc_surface_consistent, selftest_rpc_surface_consistent),
+    "pub-api-is-used": (gate_pub_api_is_used, selftest_pub_api_is_used),
 }
 
 
@@ -1652,12 +2537,23 @@ def main(argv: list[str]) -> int:
     if argv[0] == "--all":
         failures = 0
         for name, (run, selftest) in GATES.items():
-            selftest()
+            try:
+                selftest()
+            except Exception as err:  # noqa: BLE001 - reported, never raised
+                failures += 1
+                print(f"FAIL [{name}] its own self-test is broken: {err}")
+                continue
             try:
                 print(f"OK   [{name}] {run()}")
             except SystemExit as err:
                 failures += 1
                 print(f"FAIL [{name}] {err}")
+            except Exception as err:  # noqa: BLE001 - reported, never raised
+                # A gate that cannot run - a missing `cargo`, say - has to report
+                # a failure. Raising instead aborts every gate after it, so the
+                # run reports nothing about the ones that never got to run.
+                failures += 1
+                print(f"FAIL [{name}] could not run: {type(err).__name__}: {err}")
         print("ALL GATES PASSED" if not failures else f"{failures} gate(s) failed")
         return 1 if failures else 0
     name = argv[0]
@@ -1669,8 +2565,13 @@ def main(argv: list[str]) -> int:
         selftest()
         print(f"self-test OK [{name}]")
         return 0
-    print(f"OK   [{name}] {run()}")
-    return 0
+    try:
+        print(f"OK   [{name}] {run()}")
+    except SystemExit:
+        raise
+    except Exception as err:  # noqa: BLE001 - a gate that cannot run has to say so
+        print(f"FAIL [{name}] could not run: {type(err).__name__}: {err}")
+        return 1
 
 
 if __name__ == "__main__":
