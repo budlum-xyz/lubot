@@ -2146,12 +2146,23 @@ def main(argv: list[str]) -> int:
     if argv[0] == "--all":
         failures = 0
         for name, (run, selftest) in GATES.items():
-            selftest()
+            try:
+                selftest()
+            except Exception as err:  # noqa: BLE001 - reported, never raised
+                failures += 1
+                print(f"FAIL [{name}] its own self-test is broken: {err}")
+                continue
             try:
                 print(f"OK   [{name}] {run()}")
             except SystemExit as err:
                 failures += 1
                 print(f"FAIL [{name}] {err}")
+            except Exception as err:  # noqa: BLE001 - reported, never raised
+                # A gate that cannot run - a missing `cargo`, say - has to report
+                # a failure. Raising instead aborts every gate after it, so the
+                # run reports nothing about the ones that never got to run.
+                failures += 1
+                print(f"FAIL [{name}] could not run: {type(err).__name__}: {err}")
         print("ALL GATES PASSED" if not failures else f"{failures} gate(s) failed")
         return 1 if failures else 0
     name = argv[0]
@@ -2163,8 +2174,13 @@ def main(argv: list[str]) -> int:
         selftest()
         print(f"self-test OK [{name}]")
         return 0
-    print(f"OK   [{name}] {run()}")
-    return 0
+    try:
+        print(f"OK   [{name}] {run()}")
+    except SystemExit:
+        raise
+    except Exception as err:  # noqa: BLE001 - a gate that cannot run has to say so
+        print(f"FAIL [{name}] could not run: {type(err).__name__}: {err}")
+        return 1
 
 
 if __name__ == "__main__":
