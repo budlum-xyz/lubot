@@ -31,6 +31,7 @@ use std::collections::BTreeMap;
 use lubot_anlama::{Classifier, Evidence, Verdict};
 use lubot_esik::Quorum;
 use lubot_mimari::{Blueprint, WiringError};
+use lubot_olcek::{Controller, Decision, Load};
 use lubot_takip::{Phase, Tracker};
 
 /// Which layer each crate sits in. Lower is deeper; a crate may depend on its
@@ -248,7 +249,7 @@ fn numbers(value: &str) -> Result<Vec<u64>, String> {
 /// A message for the caller, which `main` prints to stderr.
 pub fn cmd_olcum(args: &[String]) -> Result<(), String> {
     let Some(sub) = args.first() else {
-        return Err("usage: lubot olcum <mimari|esik|takip|sinif> ...".to_string());
+        return Err("usage: lubot olcum <mimari|esik|takip|sinif|olcek> ...".to_string());
     };
     let rest = &args[1..];
     match sub.as_str() {
@@ -256,6 +257,7 @@ pub fn cmd_olcum(args: &[String]) -> Result<(), String> {
         "esik" => olcum_esik(rest),
         "takip" => olcum_takip(rest),
         "sinif" => olcum_sinif(rest),
+        "olcek" => olcum_olcek(rest),
         other => Err(format!("unknown olcum subcommand: {other}")),
     }
 }
@@ -430,6 +432,90 @@ fn olcum_sinif(args: &[String]) -> Result<(), String> {
     }
 }
 
+/// Runs a scaling policy over a load series and reports what it would do.
+///
+/// The point is not the decisions, it is the flap count. A policy that scales up
+/// and down repeatedly has thresholds that are wrong, and that is a fact about
+/// the policy rather than about the traffic - but it is only visible over a
+/// series, never from one sample.
+fn olcum_olcek(args: &[String]) -> Result<(), String> {
+    let up: f64 = option(args, "up")
+        .ok_or("olcum olcek needs --up")?
+        .parse()
+        .map_err(|_| "--up is not a number".to_string())?;
+    let down: f64 = option(args, "down")
+        .ok_or("olcum olcek needs --down")?
+        .parse()
+        .map_err(|_| "--down is not a number".to_string())?;
+    let cooldown: u32 = option(args, "cooldown")
+        .unwrap_or_else(|| "3".to_string())
+        .parse()
+        .map_err(|_| "--cooldown is not a number".to_string())?;
+    let min: u32 = option(args, "min")
+        .unwrap_or_else(|| "1".to_string())
+        .parse()
+        .map_err(|_| "--min is not a number".to_string())?;
+    let max: u32 = option(args, "max")
+        .unwrap_or_else(|| "10".to_string())
+        .parse()
+        .map_err(|_| "--max is not a number".to_string())?;
+    let step: f64 = option(args, "step")
+        .unwrap_or_else(|| "0.5".to_string())
+        .parse()
+        .map_err(|_| "--step is not a number".to_string())?;
+    let replicas: u32 = option(args, "replicas")
+        .unwrap_or_else(|| min.to_string())
+        .parse()
+        .map_err(|_| "--replicas is not a number".to_string())?;
+    let window: usize = option(args, "window")
+        .unwrap_or_else(|| "4".to_string())
+        .parse()
+        .map_err(|_| "--window is not a number".to_string())?;
+    // The policy is built first, so an oscillating policy is refused here rather
+    // than after a hundred decisions that all looked reasonable.
+    let policy = lubot_olcek::Policy::new(up, down, cooldown, min, max, step)
+        .map_err(|err| err.to_string())?;
+    let mut controller = Controller::new(policy, replicas).map_err(|err| err.to_string())?;
+    let mut load = Load::new(window);
+    let series = option(args, "load").unwrap_or_default();
+    let mut interval = 0usize;
+    for sample in series.split(',') {
+        if sample.trim().is_empty() {
+            continue;
+        }
+        let value: f64 = sample
+            .trim()
+            .parse()
+            .map_err(|_| format!("{sample:?} is not a number".to_string()))?;
+        load.record(value);
+        match controller.tick(&load) {
+            Decision::ScaleUp { from, to } => {
+                println!("{:>4} load {value:.2} -> scale up {from} to {to}", interval)
+            }
+            Decision::ScaleDown { from, to } => {
+                println!("{:>4} load {value:.2} -> scale down {from} to {to}", interval)
+            }
+            Decision::Hold { reason } => {
+                println!("{:>4} load {value:.2} -> hold ({}), {} replicas", interval, reason, controller.replicas)
+            }
+        }
+        interval = interval.saturating_add(1);
+    }
+    println!(
+        "final {} replicas, {} direction reversal(s) over {} intervals",
+        controller.replicas,
+        controller.flaps,
+        interval
+    );
+    if controller.flaps > 0 {
+        return Err(format!(
+            "the policy reversed direction {} time(s); its thresholds are too close together for this traffic",
+            controller.flaps
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,6 +648,42 @@ lubot-answer = { path = "../answer" }
         tracker.add("b").expect("add");
         tracker.add_dependency("a", "b").expect("edge");
         assert!(tracker.add_dependency("b", "a").is_err());
+    }
+
+    #[test]
+    fn an_oscillating_policy_is_refused_when_it_is_built() {
+        // Refused before any decision is taken, rather than after a hundred
+        // decisions that each looked reasonable.
+        assert!(lubot_olcek::Policy::new(0.7, 0.7, 3, 1, 10, 0.5).is_err());
+        assert!(lubot_olcek::Policy::new(0.4, 0.8, 3, 1, 10, 0.5).is_err());
+        assert!(lubot_olcek::Policy::new(0.8, 0.4, 3, 1, 10, 0.5).is_ok());
+    }
+
+    #[test]
+    fn a_steady_load_produces_no_reversals() {
+        let policy = lubot_olcek::Policy::new(0.8, 0.4, 3, 1, 10, 0.5).expect("policy");
+        let mut controller = Controller::new(policy, 4).expect("controller");
+        let mut load = Load::new(4);
+        for _ in 0..20 {
+            load.record(0.95);
+            controller.tick(&load);
+        }
+        assert_eq!(controller.flaps, 0, "a steady load made the controller oscillate");
+        assert!(controller.replicas > 4, "a steady high load did not scale up");
+    }
+
+    #[test]
+    fn alternating_load_produces_reversals_that_are_counted() {
+        // The number that says the thresholds are wrong. It is not visible from
+        // any single decision.
+        let policy = lubot_olcek::Policy::new(0.8, 0.4, 1, 1, 10, 0.5).expect("policy");
+        let mut controller = Controller::new(policy, 4).expect("controller");
+        let mut load = Load::new(1);
+        for i in 0..20 {
+            load.record(if i % 2 == 0 { 1.0 } else { 0.0 });
+            controller.tick(&load);
+        }
+        assert!(controller.flaps > 0, "alternating load was not detected as flapping");
     }
 
     #[test]
