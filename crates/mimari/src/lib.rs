@@ -255,7 +255,12 @@ impl Blueprint {
         let mut remaining: BTreeMap<&str, BTreeSet<&str>> = self
             .components
             .iter()
-            .map(|(name, c)| (name.as_str(), c.dependencies.iter().map(String::as_str).collect()))
+            .map(|(name, c)| {
+                (
+                    name.as_str(),
+                    c.dependencies.iter().map(String::as_str).collect(),
+                )
+            })
             .collect();
         let mut order = Vec::with_capacity(remaining.len());
         while !remaining.is_empty() {
@@ -292,8 +297,11 @@ impl Blueprint {
         }
         // Verify rather than trust: an order that starts a component before what
         // it depends on is worse than no order at all.
-        let position: BTreeMap<&str, usize> =
-            order.iter().enumerate().map(|(i, n)| (n.as_str(), i)).collect();
+        let position: BTreeMap<&str, usize> = order
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.as_str(), i))
+            .collect();
         for (name, component) in &self.components {
             for dependency in &component.dependencies {
                 let after = position.get(name.as_str()).copied().unwrap_or(0);
@@ -333,9 +341,9 @@ impl Blueprint {
             .values()
             .filter(|c| {
                 c.started
-                    && c.dependencies.iter().all(|d| {
-                        self.components.get(d).is_some_and(|dep| dep.started)
-                    })
+                    && c.dependencies
+                        .iter()
+                        .all(|d| self.components.get(d).is_some_and(|dep| dep.started))
             })
             .map(|c| c.name.as_str())
             .collect()
@@ -457,11 +465,14 @@ mod tests {
         let mut b = layered();
         b.connect("api", "domain").expect("edge");
         b.connect("domain", "storage").expect("edge");
-        assert_eq!(b.start_order(), Ok(vec![
-            "storage".to_string(),
-            "domain".to_string(),
-            "api".to_string(),
-        ]));
+        assert_eq!(
+            b.start_order(),
+            Ok(vec![
+                "storage".to_string(),
+                "domain".to_string(),
+                "api".to_string(),
+            ])
+        );
     }
 
     #[test]
@@ -493,8 +504,11 @@ mod tests {
         b.connect("b", "a").expect("edge");
         let order = b.start_order().expect("order");
         assert_eq!(order, vec!["a", "b", "c", "d"]);
-        let position: BTreeMap<&str, usize> =
-            order.iter().enumerate().map(|(i, n)| (n.as_str(), i)).collect();
+        let position: BTreeMap<&str, usize> = order
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.as_str(), i))
+            .collect();
         for (name, component) in [("d", "c"), ("c", "b"), ("b", "a")] {
             assert!(position[component] < position[name]);
         }
@@ -505,7 +519,10 @@ mod tests {
         // "The system is up" is not "the graph is populated".
         let mut b = layered();
         b.connect("domain", "storage").expect("edge");
-        assert!(b.ready().is_empty(), "nothing was started but ready was not empty");
+        assert!(
+            b.ready().is_empty(),
+            "nothing was started but ready was not empty"
+        );
         b.mark_started("storage").expect("start storage");
         assert_eq!(b.ready(), vec!["storage"]);
         assert!(

@@ -116,7 +116,11 @@ pub enum CapabilityError {
     Revoked { name: String, reason: String },
     /// The self-test has not passed, so the capability is a claim rather than a
     /// capability.
-    Unverified { name: String, version: u32, state: State },
+    Unverified {
+        name: String,
+        version: u32,
+        state: State,
+    },
 }
 
 impl std::fmt::Display for CapabilityError {
@@ -299,7 +303,12 @@ impl Registry {
     /// # Errors
     ///
     /// [`CapabilityError::Unknown`] or [`CapabilityError::WrongVersion`].
-    pub fn revoke(&mut self, name: &str, version: u32, reason: &str) -> Result<(), CapabilityError> {
+    pub fn revoke(
+        &mut self,
+        name: &str,
+        version: u32,
+        reason: &str,
+    ) -> Result<(), CapabilityError> {
         let Some(capability) = self.entries.get_mut(&(name.to_string(), version)) else {
             return Err(self.version_error(name, version));
         };
@@ -425,7 +434,8 @@ mod tests {
 
     fn registry_with_passing() -> Registry {
         let mut r = Registry::new();
-        r.register(declare("summarise", 1, passing)).expect("register");
+        r.register(declare("summarise", 1, passing))
+            .expect("register");
         r
     }
 
@@ -435,7 +445,10 @@ mod tests {
         // registry that hands out claims routes work into a caller's transaction
         // and fails there.
         let mut r = registry_with_passing();
-        assert_eq!(r.get("summarise", 1).map(|c| c.state), Some(State::Declared));
+        assert_eq!(
+            r.get("summarise", 1).map(|c| c.state),
+            Some(State::Declared)
+        );
         assert_eq!(
             r.acquire("summarise", 1).map(|_| ()),
             Err(CapabilityError::Unverified {
@@ -462,10 +475,14 @@ mod tests {
         // An unverified capability is not a broken one. Calling it broken would
         // assert something about its behaviour that was never observed.
         let mut r = Registry::new();
-        r.register(declare("summarise", 1, failing)).expect("register");
+        r.register(declare("summarise", 1, failing))
+            .expect("register");
         let result = r.verify("summarise", 1).expect("verify");
         assert!(matches!(result, SelfTest::Failed { .. }));
-        assert_eq!(r.get("summarise", 1).map(|c| c.state), Some(State::Declared));
+        assert_eq!(
+            r.get("summarise", 1).map(|c| c.state),
+            Some(State::Declared)
+        );
         assert!(r.acquire("summarise", 1).is_err());
     }
 
@@ -478,7 +495,10 @@ mod tests {
             r.verify("summarise", 1),
             Ok(SelfTest::CouldNotRun { .. })
         ));
-        assert_eq!(r.get("summarise", 1).map(|c| c.state), Some(State::Declared));
+        assert_eq!(
+            r.get("summarise", 1).map(|c| c.state),
+            Some(State::Declared)
+        );
     }
 
     #[test]
@@ -486,7 +506,8 @@ mod tests {
         // A caller written against version 2 does not want version 1's behaviour
         // under version 2's name.
         let mut r = registry_with_passing();
-        r.register(declare("summarise", 2, passing)).expect("register");
+        r.register(declare("summarise", 2, passing))
+            .expect("register");
         r.verify("summarise", 1).expect("verify 1");
         r.verify("summarise", 2).expect("verify 2");
         assert_eq!(
@@ -503,7 +524,8 @@ mod tests {
     #[test]
     fn two_versions_of_one_capability_coexist() {
         let mut r = registry_with_passing();
-        r.register(declare("summarise", 2, passing)).expect("register");
+        r.register(declare("summarise", 2, passing))
+            .expect("register");
         r.verify("summarise", 1).expect("verify");
         // Version 2 is still declared, so only version 1 is acquirable. This is
         // what makes the exact-version rule meaningful.
@@ -521,7 +543,10 @@ mod tests {
                 name: "translate".to_string()
             })
         );
-        assert_eq!(r.refused_wrong_version, 0, "an unknown name is not a version error");
+        assert_eq!(
+            r.refused_wrong_version, 0,
+            "an unknown name is not a version error"
+        );
     }
 
     #[test]

@@ -62,6 +62,7 @@ pub enum QuorumError {
     /// `count` measures weight and an unweighted quorum's weight *is* its head
     /// count. Two variants would mean two places for a caller to match the wrong
     /// one.
+    Insufficient { reached: u64, required: u64 },
 }
 
 impl std::fmt::Display for QuorumError {

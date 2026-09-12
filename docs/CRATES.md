@@ -35,23 +35,23 @@ No dependencies inside the workspace. Each one holds a single rule.
 | crate | lines | tests | the rule it holds |
 |---|---|---|---|
 | `muhur` | 348 | 10 | A seal is not a signature - it has no key. It is a chain, not a concatenation, so it can name *where* it broke rather than merely that something did. |
-| `esik` | 505 | 13 | A quorum over a set that includes the requester is not a quorum. `n >= 3f + 1`. A threshold that would drop below the Byzantine floor is refused, so `5 of 7` cannot become `5 of 40`. |
-| `izolasyon` | 395 | 12 | A session opens onto an empty workspace, with a **fresh** identity checked against a register of issued ones. Results leave as copies. Documented limit: a checkable contract cannot observe what happens between open and close. |
-| `kanit` | 507 | 13 | A proof is a fact *about a state root*, so a valid proof against a stale state is refused. There is **no path from Verified back to Pending** - not guarded, absent. Expiry is not failure: a pending record that goes stale is rejected as never-verified, never marked expired. |
-| `kuyruk` | 554 | 15 | A full queue **refuses rather than evicting**, because which item to lose belongs to the submitter. Aging stops starvation. `take()` removes on take, so an in-flight item cannot go to a second worker. |
-| `erisim` | 484 | 16 | Capabilities, not access lists: bearer-held, holder identity not checked. Attenuation only - widening is refused on scope, actions and expiry as separate axes. Expiry is checked at use, not at issue. This is **binding, not unforgeability**; there is no key here and the module says so. |
-| `takip` | 609 | 15 | Progress is monotonic. A completed task that goes back to pending has lost a fact, and the refusal distinguishes that from a deliberate, recorded re-open. A dependency cycle is refused when the edge is written, not when the plan stalls. |
-| `olcek` | 635 | 18 | Scale-up and scale-down thresholds must differ, or the controller alternates forever. No action inside the cooldown. Decisions are driven by *sustained* load, so one spike does not buy capacity. Reversals are counted, because flapping is a fact about the policy. |
-| `yetenek` | 617 | 14 | Declared is not working. A capability only becomes usable after its own self-test passes. Versions are exact - a caller asking for v2 never silently gets v1. Degraded is a state reported to the caller, not an error hidden from it. |
-| `mimari` | 599 | 17 | A component may depend on its own layer or below, never above, enforced where the upward call is written. Start order is a topological sort that is then **verified against every edge**. Shutdown is the exact reverse, not a second computation. |
+| `esik` | 506 | 13 | A quorum over a set that includes the requester is not a quorum. `n >= 3f + 1`. A threshold that would drop below the Byzantine floor is refused, so `5 of 7` cannot become `5 of 40`. |
+| `izolasyon` | 424 | 12 | A session opens onto an empty workspace, with a **fresh** identity checked against a register of issued ones. Results leave as copies. Documented limit: a checkable contract cannot observe what happens between open and close. |
+| `kanit` | 563 | 13 | A proof is a fact *about a state root*, so a valid proof against a stale state is refused. There is **no path from Verified back to Pending** - not guarded, absent. Expiry is not failure: a pending record that goes stale is rejected as never-verified, never marked expired. |
+| `kuyruk` | 613 | 15 | A full queue **refuses rather than evicting**, because which item to lose belongs to the submitter. Aging stops starvation. `take()` removes on take, so an in-flight item cannot go to a second worker. |
+| `erisim` | 527 | 16 | Capabilities, not access lists: bearer-held, holder identity not checked. Attenuation only - widening is refused on scope, actions and expiry as separate axes. Expiry is checked at use, not at issue. This is **binding, not unforgeability**; there is no key here and the module says so. |
+| `takip` | 627 | 15 | Progress is monotonic. A completed task that goes back to pending has lost a fact, and the refusal distinguishes that from a deliberate, recorded re-open. A dependency cycle is refused when the edge is written, not when the plan stalls. |
+| `olcek` | 644 | 18 | Scale-up and scale-down thresholds must differ, or the controller alternates forever. No action inside the cooldown. Decisions are driven by *sustained* load, so one spike does not buy capacity. Reversals are counted, because flapping is a fact about the policy. |
+| `yetenek` | 642 | 14 | Declared is not working. A capability only becomes usable after its own self-test passes. Versions are exact - a caller asking for v2 never silently gets v1. Degraded is a state reported to the caller, not an error hidden from it. |
+| `mimari` | 616 | 17 | A component may depend on its own layer or below, never above, enforced where the upward call is written. Start order is a topological sort that is then **verified against every edge**. Shutdown is the exact reverse, not a second computation. |
 
 ## Built on the primitives
 
 | crate | lines | tests | depends on | what it adds |
 |---|---|---|---|---|
-| `denetim` | 550 | 14 | `muhur` | An append-only audit trail. There is **no update method and no delete method**; corrections are appended entries. The chain detects edits and names the first index, but **cannot detect truncation** - `head()` has to be anchored elsewhere, and `verify_against_anchor` is what catches it. |
-| `usl` | 684 | 14 | `muhur` | A read media verified by recomputation. `from_media` re-parses every line, verifies the seal, **and compares the rebuilt file byte for byte** - the check most implementations omit. Amounts are minor units; `1.5`, `007`, a swapped line order and a duplicate payout are all refused. |
-| `anlama` | 664 | 16 | `read` | Classification that can decline. Abstention distinguishes *no support* from *contradictory* from *below the floor*, because they need different responses. Ties are not resolved by category spelling. Calibration reports the gap between confidence claimed and accuracy observed, which is the number that says whether the confidence is usable. |
+| `denetim` | 582 | 14 | `muhur` | An append-only audit trail. There is **no update method and no delete method**; corrections are appended entries. The chain detects edits and names the first index, but **cannot detect truncation** - `head()` has to be anchored elsewhere, and `verify_against_anchor` is what catches it. |
+| `usl` | 701 | 14 | `muhur` | A read media verified by recomputation. `from_media` re-parses every line, verifies the seal, **and compares the rebuilt file byte for byte** - the check most implementations omit. Amounts are minor units; `1.5`, `007`, a swapped line order and a duplicate payout are all refused. |
+| `anlama` | 688 | 16 | `read` | Classification that can decline. Abstention distinguishes *no support* from *contradictory* from *below the floor*, because they need different responses. Ties are not resolved by category spelling. Calibration reports the gap between confidence claimed and accuracy observed, which is the number that says whether the confidence is usable. |
 
 ## The crates that were here first
 
@@ -73,7 +73,7 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 6941 | 98 | The runnable binary, and the only crate that reaches everything else. |
+| `cli` | 7009 | 98 | The runnable binary, and the only crate that reaches everything else. |
 
 Four modules carry the wiring:
 

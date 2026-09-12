@@ -49,7 +49,11 @@ pub enum AuditError {
     /// because a log that renumbers has already been edited.
     SequenceGap { expected: u64, got: u64 },
     /// The entry at `index` does not match its recorded link.
-    EntryTampered { index: usize, expected: String, got: String },
+    EntryTampered {
+        index: usize,
+        expected: String,
+        got: String,
+    },
     /// The log is shorter than the anchored head says it should be. This is the
     /// truncation the chain itself cannot see.
     Truncated { anchored_length: usize, got: usize },
@@ -303,7 +307,11 @@ impl Trail {
     ///
     /// [`AuditError::Truncated`], [`AuditError::HeadMismatch`], or anything
     /// [`Self::verify`] returns.
-    pub fn verify_against_anchor(&self, anchored_head: &str, anchored_length: usize) -> Result<(), AuditError> {
+    pub fn verify_against_anchor(
+        &self,
+        anchored_head: &str,
+        anchored_length: usize,
+    ) -> Result<(), AuditError> {
         if self.entries.len() < anchored_length {
             return Err(AuditError::Truncated {
                 anchored_length,
@@ -363,9 +371,12 @@ mod tests {
 
     fn trail_with_three() -> Trail {
         let mut t = Trail::new();
-        t.append("alice", "batch-opened", "scheduled payout", 10, "batch-1").expect("1");
-        t.append("bob", "batch-signed", "quorum reached", 11, "batch-1").expect("2");
-        t.append("alice", "batch-closed", "window elapsed", 12, "batch-1").expect("3");
+        t.append("alice", "batch-opened", "scheduled payout", 10, "batch-1")
+            .expect("1");
+        t.append("bob", "batch-signed", "quorum reached", 11, "batch-1")
+            .expect("2");
+        t.append("alice", "batch-closed", "window elapsed", 12, "batch-1")
+            .expect("3");
         t
     }
 
@@ -425,7 +436,10 @@ mod tests {
         let anchor_len = t.len();
         t.entries.pop();
         t.links.pop();
-        assert!(t.verify().is_ok(), "the chain detected a truncation it cannot detect");
+        assert!(
+            t.verify().is_ok(),
+            "the chain detected a truncation it cannot detect"
+        );
         // The anchor is what catches it.
         assert_eq!(
             t.verify_against_anchor(&anchor_head, anchor_len),
@@ -442,10 +456,19 @@ mod tests {
         let anchor_head = t.head();
         let anchor_len = t.len();
         let mut other = Trail::new();
-        other.append("alice", "batch-opened", "scheduled payout", 10, "batch-1").expect("1");
-        other.append("mallory", "batch-signed", "forged", 11, "batch-1").expect("2");
-        other.append("alice", "batch-closed", "window elapsed", 12, "batch-1").expect("3");
-        assert!(other.verify().is_ok(), "the rewritten chain is internally consistent");
+        other
+            .append("alice", "batch-opened", "scheduled payout", 10, "batch-1")
+            .expect("1");
+        other
+            .append("mallory", "batch-signed", "forged", 11, "batch-1")
+            .expect("2");
+        other
+            .append("alice", "batch-closed", "window elapsed", 12, "batch-1")
+            .expect("3");
+        assert!(
+            other.verify().is_ok(),
+            "the rewritten chain is internally consistent"
+        );
         assert!(matches!(
             other.verify_against_anchor(&anchor_head, anchor_len),
             Err(AuditError::HeadMismatch { .. })
@@ -505,8 +528,14 @@ mod tests {
         // audited entry. The original stays.
         let mut t = trail_with_three();
         let before = t.len();
-        t.append("alice", "entry-corrected", "the earlier reason was wrong", 13, "batch-1")
-            .expect("correction");
+        t.append(
+            "alice",
+            "entry-corrected",
+            "the earlier reason was wrong",
+            13,
+            "batch-1",
+        )
+        .expect("correction");
         assert_eq!(t.len(), before + 1);
         assert_eq!(t.get(1).map(|e| e.reason.as_str()), Some("quorum reached"));
         assert!(t.verify().is_ok());
@@ -525,7 +554,10 @@ mod tests {
             at_height: 10,
             subject: "batch-1".to_string(),
         };
-        assert_eq!(e.canonical(), "7\talice\tbatch-opened\tscheduled\t10\tbatch-1");
+        assert_eq!(
+            e.canonical(),
+            "7\talice\tbatch-opened\tscheduled\t10\tbatch-1"
+        );
         // Two entries differing in any field differ canonically.
         let mut other = e.clone();
         other.at_height = 11;
