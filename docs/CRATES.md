@@ -53,9 +53,27 @@ No dependencies inside the workspace. Each one holds a single rule.
 | `usl` | 684 | 14 | `muhur` | A read media verified by recomputation. `from_media` re-parses every line, verifies the seal, **and compares the rebuilt file byte for byte** - the check most implementations omit. Amounts are minor units; `1.5`, `007`, a swapped line order and a duplicate payout are all refused. |
 | `anlama` | 664 | 16 | `read` | Classification that can decline. Abstention distinguishes *no support* from *contradictory* from *below the floor*, because they need different responses. Ties are not resolved by category spelling. Calibration reports the gap between confidence claimed and accuracy observed, which is the number that says whether the confidence is usable. |
 
+## The crates that were here first
+
+These predate this work and are listed so the table covers the whole workspace
+rather than only the part that was rewritten. The rule column is what reading
+each one shows it to hold, not a claim about how it was written.
+
+| crate | lines | tests | what it holds |
+|---|---|---|---|
+| `read` | 848 | 28 | The three source channels, SHA-256 provenance, the corpus surface, magic-byte file kind with route refusals before reading. |
+| `index` | 552 | 18 | Passages with line ranges, secret masking on the write path, normalized BM25 with a coverage floor. |
+| `grant` | 719 | 19 | View grants, revocation, expiry, the audit log. Permission is settled before the index is searched, so a refused item is never scored. |
+| `tools` | 1729 | 47 | The exact-rational calculator, the command router, deterministic command-risk shapes. |
+| `sikistir` | 672 | 11 | Context compression: typed routing, pins that survive byte for byte, a CCR store with digest re-verification, an append-only savings ledger. |
+| `doc` | 106 | 4 | Rich-document reading: PDF text extraction, paragraph-aware chunking. |
+| `answer` | 527 | 14 | The assembled reading loop with a schema-validated exit. |
+
 ## The binary
 
-`crates/cli` - 6818 lines, 95 tests, the only crate that reaches everything.
+| crate | lines | tests | what it holds |
+|---|---|---|---|
+| `cli` | 6941 | 98 | The runnable binary, and the only crate that reaches everything else. |
 
 Four modules carry the wiring:
 

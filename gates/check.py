@@ -2222,6 +2222,10 @@ def gate_crates_doc_is_measured() -> str:
             r"\|\s*`" + re.escape(name) + r"`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc
         )
         if not row:
+            # Prose figures are not checked, so a crate documented only in prose
+            # is a crate whose figures nobody verifies. Requiring the row is what
+            # makes the table the single place a figure can be stated.
+            wrong.append(f"{name}: documented without a `| crate | lines | tests |` row")
             continue
         claimed_lines, claimed_tests = int(row.group(1)), int(row.group(2))
         if claimed_lines != lines:
@@ -2241,6 +2245,10 @@ def selftest_crates_doc_is_measured() -> None:
     # The gate has to be able to see a crate that is not mentioned.
     documented = set(re.findall(r"`([a-z0-9_]+)`", doc))
     assert set(["read", "muhur", "ghost"]) - documented == {"ghost"}
+    # A crate mentioned in prose but absent from the tables must be caught.
+    prose_only = set(re.findall(r"`([a-z0-9_]+)`", "and `cli` has 6818 lines"))
+    assert prose_only == {"cli"}
+    assert re.search(r"\|\s*`cli`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc) is None
 
 
 
