@@ -174,6 +174,61 @@ impl Trail {
         Ok(sequence)
     }
 
+    /// Appends an entry whose sequence came from somewhere else.
+    ///
+    /// This is the only path that can produce [`AuditError::SequenceGap`], and
+    /// the reason it is separate: [`Self::append`] assigns the number, so a
+    /// caller of that method cannot get it wrong. A trail rebuilt from storage,
+    /// or replayed from a peer, carries numbers that were chosen elsewhere, and
+    /// those are exactly the numbers worth checking.
+    ///
+    /// Refusing rather than renumbering is the point. A rebuilt trail that
+    /// silently renumbers would report itself contiguous when an entry was
+    /// removed from it, which is the one thing an audit log must not do.
+    ///
+    /// # Errors
+    ///
+    /// [`AuditError::NoActor`], [`AuditError::NoReason`], or
+    /// [`AuditError::SequenceGap`] when `sequence` is not the next number.
+    pub fn append_imported(
+        &mut self,
+        sequence: u64,
+        actor: &str,
+        kind: &'static str,
+        reason: &str,
+        at_height: u64,
+        subject: &str,
+    ) -> Result<u64, AuditError> {
+        if actor.is_empty() {
+            return Err(AuditError::NoActor);
+        }
+        if reason.is_empty() {
+            return Err(AuditError::NoReason);
+        }
+        let expected = self.entries.len() as u64;
+        if sequence != expected {
+            return Err(AuditError::SequenceGap {
+                expected,
+                got: sequence,
+            });
+        }
+        // Past the sequence check the entry is identical to one the trail
+        // assigned, so the chaining is shared rather than duplicated.
+        let entry = Entry {
+            sequence,
+            actor: actor.to_string(),
+            kind,
+            reason: reason.to_string(),
+            at_height,
+            subject: subject.to_string(),
+        };
+        let previous = self.links.last().cloned().unwrap_or_else(Sealer::genesis);
+        let link = Sealer::link(&previous, &entry.canonical());
+        self.entries.push(entry);
+        self.links.push(link.clone());
+        Ok(sequence)
+    }
+
     /// The current head: the link after the last entry.
     ///
     /// Publish this somewhere the person who would truncate the log cannot also
@@ -404,6 +459,28 @@ mod tests {
         t.entries.pop();
         t.links.pop();
         assert!(t.verify().is_ok());
+    }
+
+    #[test]
+    fn an_imported_sequence_out_of_order_is_refused_not_renumbered() {
+        // A rebuilt trail that silently renumbers reports itself contiguous when
+        // an entry was removed from it. That is the one thing an audit log must
+        // not do.
+        let mut t = Trail::new();
+        t.append("alice", "start", "first", 1, "s").expect("append");
+        assert_eq!(
+            t.append_imported(5, "alice", "resume", "from storage", 2, "s"),
+            Err(AuditError::SequenceGap {
+                expected: 1,
+                got: 5
+            })
+        );
+        assert_eq!(t.len(), 1, "a refused import changed the trail");
+        assert_eq!(
+            t.append_imported(1, "alice", "resume", "from storage", 2, "s"),
+            Ok(1)
+        );
+        assert!(t.gaps().is_empty());
     }
 
     #[test]

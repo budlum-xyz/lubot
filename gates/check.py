@@ -1597,6 +1597,494 @@ def selftest_eval_runs_are_mechanical() -> None:
     assert _eval_run_finding(unmeasured) is not None, "a run without duration accounting passed"
 
 
+# --------------------------------------------------------------------------
+# gate: every crate directory is a workspace member
+# --------------------------------------------------------------------------
+# A crate written but not registered compiles nowhere and is invisible to CI.
+# That is silent, so it is gated.
+
+
+def _member_names(manifest: str) -> set[str]:
+    body = manifest.split("[workspace]", 1)[1]
+    body = body.split("\n[", 1)[0]
+    return set(re.findall(r'"([^"]+)"', body.split("members", 1)[1].split("]", 1)[0]))
+
+
+def _crate_dirs() -> list[str]:
+    return sorted(
+        p.parent.name
+        for p in (ROOT / "crates").glob("*/Cargo.toml")
+    )
+
+
+def gate_every_crate_is_a_member() -> str:
+    """Every directory under `crates/` holding a Cargo.toml is a workspace member."""
+    members = _member_names(read("Cargo.toml"))
+    orphaned = [c for c in _crate_dirs() if f"crates/{c}" not in members]
+    if orphaned:
+        raise SystemExit(
+            "these crates compile nowhere, so CI has never seen them:\n  "
+            + "\n  ".join(orphaned)
+        )
+    return f"all {len(_crate_dirs())} crate directories are workspace members"
+
+
+def selftest_every_crate_is_a_member() -> None:
+    members = _member_names('[workspace]\nmembers = ["crates/read"]\n\n[profile]\nx = 1\n')
+    assert members == {"crates/read"}, f"member parsing broke: {members}"
+    # The gate must be able to see an orphan.
+    orphans = [c for c in ["read", "ghost"] if f"crates/{c}" not in members]
+    assert orphans == ["ghost"], f"an orphan was not detected: {orphans}"
+
+
+# --------------------------------------------------------------------------
+# gate: assert macros carry the arguments they take
+# --------------------------------------------------------------------------
+# `assert_eq!` takes two values, or two values and a format message. Three
+# values is a compile error that reads like a working assertion until it is
+# built, and nothing before the build notices.
+
+
+def _split_top_level(body: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    in_str = False
+    escaped = False
+    for ch in body:
+        if in_str:
+            current.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            current.append(ch)
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current)
+    if tail.strip():
+        parts.append(tail)
+    return parts
+
+
+def _macro_call_args(text: str, macro: str) -> list[tuple[int, list[str]]]:
+    """Returns (line number, argument list) for every `macro!(...)` call."""
+    found: list[tuple[int, list[str]]] = []
+    needle = macro + "!"
+    start = 0
+    while True:
+        at = text.find(needle, start)
+        if at < 0:
+            return found
+        open_at = text.find("(", at)
+        if open_at < 0:
+            return found
+        depth = 0
+        in_str = False
+        escaped = False
+        end = open_at
+        while end < len(text):
+            ch = text[end]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+            elif ch == '"':
+                in_str = True
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+                if depth == 0:
+                    break
+            end += 1
+        found.append((text.count("\n", 0, at) + 1, _split_top_level(text[open_at + 1 : end])))
+        start = end + 1
+
+
+def _strip_tests_and_comments(text: str) -> str:
+    """Keeps test bodies (the assertions live there) but drops comment lines."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("//")
+    )
+
+
+def gate_assert_arity() -> str:
+    """`assert_eq!` carries two values, then optionally a format string.
+
+    More than three arguments is legal only when the third is the format string
+    and the rest are its arguments, so that is what is checked. Three values
+    with no format string does not compile, and it reads like a working
+    assertion until it is built.
+    """
+    offenders: list[str] = []
+    for path in rust_sources():
+        text = _strip_tests_and_comments(path.read_text(encoding="utf-8"))
+        for macro in ("assert_eq", "assert_ne", "debug_assert_eq"):
+            for line, args in _macro_call_args(text, macro):
+                if len(args) < 2:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{line} {macro}! has {len(args)} argument(s)"
+                    )
+                    continue
+                if len(args) > 2 and not args[2].lstrip().startswith('"'):
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{line} {macro}! has a third argument "
+                        f"that is not a format string: {args[2].strip()[:60]}"
+                    )
+    if offenders:
+        raise SystemExit("an assertion that will not compile:\n  " + "\n  ".join(offenders))
+    checked = sum(
+        len(_macro_call_args(_strip_tests_and_comments(p.read_text(encoding="utf-8")), "assert_eq"))
+        for p in rust_sources()
+    )
+    return f"{checked} assert_eq! calls carry a valid argument count"
+
+
+def selftest_assert_arity() -> None:
+    assert _split_top_level("a, b") == ["a", " b"]
+    assert _split_top_level("f(1, 2), g(3)") == ["f(1, 2)", " g(3)"]
+    assert _split_top_level('"a, b", c') == ['"a, b"', " c"]
+    # Three values and no format string: the shape that does not compile.
+    bad = _macro_call_args('assert_eq!(a, b, c)', "assert_eq")[0][1]
+    assert len(bad) == 3, f"the canary was not parsed as three arguments: {bad}"
+    assert not bad[2].lstrip().startswith('"'), f"the canary stopped being bad: {bad}"
+    # A format string with commas inside it must stay one argument.
+    ok = _macro_call_args('assert_eq!(a, b, "x {} {}", y, z)', "assert_eq")[0][1]
+    assert len(ok) == 5, f"a message with commas was split: {ok}"
+    assert ok[2].strip().startswith('"'), "the format string was not recognised"
+    # Two values is the normal case.
+    assert len(_macro_call_args('assert_eq!(a, b)', "assert_eq")[0][1]) == 2
+
+
+# --------------------------------------------------------------------------
+# gate: no error variant that nothing produces
+# --------------------------------------------------------------------------
+# A variant declared, displayed and asserted but never constructed is a variant
+# no caller can ever handle. It reads as coverage and is not.
+
+
+def _enum_variants(text: str, enum_name: str) -> list[str]:
+    at = text.find(f"enum {enum_name}")
+    if at < 0:
+        return []
+    open_at = text.find("{", at)
+    depth = 0
+    end = open_at
+    while end < len(text):
+        if text[end] == "{":
+            depth += 1
+        elif text[end] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        end += 1
+    body = text[open_at + 1 : end]
+    body = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("//"))
+    names: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^([A-Z][A-Za-z0-9_]*)\s*(\{|,|$)", stripped)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def _is_construction(text: str, enum_name: str, variant: str) -> bool:
+    """True when the variant is built somewhere, not merely named.
+
+    Match arms are excluded: `Self::Variant { .. } => ...` mentions the variant
+    without producing it, which is exactly the shape that made a dead variant
+    look covered.
+    """
+    pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(enum_name) + r"::" + re.escape(variant) + r"(?![A-Za-z0-9_])")
+    for line in text.splitlines():
+        if line.lstrip().startswith("//") or line.lstrip().startswith("///"):
+            continue
+        if "=>" in line:
+            continue
+        if pattern.search(line):
+            return True
+    return False
+
+
+def gate_no_dead_error_variant() -> str:
+    """Every variant of every `*Error` enum is constructed by some code path."""
+    offenders: list[str] = []
+    checked = 0
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        for enum_name in sorted(set(re.findall(r"pub enum ([A-Za-z0-9_]*Error)\b", text))):
+            for variant in _enum_variants(text, enum_name):
+                checked += 1
+                if not _is_construction(text, enum_name, variant):
+                    offenders.append(f"{path.relative_to(ROOT)} {enum_name}::{variant}")
+    if offenders:
+        raise SystemExit(
+            "these error variants are never produced, so no caller handles them:\n  "
+            + "\n  ".join(offenders)
+        )
+    return f"all {checked} error variants are constructed somewhere"
+
+
+def selftest_no_dead_error_variant() -> None:
+    sample = """
+pub enum DemoError {
+    /// documented
+    Live { reason: String },
+    Dead { reason: String },
+}
+
+impl std::fmt::Display for DemoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Live { .. } => write!(f, "live"),
+            Self::Dead { .. } => write!(f, "dead"),
+        }
+    }
+}
+
+fn build() -> Result<(), DemoError> {
+    Err(DemoError::Live { reason: "x".to_string() })
+}
+"""
+    variants = _enum_variants(sample, "DemoError")
+    assert variants == ["Live", "Dead"], f"variant parsing broke: {variants}"
+    assert _is_construction(sample, "DemoError", "Live"), "a constructed variant looked dead"
+    assert not _is_construction(sample, "DemoError", "Dead"), "a dead variant looked constructed"
+
+
+# --------------------------------------------------------------------------
+# gate: intra-doc links resolve
+# --------------------------------------------------------------------------
+# A link left behind by a deleted variant is a rustdoc warning, and a warning
+# that is not an error is a warning nobody reads.
+
+
+def _doc_links(line: str) -> list[str]:
+    """The intra-doc links on a doc-comment line.
+
+    Both `[Type]` and `[`Type::Variant`]` are links; rustdoc documents the
+    backticked form. A lowercase single segment is not: it is prose naming
+    something, and a TOML `[package]` heading is indistinguishable from a link
+    by shape alone.
+    """
+    found: list[str] = []
+    for backtick, path in re.findall(
+        r"\[(`?)([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z0-9_]+)*)\1\]", line
+    ):
+        del backtick
+        head = path.partition("::")[0]
+        if "::" not in path and not head[0].isupper() and head != "Self":
+            continue
+        found.append(path)
+    return found
+
+
+KNOWN_EXTERNAL_LINK_TARGETS = {
+    "Self", "Vec", "VecDeque", "BTreeMap", "BTreeSet", "HashMap", "HashSet",
+    "Option", "Result", "String", "str", "u8", "u16", "u32", "u64", "u128",
+    "i64", "usize", "f64", "bool", "Iterator", "Copy", "Eq", "Debug", "Clone",
+    "Default", "PartialEq", "Ord", "Display",
+}
+
+
+def gate_doc_links_resolve() -> str:
+    """Every `[Type::Thing]` doc link names something this file declares."""
+    offenders: list[str] = []
+    checked = 0
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        declared = set(re.findall(r"\b(?:pub\s+)?(?:enum|struct|trait|type|const|fn)\s+([A-Za-z0-9_]+)", text))
+        # A link can name something this file imported rather than declared, and
+        # rustdoc resolves it through the import. Without this the gate reports
+        # every cross-crate reference as broken.
+        for use_line in re.findall(r"^\s*use\s+([^;]+);", text, re.MULTILINE):
+            for part in re.findall(r"[A-Za-z0-9_]+", use_line):
+                declared.add(part)
+        for line in text.splitlines():
+            if not line.lstrip().startswith("///") and not line.lstrip().startswith("//!"):
+                continue
+            # Scan inside code spans too: `[`Type::Variant`]` is the idiom
+            # rustdoc documents. What is skipped instead is a lowercase single
+            # segment, which is prose naming something rather than a link.
+            for link in _doc_links(line):
+                head, _, tail = link.partition("::")
+                if head in KNOWN_EXTERNAL_LINK_TARGETS:
+                    continue
+                # A path-qualified link (`crate::X`, `lubot_read::X`) is resolved
+                # by rustdoc against the crate graph, not against this file.
+                if head in ("crate", "self", "super") or "::" in head:
+                    continue
+                if head not in declared and re.match(r"^[a-z][a-z0-9_]*$", head):
+                    # A crate name: `lubot_read::perception::MAX_TEXT_BYTES`.
+                    continue
+                checked += 1
+                if head not in declared:
+                    offenders.append(f"{path.relative_to(ROOT)} [{link}]: no `{head}` in this file")
+                    continue
+                if tail and not re.search(r"(?<![A-Za-z0-9_])" + re.escape(tail) + r"(?![A-Za-z0-9_])", text):
+                    offenders.append(f"{path.relative_to(ROOT)} [{link}]: no `{tail}` in this file")
+    if offenders:
+        raise SystemExit("broken intra-doc links:\n  " + "\n  ".join(offenders))
+    return f"{checked} intra-doc links resolve"
+
+
+def selftest_doc_links_resolve() -> None:
+    sample = "pub enum Thing {\n    Gone,\n}\n/// see [Thing::Gone] and [Thing::Missing]\n"
+    declared = set(re.findall(r"\b(?:pub\s+)?(?:enum|struct|trait|type|const|fn)\s+([A-Za-z0-9_]+)", sample))
+    assert declared == {"Thing"}, f"declaration scanning broke: {declared}"
+    links = re.findall(r"\[([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z0-9_]+)*)\]", sample)
+    assert links == ["Thing::Gone", "Thing::Missing"], f"link scanning broke: {links}"
+    # The backticked form is the idiom rustdoc documents, so it must be scanned.
+    backticked = _doc_links("/// see [`Thing::Gone`] for the refusal")
+    assert backticked == ["Thing::Gone"], f"a backticked link was skipped: {backticked}"
+    # A lowercase single segment is prose naming something, not a link.
+    prose = _doc_links("/// the manifest's `[package]` block")
+    assert prose == [], f"prose was read as a link: {prose}"
+    # The canary: the removed variant must be caught.
+    assert not re.search(r"(?<![A-Za-z0-9_])Missing(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
+    assert re.search(r"(?<![A-Za-z0-9_])Gone(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
+
+
+# --------------------------------------------------------------------------
+# gate: no boolean compared to a literal
+# --------------------------------------------------------------------------
+# `flag == false` is a clippy failure under the workspace lint set, and it reads
+# as a comparison rather than as the negation it is.
+
+
+def gate_no_bool_comparison() -> str:
+    """No `== true` or `== false` in any Rust source."""
+    offenders: list[str] = []
+    for path in rust_sources():
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("//"):
+                continue
+            if re.search(r"==\s*(true|false)\b", line) or re.search(r"!=\s*(true|false)\b", line):
+                offenders.append(f"{path.relative_to(ROOT)}:{i}")
+    if offenders:
+        raise SystemExit("a boolean compared to a literal:\n  " + "\n  ".join(offenders))
+    return f"no boolean is compared to a literal in {len(rust_sources())} files"
+
+
+def selftest_no_bool_comparison() -> None:
+    assert re.search(r"==\s*(true|false)\b", "assert!(x.is_ready() == false)")
+    assert not re.search(r"==\s*(true|false)\b", "assert!(!x.is_ready())")
+    assert re.search(r"!=\s*(true|false)\b", "if flag != true {")
+
+
+def _starts_char_literal(text: str, at: int) -> bool:
+    """Whether the apostrophe at `at` opens a character literal.
+
+    Rust reuses the apostrophe for lifetimes, so the one in `fn f<'a>()` does not
+    open a literal. Treating it as one makes the scanner consume everything up to
+    the next apostrophe, which is how balanced files came out unbalanced.
+    """
+    rest = text[at + 1:]
+    if rest.startswith("'"):
+        return True
+    if rest.startswith("\\"):
+        return len(rest) > 2 and rest[2] == "'"
+    return len(rest) > 1 and rest[1] == "'"
+
+
+# --------------------------------------------------------------------------
+# gate: delimiters balance
+# --------------------------------------------------------------------------
+# A brace-balance check is not a type check, but an unbalanced file cannot be
+# one, and it costs nothing to run before anything more expensive.
+
+
+def gate_delimiters_balance() -> str:
+    """Braces, parentheses and brackets balance in every Rust source."""
+    offenders: list[str] = []
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        code: list[str] = []
+        in_str = False
+        in_char = False
+        in_line_comment = False
+        in_block_comment = 0
+        previous = ""
+        for i, ch in enumerate(text):
+            if in_line_comment:
+                if ch == "\n":
+                    in_line_comment = False
+                    code.append(ch)
+                previous = ch
+                continue
+            if in_block_comment:
+                if previous == "*" and ch == "/":
+                    in_block_comment -= 1
+                previous = ch
+                continue
+            if in_str:
+                if ch == '"' and previous != "\\":
+                    in_str = False
+                previous = ch
+                continue
+            if in_char:
+                if ch == "'" and previous != "\\":
+                    in_char = False
+                previous = ch
+                continue
+            if previous == "/" and ch == "/":
+                in_line_comment = True
+                previous = ch
+                continue
+            if previous == "/" and ch == "*":
+                in_block_comment += 1
+                previous = ch
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "'" and _starts_char_literal(text, i):
+                in_char = True
+            else:
+                code.append(ch)
+            previous = ch
+        body = "".join(code)
+        for open_ch, close_ch in (("{", "}"), ("(", ")"), ("[", "]")):
+            delta = body.count(open_ch) - body.count(close_ch)
+            if delta:
+                offenders.append(
+                    f"{path.relative_to(ROOT)} {open_ch}{close_ch} off by {delta}"
+                )
+    if offenders:
+        raise SystemExit("unbalanced delimiters:\n  " + "\n  ".join(offenders))
+    return f"delimiters balance in {len(rust_sources())} files"
+
+
+def selftest_delimiters_balance() -> None:
+    # A lifetime is not a character literal. This is the case that made
+    # balanced files report as unbalanced.
+    lifetimes = "fn f<'a>(x: &'a str) {}"
+    assert not _starts_char_literal(lifetimes, 5), "a lifetime opened a literal"
+    assert not _starts_char_literal(lifetimes, 14), "a reference lifetime opened a literal"
+    plain = "let c = 'x';"
+    assert _starts_char_literal(plain, 8), "a real character literal was missed"
+    escaped = "let c = '\\n';"
+    assert _starts_char_literal(escaped, 8), "an escaped literal was missed"
+
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -1629,6 +2117,12 @@ GATES_EXTRA = {
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
+    "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
+    "assert-arity": (gate_assert_arity, selftest_assert_arity),
+    "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),
+    "doc-links-resolve": (gate_doc_links_resolve, selftest_doc_links_resolve),
+    "no-bool-comparison": (gate_no_bool_comparison, selftest_no_bool_comparison),
+    "delimiters-balance": (gate_delimiters_balance, selftest_delimiters_balance),
 }
 
 
