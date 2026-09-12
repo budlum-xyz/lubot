@@ -50,7 +50,11 @@ pub enum QuorumError {
     /// construction bug, and reported rather than silently unreachable.
     ThresholdAboveMembers { threshold: u64, members: u64 },
     /// The member set is too small to tolerate the requested fault count.
-    BelowByzantineFloor { members: u64, faults: u64, required: u64 },
+    BelowByzantineFloor {
+        members: u64,
+        faults: u64,
+        required: u64,
+    },
     /// A signer was counted who is not a member.
     NotAMember { signer: u64 },
     /// The requester tried to count its own vote.
@@ -68,10 +72,16 @@ pub enum QuorumError {
 impl std::fmt::Display for QuorumError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ZeroThreshold => write!(f, "the threshold is zero, which is not a weaker quorum but the absence of one"),
+            Self::ZeroThreshold => write!(
+                f,
+                "the threshold is zero, which is not a weaker quorum but the absence of one"
+            ),
             Self::NoMembers => write!(f, "the quorum has no members"),
             Self::ThresholdAboveMembers { threshold, members } => {
-                write!(f, "the threshold {threshold} is above the member count {members}")
+                write!(
+                    f,
+                    "the threshold {threshold} is above the member count {members}"
+                )
             }
             Self::BelowByzantineFloor {
                 members,
@@ -81,12 +91,17 @@ impl std::fmt::Display for QuorumError {
                 f,
                 "{members} members cannot tolerate {faults} faults: 3f+1 requires {required}"
             ),
-            Self::NotAMember { signer } => write!(f, "signer {signer} is not a member of this quorum"),
+            Self::NotAMember { signer } => {
+                write!(f, "signer {signer} is not a member of this quorum")
+            }
             Self::SelfApproval { requester } => {
                 write!(f, "the requester {requester} cannot count its own approval")
             }
             Self::Insufficient { reached, required } => {
-                write!(f, "the approvals carry weight {reached}, {required} is required")
+                write!(
+                    f,
+                    "the approvals carry weight {reached}, {required} is required"
+                )
             }
         }
     }
@@ -141,7 +156,10 @@ impl Quorum {
     /// [`QuorumError::ZeroThreshold`], [`QuorumError::NoMembers`], or
     /// [`QuorumError::ThresholdAboveMembers`] when the threshold exceeds the
     /// total weight.
-    pub fn weighted(weights: BTreeMap<u64, u64>, threshold_weight: u64) -> Result<Self, QuorumError> {
+    pub fn weighted(
+        weights: BTreeMap<u64, u64>,
+        threshold_weight: u64,
+    ) -> Result<Self, QuorumError> {
         if threshold_weight == 0 {
             return Err(QuorumError::ZeroThreshold);
         }
@@ -343,7 +361,10 @@ mod tests {
     fn a_threshold_of_zero_is_refused() {
         // A threshold of zero is met by nobody, which is not a weaker quorum but
         // the absence of one.
-        assert_eq!(Quorum::unweighted(&[1, 2, 3], 0), Err(QuorumError::ZeroThreshold));
+        assert_eq!(
+            Quorum::unweighted(&[1, 2, 3], 0),
+            Err(QuorumError::ZeroThreshold)
+        );
         assert_eq!(
             Quorum::weighted(BTreeMap::from([(1, 10)]), 0),
             Err(QuorumError::ZeroThreshold)
@@ -385,7 +406,10 @@ mod tests {
         // An unknown signer means somebody is trying to vote who should not be
         // able to. Dropping them quietly hides that.
         let q = Quorum::unweighted(&[1, 2, 3], 2).expect("quorum");
-        assert_eq!(q.count(&[1, 99]), Err(QuorumError::NotAMember { signer: 99 }));
+        assert_eq!(
+            q.count(&[1, 99]),
+            Err(QuorumError::NotAMember { signer: 99 })
+        );
     }
 
     #[test]
@@ -409,7 +433,10 @@ mod tests {
         assert_eq!(byzantine_floor(1), 4);
         assert_eq!(byzantine_floor(2), 7);
         assert_eq!(byzantine_floor(3), 10);
-        assert!(!meets_byzantine_floor(3, 1), "three members cannot tolerate one fault");
+        assert!(
+            !meets_byzantine_floor(3, 1),
+            "three members cannot tolerate one fault"
+        );
         assert!(meets_byzantine_floor(4, 1));
     }
 
@@ -417,7 +444,11 @@ mod tests {
     fn the_inverse_of_the_floor_agrees_with_it() {
         for faults in 0..8u64 {
             let members = byzantine_floor(faults);
-            assert_eq!(tolerable_faults(members), faults, "the inverse disagrees at {faults}");
+            assert_eq!(
+                tolerable_faults(members),
+                faults,
+                "the inverse disagrees at {faults}"
+            );
             assert!(tolerable_faults(members.saturating_sub(1)) < faults);
         }
     }
@@ -477,7 +508,10 @@ mod tests {
         // If the remaining weight cannot reach the threshold, no amount of
         // waiting produces a quorum.
         let q = Quorum::unweighted(&[1, 2, 3], 3).expect("quorum");
-        assert!(!q.still_reachable(&[1]), "one of three answered and two are needed more");
+        assert!(
+            !q.still_reachable(&[1]),
+            "one of three answered and two are needed more"
+        );
         assert!(q.still_reachable(&[1, 2]));
         assert!(q.still_reachable(&[]));
     }
