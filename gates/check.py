@@ -2794,18 +2794,22 @@ def _mup_module():
 
 
 def gate_mup_measurement_reproduced() -> str:
-    """The two NN-4 records are re-measured on this machine, their control
-    channels are checked, and every record passes the mechanical-run schema."""
+    """The three NN-4 records are re-measured on this machine, their control
+    channels are checked, the committed spec's parameter table is re-counted
+    from its own configuration, and every record passes the mechanical-run
+    schema. A profile outside the theta(1) band is reported, not hidden: the
+    gate's job is to keep the number honest, not to make it comfortable."""
     mod = _mup_module()
-    dikkat_yolu, readout_yolu = mod.kayit_yollari()
-    for yol in (dikkat_yolu, readout_yolu):
+    dikkat_yolu, readout_yolu, spec_yolu = mod.kayit_yollari()
+    for yol in (dikkat_yolu, readout_yolu, spec_yolu):
         if not yol.is_file():
             raise SystemExit(f"{yol.relative_to(ROOT)} is missing: an unrecorded measurement is not a measurement")
     olcum = mod.olc()
-    bulgular = mod.kayitlari_denetle(olcum) + mod.kontrol_bulgulari(olcum)
+    spec = mod.spec_olcumu()
+    bulgular = mod.kayitlari_denetle(olcum, spec) + mod.kontrol_bulgulari(olcum)
     if bulgular:
         raise SystemExit("the muP records do not reproduce:\n  " + "\n  ".join(bulgular))
-    for yol in (dikkat_yolu, readout_yolu):
+    for yol in (dikkat_yolu, readout_yolu, spec_yolu):
         rec = json.loads(yol.read_text(encoding="utf-8"))
         finding = _eval_run_finding(rec)
         if finding:
@@ -2815,12 +2819,22 @@ def gate_mup_measurement_reproduced() -> str:
             "the muP criteria are recorded as true but re-measure false: "
             f"{olcum['kriterler']}"
         )
+    if spec["sayim_toplam_hesaplanan"] != spec["sayim_toplam_beyan"]:
+        raise SystemExit(
+            "the committed spec's parameter table does not survive an "
+            f"independent count: {spec['sayim_toplam_hesaplanan']} != {spec['sayim_toplam_beyan']}"
+        )
+    band = spec["ileri_gecis"]["theta_1_bandinda"]
     return (
         "muP init olcumu yeniden uretildi: dikkat oranlari "
         f"{ {k: v['ortalama'] for k, v in olcum['dikkat_oranlari'].items()} }, "
         f"bagli readout sapmasi {olcum['bagli_olmayan_mup_esitligi']}, "
         f"kontroller {olcum['kontrol']['dikkat_standart_orani']['ortalama']} / "
-        f"{olcum['bagli_olceksiz_buyumesi']['ortalama']}"
+        f"{olcum['bagli_olceksiz_buyumesi']['ortalama']}; "
+        f"spec sayimi {spec['sayim_toplam_hesaplanan']} (beyan {spec['sayim_toplam_beyan']}); "
+        f"katman profili {spec['ileri_gecis']['ilk_katman_rms']} -> {spec['ileri_gecis']['son_katman_rms']} "
+        f"({spec['ileri_gecis']['buyume_son_bolu_ilk']}x), theta_1 bandinda={band}"
+        + ("" if band else " [BULGU: bant disi]")
     )
 
 
@@ -2831,12 +2845,21 @@ def selftest_mup_measurement_reproduced() -> None:
 
     mod = _mup_module()
     olcum = mod.olc()
-    if mod.kayitlari_denetle(olcum) + mod.kontrol_bulgulari(olcum):
+    spec = mod.spec_olcumu()
+    if mod.kayitlari_denetle(olcum, spec) + mod.kontrol_bulgulari(olcum):
         raise AssertionError("the fresh measurement does not match its own records")
     bozuk = json.loads(json.dumps(olcum))
     bozuk["dikkat_logit_rms"]["spesifikasyon"]["128"][0] *= 3.0
-    if not mod.kayitlari_denetle(bozuk):
+    if not mod.kayitlari_denetle(bozuk, spec):
         raise AssertionError("a drifted number was accepted")
+    bozuk_spec = json.loads(json.dumps(spec))
+    bozuk_spec["ileri_gecis"]["katman_aktivasyon_rms"][-1] *= 2.0
+    if not mod.kayitlari_denetle(olcum, bozuk_spec):
+        raise AssertionError("a drifted layer profile was accepted")
+    bozuk_sayim = json.loads(json.dumps(spec))
+    bozuk_sayim["sayim_toplam_hesaplanan"] = 1
+    if not mod.kayitlari_denetle(olcum, bozuk_sayim):
+        raise AssertionError("a spec parameter table that does not count was accepted")
     kor = json.loads(json.dumps(olcum))
     kor["dikkat_oranlari"]["standart"]["ortalama"] = 3.0
     if not mod.kontrol_bulgulari(kor):
