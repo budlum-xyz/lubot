@@ -336,6 +336,7 @@ dependencies = [
  "lubot-read",
  "lubot-sikistir",
  "lubot-takip",
+ "lubot-tomurcuk",
  "lubot-tools",
  "lubot-usl",
  "lubot-yetenek",
@@ -446,6 +447,13 @@ dependencies = [
 [[package]]
 name = "lubot-takip"
 version = "0.1.0"
+
+[[package]]
+name = "lubot-tomurcuk"
+version = "0.1.0"
+dependencies = [
+ "lubot-anlama",
+]
 
 [[package]]
 name = "lubot-tools"

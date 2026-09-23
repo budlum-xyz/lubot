@@ -15,11 +15,8 @@
 # the main caller of the libraries, so excluding it from the search would make
 # every item it calls look unused.
 anlama:Abstention
-anlama:BucketReport
 anlama:CALIBRATION_BUCKETS
-anlama:Calibration
 anlama:ClassifierError
-anlama:Outcome
 anlama:Signal
 anlama:TIE_EPSILON
 answer:OUTPUT_TAG

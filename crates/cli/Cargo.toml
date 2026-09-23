@@ -24,6 +24,7 @@ lubot-mimari = { path = "../mimari" }
 lubot-esik = { path = "../esik" }
 lubot-takip = { path = "../takip" }
 lubot-anlama = { path = "../anlama" }
+lubot-tomurcuk = { path = "../tomurcuk" }
 lubot-usl = { path = "../usl" }
 lubot-olcek = { path = "../olcek" }
 lubot-izolasyon = { path = "../izolasyon" }

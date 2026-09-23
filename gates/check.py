@@ -3075,6 +3075,162 @@ def selftest_training_budget_is_declared() -> None:
         raise AssertionError("the ceiling was not read from the grant crate")
 
 
+
+TOMURCUK_YASAK = [
+    "String",
+    "format!",
+    "write!",
+    "writeln!",
+    "to_string",
+    "push_str",
+    "char",
+    "println!",
+    "eprint",
+    "Vec<u8>",
+]
+
+
+def _tomurcuk_kodu() -> str:
+    """The head's source with tests and comments removed.
+
+    Tests may format an assertion message; comments may name the forbidden
+    tokens while explaining why they are forbidden. Neither can generate text
+    at runtime, so neither is what this gate is about.
+    """
+    kaynaklar = sorted((ROOT / "crates" / "tomurcuk" / "src").rglob("*.rs"))
+    if not kaynaklar:
+        raise SystemExit("crates/tomurcuk/src has no sources: the head is gone")
+    parcalar: list[str] = []
+    for kaynak in kaynaklar:
+        satirlar = kaynak.read_text(encoding="utf-8").splitlines()
+        parcalar.append(
+            "\n".join(s for s in _test_modulu_disinda(satirlar)
+                      if not s.lstrip().startswith("//"))
+        )
+    return "\n".join(parcalar)
+
+
+def _test_modulu_disinda(satirlar: list[str]) -> list[str]:
+    """Every line except the `#[cfg(test)]` module's own block.
+
+    Cutting everything *after* the marker instead of the block itself would let
+    production code hide below the tests, which is exactly the shape an
+    accidental paste takes. The block is found by matching braces, so what comes
+    after it is still checked.
+    """
+    for i, satir in enumerate(satirlar):
+        if not satir.strip().startswith("#[cfg(test)]"):
+            continue
+        j = i
+        while j < len(satirlar) and not satirlar[j].lstrip().startswith(("mod ", "pub mod ")):
+            j += 1
+        if j >= len(satirlar):
+            return satirlar[:i]
+        derinlik = 0
+        basladi = False
+        k = j
+        while k < len(satirlar):
+            derinlik += satirlar[k].count("{") - satirlar[k].count("}")
+            if "{" in satirlar[k]:
+                basladi = True
+            if basladi and derinlik <= 0:
+                break
+            k += 1
+        return satirlar[:i] + satirlar[k + 1:]
+    return satirlar
+
+
+def gate_decision_head_has_no_generation_surface() -> str:
+    """The decision head cannot produce text, even at compile time.
+
+    T makes this a doctrine: the head decides, the generative model writes. A
+    doctrine held only in prose is one a later edit can quietly undo, so the
+    source is what gets checked - and the output surface is checked to be
+    exactly the three closed shapes, because a fourth variant is how free text
+    would get in.
+    """
+    import re
+
+    kod = _tomurcuk_kodu()
+    for yasak in TOMURCUK_YASAK:
+        if yasak in kod:
+            raise SystemExit(
+                f"the decision head carries a generation surface: {yasak}"
+            )
+    match = re.search(r"pub enum Karar\s*\{([^}]+)\}", kod)
+    if not match:
+        raise SystemExit("the head's output enum is not there to check")
+    variants = [
+        line.strip().split("(")[0].strip()
+        for line in match.group(1).splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    expected = ["Secenek", "Puan", "EvetHayir"]
+    if variants != expected:
+        raise SystemExit(
+            f"the head's output surface changed: got {variants}, expected {expected}"
+        )
+    # The head has to be reached from the binary, or the doctrine is a file
+    # nobody runs.
+    dagitim = read("crates/cli/src/main.rs")
+    if '"karar" => lubot::karar::cmd_karar(rest)' not in dagitim:
+        raise SystemExit("the head is not reachable from any command")
+    return "the decision head has 3 closed shapes and no text-producing surface"
+
+
+def selftest_decision_head_has_no_generation_surface() -> None:
+    """Canaries: text-producing code, a fourth shape, and an unwired head must
+    each be refused - and a `format!` inside the tests must not be."""
+    lib = ROOT / "crates" / "tomurcuk" / "src" / "lib.rs"
+    gercek = lib.read_text(encoding="utf-8")
+    try:
+        # Canary 1: a function that returns text, appended *after* the test
+        # module. Cutting everything below `#[cfg(test)]` would have let this
+        # through, so the canary sits exactly where that hole was.
+        lib.write_text(
+            gercek + "\n#[allow(dead_code)]\npub fn kacak() -> String { String::new() }\n",
+            encoding="utf-8",
+        )
+        try:
+            gate_decision_head_has_no_generation_surface()
+            raise AssertionError("a head that can return text was accepted")
+        except SystemExit:
+            pass
+        # Canary 2: a fourth output shape, which is how text would get in.
+        dort = gercek.replace(
+            "    /// A yes or no with a probability.\n    EvetHayir(EvetHayirKarari),",
+            "    /// A yes or no with a probability.\n    EvetHayir(EvetHayirKarari),\n    Metin(&'static str),",
+            1,
+        )
+        if dort == gercek:
+            raise AssertionError("the fourth-shape canary did not apply")
+        lib.write_text(dort, encoding="utf-8")
+        try:
+            gate_decision_head_has_no_generation_surface()
+            raise AssertionError("a fourth output shape was accepted")
+        except SystemExit:
+            pass
+        # Canary 3: a `format!` inside the tests is not a generation surface.
+        # Injected rather than assumed, so the canary tests the stripping and
+        # not what this file happens to contain today.
+        ic = """    #[allow(dead_code)]
+    fn kanarya() -> String {
+        format!("bir iddia mesaji")
+    }
+"""
+        asili = gercek.replace(
+            "mod tests {\n    use super::*;\n",
+            "mod tests {\n    use super::*;\n\n" + ic + "\n",
+            1,
+        )
+        if asili == gercek:
+            raise AssertionError("the test-module canary did not apply")
+        lib.write_text(asili, encoding="utf-8")
+        gate_decision_head_has_no_generation_surface()
+    finally:
+        lib.write_text(gercek, encoding="utf-8")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3112,6 +3268,10 @@ GATES_EXTRA = {
     "eval-set-never-trained": (gate_eval_set_never_trained, selftest_eval_set_never_trained),
     "mup-measurement-reproduced": (gate_mup_measurement_reproduced, selftest_mup_measurement_reproduced),
     "data-mix-is-declared": (gate_data_mix_is_declared, selftest_data_mix_is_declared),
+    "decision-head-has-no-generation-surface": (
+        gate_decision_head_has_no_generation_surface,
+        selftest_decision_head_has_no_generation_surface,
+    ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
     "assert-arity": (gate_assert_arity, selftest_assert_arity),
