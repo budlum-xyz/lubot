@@ -155,7 +155,7 @@ What the corpus holds (measured, 2026-09-22):
 | corpus | records | licence |
 |---|---|---|
 | `corpus/knowledge-self.jsonl.gz` (built by CI from this repository) | 802 | PolyForm Shield 1.0.0 (own work) |
-| `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: this repo + budlum + workspace root) | 23600 | PolyForm Shield 1.0.0 + MIT (own work) |
+| `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: this repo + budlum + workspace root) | 23604 | PolyForm Shield 1.0.0 + MIT (own work) |
 
 Three gates guard the data: `corpus-records-carry-licence` (every record in
 `corpus/` carries an allowed licence and an attribution),

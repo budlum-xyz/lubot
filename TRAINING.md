@@ -46,7 +46,7 @@ One corpus, one source: this repository, rebuilt by CI on every run.
 | file | records | kinds | tokens (approx) |
 |---|---|---|---|
 | `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 802 | api 241 · behaviour 178 · doc 286 · markdown 93 | ~28K |
-| `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: lubot + budlum + workspace root) | 23600 | api 6015 · behaviour 4684 · doc 7323 · markdown 5578 | ~1.2M |
+| `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: lubot + budlum + workspace root) | 23604 | api 6015 · behaviour 4684 · doc 7323 · markdown 5582 | ~1.2M |
 
 Every record carries the provenance pair; the provenance gate measures 100%
 of the corpus files present. Refused-at-the-door is measured by the same
@@ -162,10 +162,14 @@ dışındaysa kapıda reddedilir), kendi `asset_id`'sini ve kendi atıfını ta�
 aynı metin iki kaynakta varsa (ortak lisans metni gibi) bir kez girer. Hiçbir
 kaynak manifestte açıkça yazılmadan giremez.
 
-Ölçülen (budlum-yuzeyi, 2026-09-22): 23.600 kayıt (ham 24.780, 1.180
-çapraz-kaynak tekrarı elendi) - lubot 798 · budlum 18.830 · workspace 3.972
-(yalnız kök belgeleri); 4.851.043 karakter, ~1.212.760 yaklaşık token
-(karakter/4). budlum tek başına self korpusun yaklaşık 24 katı.
+Ölçülen (budlum-yuzeyi): ilk kuruluş 2026-09-22, 23.600 kayıt (lubot
+`46c23e91`); taze kuruluş 2026-09-23 (lubot `b1a8d92`): 23.604 kayıt (ham
+24.784, 1.180 çapraz-kaynak tekrarı elendi) - lubot 802 · budlum 18.830 ·
+workspace 3.972 (yalnız kök belgeleri); 4.852.776 karakter, ~1.213.194
+yaklaşık token (karakter/4). Self dilimi 798→802: A adımı belge
+güncellemeleri (+4 kayıt, K3 büyüme; sözlük v2 taze kuruluşta 23.604/23.604
+kayıpsız, record_drift +4 raporlanır). budlum tek başına self korpusun
+yaklaşık 24 katı.
 
 Küratörlük (D adımı öncesi geçerli sınırlar): workspace yalnız kök
 belgeleriyle girer; alt dizinler (skills/ üçüncü taraf programlar,
@@ -194,7 +198,7 @@ Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar)
 | Aşama 2 | her korpus taramasından önce `is_valid`, her epoch sonunda `consume_epoch`, tükenince DUR | `training/epoch_ledger.py`; canlı kanıt: 2/2'den sonra koşu reddedildi |
 | Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 802 |
 | Aşama 4 | tavanlar kodda sabit: Text 1,048,576 B / Image 16,777,216 px / Audio 3,600,000 ms / Video 4096 kare | `no-generation-variant` kapısı + perception testleri |
-| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 802 kayıt (yüzey: 23.600; hepsi kendi işimiz) |
+| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 802 kayıt (yüzey: 23.604; hepsi kendi işimiz) |
 | Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 802/802 |
 
 ## Aşama 12 kararları (rapora karşı, eğitim başlamadan kapatılır)
