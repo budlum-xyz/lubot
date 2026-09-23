@@ -212,6 +212,10 @@ impl Quorum {
     /// re-checking the floor is how `5 of 7` becomes `5 of 40` - the same
     /// numerator, an eighth of the assurance.
     ///
+    /// The method is all-or-nothing: a refusal leaves the membership exactly as
+    /// it was, so a caller that stops on the error is not left with a widened
+    /// set it did not ask for.
+    ///
     /// # Errors
     ///
     /// [`QuorumError::BelowByzantineFloor`] or [`QuorumError::ZeroThreshold`].
@@ -224,24 +228,31 @@ impl Quorum {
         if new_threshold_weight == 0 {
             return Err(QuorumError::ZeroThreshold);
         }
+        // Checked against the candidate set, and committed only once every check
+        // has passed. Mutating first and checking afterwards would make a refusal
+        // a partial success: the caller that reads the error and stops is left
+        // holding members it never asked for, and `count` will count them.
+        let mut candidate = self.weights.clone();
         for (member, weight) in new_members {
-            self.weights.insert(*member, *weight);
+            candidate.insert(*member, *weight);
         }
+        let members = candidate.len() as u64;
         let required = byzantine_floor(faults_to_tolerate);
-        if self.member_count() < required {
+        if members < required {
             return Err(QuorumError::BelowByzantineFloor {
-                members: self.member_count(),
+                members,
                 faults: faults_to_tolerate,
                 required,
             });
         }
-        let total = self.total_weight();
+        let total = candidate.values().copied().sum::<u64>();
         if new_threshold_weight > total {
             return Err(QuorumError::ThresholdAboveMembers {
                 threshold: new_threshold_weight,
                 members: total,
             });
         }
+        self.weights = candidate;
         self.threshold_weight = new_threshold_weight;
         Ok(())
     }
@@ -532,6 +543,43 @@ mod tests {
                 threshold: 11,
                 members: 10
             })
+        );
+    }
+
+    #[test]
+    fn a_refused_extend_leaves_the_membership_untouched() {
+        // A refused `extend` must not be a partial one. Inserting the new members
+        // before the checks means a refusal still widens the set, so the caller
+        // that reads the error and stops has a quorum it never asked for - and
+        // `count` will happily count the refused parties.
+        let mut q = Quorum::unweighted(&[1, 2, 3], 2).expect("quorum");
+        let before = q.total_weight();
+        let refused = q.extend(&[(4, 1), (5, 1)], 2, 4);
+        assert!(
+            refused.is_err(),
+            "extending to five members should have tripped the byzantine floor"
+        );
+        assert_eq!(
+            q.total_weight(),
+            before,
+            "a refused extend leaked members into the quorum"
+        );
+        assert!(!q.is_member(4), "refused member 4 is a member");
+        assert!(!q.is_member(5), "refused member 5 is a member");
+        assert_eq!(
+            q.count(&[1, 4, 5]),
+            Err(QuorumError::NotAMember { signer: 4 }),
+            "the refused parties can still vote"
+        );
+        // And an accepted extend still extends: 3 + 10 = 13 members is exactly
+        // the floor for four faults, so this one is not refused for the reason
+        // above.
+        let ten: Vec<(u64, u64)> = (4..14).map(|m| (m, 1)).collect();
+        q.extend(&ten, 5, 4).expect("extend");
+        assert_eq!(q.member_count(), 13);
+        assert!(
+            q.is_member(13),
+            "an accepted extend did not add its members"
         );
     }
 }

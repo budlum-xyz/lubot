@@ -45,6 +45,11 @@ pub enum AuditError {
     /// An entry with no reason. Same reasoning: an action nobody can explain
     /// afterwards is indistinguishable from an accident.
     NoReason,
+    /// A text field carries a control character. [`Entry::canonical`] frames its
+    /// fields with tabs and that text is what gets chained and sealed, so a
+    /// field holding the frame lets one entry read as two - and a field holding
+    /// a newline lets one entry read as two lines.
+    UnsafeCharacter { ch: char },
     /// The sequence number is not the next one. Refused rather than renumbered,
     /// because a log that renumbers has already been edited.
     SequenceGap { expected: u64, got: u64 },
@@ -66,6 +71,10 @@ impl std::fmt::Display for AuditError {
         match self {
             Self::NoActor => write!(f, "the entry has no actor and is therefore not attributable"),
             Self::NoReason => write!(f, "the entry has no reason"),
+            Self::UnsafeCharacter { ch } => write!(
+                f,
+                "a field carries the control character {ch:?}, which would break                  the entry's canonical framing"
+            ),
             Self::SequenceGap { expected, got } => {
                 write!(f, "the entry carries sequence {got}, the next one is {expected}; the log does not renumber")
             }
@@ -110,6 +119,20 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Whether the caller-supplied text fields can be framed unambiguously.
+    ///
+    /// Shared by both doors rather than written twice: [`Trail::append`] and
+    /// [`Trail::append_imported`] accept the same fields, and a check that lives
+    /// at one of them is a check the other can be reached around.
+    fn framed_safely(actor: &str, reason: &str, subject: &str) -> Result<(), AuditError> {
+        for field in [actor, reason, subject] {
+            if let Some(ch) = field.chars().find(|c| c.is_control()) {
+                return Err(AuditError::UnsafeCharacter { ch });
+            }
+        }
+        Ok(())
+    }
+
     /// The canonical text of the entry, which is what gets chained.
     ///
     /// Written out field by field rather than delegated to a serializer, because
@@ -147,7 +170,8 @@ impl Trail {
     ///
     /// # Errors
     ///
-    /// [`AuditError::NoActor`] or [`AuditError::NoReason`].
+    /// [`AuditError::NoActor`], [`AuditError::NoReason`], or
+    /// [`AuditError::UnsafeCharacter`].
     pub fn append(
         &mut self,
         actor: &str,
@@ -162,6 +186,7 @@ impl Trail {
         if reason.is_empty() {
             return Err(AuditError::NoReason);
         }
+        Entry::framed_safely(actor, reason, subject)?;
         let sequence = self.entries.len() as u64;
         let entry = Entry {
             sequence,
@@ -192,8 +217,9 @@ impl Trail {
     ///
     /// # Errors
     ///
-    /// [`AuditError::NoActor`], [`AuditError::NoReason`], or
-    /// [`AuditError::SequenceGap`] when `sequence` is not the next number.
+    /// [`AuditError::NoActor`], [`AuditError::NoReason`],
+    /// [`AuditError::UnsafeCharacter`], or [`AuditError::SequenceGap`] when
+    /// `sequence` is not the next number.
     pub fn append_imported(
         &mut self,
         sequence: u64,
@@ -209,6 +235,7 @@ impl Trail {
         if reason.is_empty() {
             return Err(AuditError::NoReason);
         }
+        Entry::framed_safely(actor, reason, subject)?;
         let expected = self.entries.len() as u64;
         if sequence != expected {
             return Err(AuditError::SequenceGap {
@@ -581,5 +608,65 @@ mod tests {
         assert_eq!(t.head(), Sealer::genesis());
         assert!(t.is_empty());
         assert!(t.verify().is_ok());
+    }
+
+    #[test]
+    fn a_field_carrying_the_canonical_separator_is_refused() {
+        // Abuse case. `Entry::canonical` frames fields with tabs, so a reason
+        // holding a tab shifts every field after it: these two different entries
+        // canonicalize to one string, and the chain would treat them as one.
+        let smuggled = Entry {
+            sequence: 0,
+            actor: "alice".to_string(),
+            kind: "batch-opened",
+            reason: "paid\t10".to_string(),
+            at_height: 1,
+            subject: "batch-1".to_string(),
+        };
+        let honest = Entry {
+            sequence: 0,
+            actor: "alice".to_string(),
+            kind: "batch-opened",
+            reason: "paid".to_string(),
+            at_height: 10,
+            subject: "1\tbatch-1".to_string(),
+        };
+        assert_eq!(
+            smuggled.canonical(),
+            honest.canonical(),
+            "the raw framing no longer collides; this test documents why append refuses"
+        );
+        let mut t = Trail::new();
+        for (actor, reason, subject) in [
+            ("alice", "paid\tquorum", "batch-1"),
+            ("alice\tbob", "paid", "batch-1"),
+            ("alice", "paid", "batch\t1"),
+        ] {
+            assert_eq!(
+                t.append(actor, "batch-opened", reason, 10, subject),
+                Err(AuditError::UnsafeCharacter { ch: '\t' }),
+                "a tab inside a framed field was accepted"
+            );
+        }
+        assert!(t.is_empty(), "a refused entry was appended");
+    }
+
+    #[test]
+    fn control_characters_cannot_smuggle_a_second_entry_and_the_imported_path_agrees() {
+        // The canonical text is what gets chained and sealed, so a newline in a
+        // reason is a second line to anything that prints the trail.
+        let mut t = Trail::new();
+        assert_eq!(
+            t.append("alice", "batch-opened", "paid\nbatch-closed", 10, "batch-1"),
+            Err(AuditError::UnsafeCharacter { ch: '\n' })
+        );
+        assert!(t.is_empty());
+        // `append_imported` is the same door with a caller-chosen sequence, so it
+        // has to refuse the same way or the check is only half a boundary.
+        assert_eq!(
+            t.append_imported(0, "alice", "batch-opened", "paid\tquorum", 10, "batch-1"),
+            Err(AuditError::UnsafeCharacter { ch: '\t' })
+        );
+        assert!(t.is_empty());
     }
 }

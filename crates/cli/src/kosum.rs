@@ -505,11 +505,29 @@ impl RunSupervisor {
         // 2. Capability, for restricted work only, and before the payload is
         // touched.
         if restricted {
-            if let Err(err) = self.check_capability(&item) {
+            if let Err(err) = self.check_capability(&item, now) {
                 self.refused += 1;
                 outcome.refused += 1;
                 self.record("refused-capability", &err.to_string(), now, &item.key);
                 return Err(err);
+            }
+            // 2b. The restricted-open ceiling: a separate budget from the
+            // question budget spent above, and spent here rather than at submit
+            // time. An item the capability check refused never opened anything,
+            // so it must not spend the ceiling either.
+            if let Err(err) = self
+                .activations
+                .authorize_restricted(self.activation_id, now)
+            {
+                self.refused += 1;
+                outcome.refused += 1;
+                self.record(
+                    "refused-restricted-ceiling",
+                    &err.to_string(),
+                    now,
+                    &item.key,
+                );
+                return Err(RunError::NotActivated(err));
             }
         }
         // 3. Work.
@@ -633,13 +651,18 @@ impl RunSupervisor {
             .collect()
     }
 
-    /// Checks the run's capability against an item.
-    fn check_capability(&self, item: &Item) -> Result<(), RunError> {
+    /// Checks the run's capability against an item, at `now`.
+    ///
+    /// The time is passed in rather than taken from the clock, because the run is
+    /// replayable: a supervisor that reads the wall clock could not be tested
+    /// against an expired capability and would decide differently on every
+    /// replay.
+    fn check_capability(&self, item: &Item, now: Seconds) -> Result<(), RunError> {
         let Some(capability) = &self.capability else {
             return Err(RunError::NoCapabilityGranted);
         };
         self.revocations
-            .check(capability, "open", &item.key, 0)
+            .check(capability, "open", &item.key, now)
             .map_err(RunError::Denied)
     }
 
@@ -1202,5 +1225,74 @@ mod tests {
         let record = run.finish(1).expect("finish");
         assert_eq!(record.trail_length, 0);
         assert!(record.verify().is_ok(), "an empty record did not verify");
+    }
+
+    #[test]
+    fn an_expired_capability_stops_working() {
+        // The activation's expiry is checked at use, and so must the
+        // capability's, or `expires_at` is a field the runner reads and then
+        // ignores - a time-bound authorization that is not time-bound.
+        let mut run = open_run(4, 4);
+        run.grant_capability(&["secret"], &["open"], 100)
+            .expect("grant");
+        run.submit("secret", 5, b"payload", true, 1)
+            .expect("submit");
+        let outcome = run.drain(200);
+        assert_eq!(
+            outcome.completed, 0,
+            "an expired capability authorized work"
+        );
+        assert_eq!(outcome.refused, 1);
+        let record = run.finish(200).expect("finish");
+        assert!(
+            record
+                .entries
+                .iter()
+                .any(|e| e.contains("refused-capability")),
+            "the refusal was not in the trail"
+        );
+    }
+
+    #[test]
+    fn the_restricted_open_ceiling_is_enforced_by_the_supervisor() {
+        // `--restricted-ceiling` is parsed into the policy and spent by
+        // `authorize_restricted`, but a supervisor that never calls it turns the
+        // flag into a promise the run does not keep.
+        let mut run = open_run(8, 1);
+        run.grant_capability(&["a", "b"], &["open"], 1_000)
+            .expect("grant");
+        run.submit("a", 5, b"x", true, 1).expect("submit");
+        run.submit("b", 5, b"y", true, 2).expect("submit");
+        let outcome = run.drain(3);
+        assert_eq!(
+            outcome.completed, 1,
+            "the restricted ceiling did not stop the second restricted open"
+        );
+        assert_eq!(outcome.refused, 1);
+        let record = run.finish(3).expect("finish");
+        assert!(
+            record
+                .entries
+                .iter()
+                .any(|e| e.contains("refused-restricted-ceiling")),
+            "the ceiling refusal was not in the trail"
+        );
+    }
+
+    #[test]
+    fn an_open_item_does_not_spend_the_restricted_ceiling() {
+        // The ceiling counts restricted opens, not questions: ordinary work has
+        // to keep flowing after the restricted budget is spent.
+        let mut run = open_run(8, 1);
+        run.grant_capability(&["a"], &["open"], 1_000)
+            .expect("grant");
+        run.submit("a", 5, b"x", true, 1).expect("submit");
+        run.submit("plain-1", 5, b"y", false, 2).expect("submit");
+        run.submit("plain-2", 5, b"z", false, 3).expect("submit");
+        let outcome = run.drain(4);
+        assert_eq!(
+            outcome.completed, 3,
+            "ordinary work was charged to the restricted ceiling"
+        );
     }
 }
