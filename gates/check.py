@@ -2772,6 +2772,91 @@ def selftest_eval_set_never_trained() -> None:
             raise AssertionError("a well-formed stamp list was refused")
 
 
+# --------------------------------------------------------------------------
+# gate: the muP init measurement is reproduced, not recited (NN-4)
+# --------------------------------------------------------------------------
+# model_spec.json marks two decisions `olculmedi` and names NN-4 as the run that
+# measures them. A recorded number that nothing re-derives is a number that
+# drifts away from its tree, so the records are re-measured here: the same
+# machine, the same seeds, the same bands.
+
+
+def _mup_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "mup_olcum", str(ROOT / "training" / "mup_olcum.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def gate_mup_measurement_reproduced() -> str:
+    """The two NN-4 records are re-measured on this machine, their control
+    channels are checked, and every record passes the mechanical-run schema."""
+    mod = _mup_module()
+    dikkat_yolu, readout_yolu = mod.kayit_yollari()
+    for yol in (dikkat_yolu, readout_yolu):
+        if not yol.is_file():
+            raise SystemExit(f"{yol.relative_to(ROOT)} is missing: an unrecorded measurement is not a measurement")
+    olcum = mod.olc()
+    bulgular = mod.kayitlari_denetle(olcum) + mod.kontrol_bulgulari(olcum)
+    if bulgular:
+        raise SystemExit("the muP records do not reproduce:\n  " + "\n  ".join(bulgular))
+    for yol in (dikkat_yolu, readout_yolu):
+        rec = json.loads(yol.read_text(encoding="utf-8"))
+        finding = _eval_run_finding(rec)
+        if finding:
+            raise SystemExit(f"{yol.name}: {finding}")
+    if not olcum["kriterler"]["dikkat"] or not olcum["kriterler"]["readout"]:
+        raise SystemExit(
+            "the muP criteria are recorded as true but re-measure false: "
+            f"{olcum['kriterler']}"
+        )
+    return (
+        "muP init olcumu yeniden uretildi: dikkat oranlari "
+        f"{ {k: v['ortalama'] for k, v in olcum['dikkat_oranlari'].items()} }, "
+        f"bagli readout sapmasi {olcum['bagli_olmayan_mup_esitligi']}, "
+        f"kontroller {olcum['kontrol']['dikkat_standart_orani']['ortalama']} / "
+        f"{olcum['bagli_olceksiz_buyumesi']['ortalama']}"
+    )
+
+
+def selftest_mup_measurement_reproduced() -> None:
+    """The canaries: a drifted number, a missing record and a judgement-word
+    criterion must each be refused."""
+    import tempfile
+
+    mod = _mup_module()
+    olcum = mod.olc()
+    if mod.kayitlari_denetle(olcum) + mod.kontrol_bulgulari(olcum):
+        raise AssertionError("the fresh measurement does not match its own records")
+    bozuk = json.loads(json.dumps(olcum))
+    bozuk["dikkat_logit_rms"]["spesifikasyon"]["128"][0] *= 3.0
+    if not mod.kayitlari_denetle(bozuk):
+        raise AssertionError("a drifted number was accepted")
+    kor = json.loads(json.dumps(olcum))
+    kor["dikkat_oranlari"]["standart"]["ortalama"] = 3.0
+    if not mod.kontrol_bulgulari(kor):
+        raise AssertionError("a control channel that stopped discriminating was accepted")
+    # A record stating a judgement instead of a machine check is not a run.
+    kayit = mod.kayitlar(olcum)[0][1]
+    kayit["olcut"]["ad"] = "dikkat olcegi iyi gorunuyor"
+    if _eval_run_finding(kayit) is None:
+        raise AssertionError("a judgement-word criterion passed the run schema")
+    # And the verifier has to notice records that are not there at all.
+    with tempfile.TemporaryDirectory() as td:
+        gercek = mod.KAYIT_DIZINI
+        mod.KAYIT_DIZINI = Path(td)
+        try:
+            if not mod.kayitlari_denetle(olcum):
+                raise AssertionError("missing records were accepted")
+        finally:
+            mod.KAYIT_DIZINI = gercek
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2807,6 +2892,7 @@ GATES_EXTRA = {
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
     "eval-set-never-trained": (gate_eval_set_never_trained, selftest_eval_set_never_trained),
+    "mup-measurement-reproduced": (gate_mup_measurement_reproduced, selftest_mup_measurement_reproduced),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
     "assert-arity": (gate_assert_arity, selftest_assert_arity),
     "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),
