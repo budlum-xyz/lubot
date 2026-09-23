@@ -3720,6 +3720,95 @@ def selftest_decision_latency_is_recorded() -> None:
             kayit_dosya.write_text(gercek, encoding="utf-8")
 
 
+def _geri_besleme_ihlalleri(sayilar: set[str], yollar: set[str]) -> list[str]:
+    """Which corpus-visible files restate a corpus-derived number."""
+    import re as _re
+
+    ihlal: list[str] = []
+    for yol in sorted(yollar):
+        dosya = ROOT / yol
+        if not dosya.is_file():
+            continue
+        try:
+            metin = dosya.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for sayi in sorted(sayilar):
+            if _re.search(rf"(?<!\d){sayi}(?!\d)", metin):
+                ihlal.append(f"{yol}: {sayi}")
+    return ihlal
+
+
+def gate_measurements_do_not_feed_back() -> str:
+    """A measurement may not be written into a file the measurement reads.
+
+    This was found, not predicted. `README.md` is inside the corpus, and its
+    ratchet line restated the corpus's own token count, so the figure was an
+    input to the measurement that produced it. The result was a two-cycle with
+    no fixed point: with 101443 written the corpus measured 101444, and with
+    101444 written it measured 101443. The ratchet could not settle, and the
+    reason looked like a flaky build rather than a feedback loop.
+
+    Numbers that come out of the corpus belong in `training/ratchet.json`,
+    which the corpus does not read.
+    """
+    import json as _json
+
+    korpus = ROOT / "corpus" / "knowledge-self.jsonl.gz"
+    if not korpus.is_file():
+        raise SystemExit(f"corpus is not built: {korpus}")
+    butce_dosya = ROOT / "training" / "eval" / "sonuclar" / "egitim-butcesi-2026-09-23.json"
+    if not butce_dosya.is_file():
+        raise SystemExit(f"no budget record: {butce_dosya}")
+    butce = _json.loads(butce_dosya.read_text(encoding="utf-8"))["butce"]
+    sayilar = {str(butce["korpus_kayit_sayisi"]), str(butce["benzersiz_jeton"])}
+    yollar: set[str] = set()
+    with gzip.open(korpus, "rt", encoding="utf-8") as fh:
+        for satir in fh:
+            satir = satir.strip()
+            if satir:
+                yollar.add(_json.loads(satir)["path"])
+    ihlal = _geri_besleme_ihlalleri(sayilar, yollar)
+    if ihlal:
+        raise SystemExit(
+            "a corpus-derived figure is written into a file the corpus reads, so the "
+            "measurement feeds back into itself: " + "; ".join(ihlal)
+        )
+    return (
+        f"{len(yollar)} corpus-visible file(s) checked against the corpus figures "
+        f"({', '.join(sorted(sayilar))}); none restates them"
+    )
+
+
+def selftest_measurements_do_not_feed_back() -> None:
+    """Canaries: a corpus-visible file carrying the token count is caught, and
+    the same file without it is clean. Needs no corpus."""
+    # The canary figures are deliberately not plausible corpus figures. This
+    # file is inside the corpus, so a hardcoded number here would itself be
+    # flagged by the gate the moment the corpus reached that size - which is
+    # what happened when this self-test was first written with the live figures.
+    kanarya = ROOT / "geri-besleme-kanaryasi.md"
+    sahte = {"987654321", "987654320"}
+    olusturuldu = not kanarya.is_file()
+    try:
+        kanarya.write_text("korpus 987654321 jeton iceriyor.\n", encoding="utf-8")
+        bulunan = _geri_besleme_ihlalleri(sahte, {"geri-besleme-kanaryasi.md"})
+        if not bulunan:
+            raise AssertionError("a file restating a corpus figure was not caught")
+        kanarya.write_text("korpusun jeton sayisi ratchet.json'da duruyor.\n", encoding="utf-8")
+        temiz = _geri_besleme_ihlalleri(sahte, {"geri-besleme-kanaryasi.md"})
+        if temiz:
+            raise AssertionError(f"a clean file was reported as feedback: {temiz}")
+        # A figure embedded in a longer number is not the figure.
+        kanarya.write_text("satir 1987654321x\n", encoding="utf-8")
+        gomulu = _geri_besleme_ihlalleri(sahte, {"geri-besleme-kanaryasi.md"})
+        if gomulu:
+            raise AssertionError(f"a substring was counted as the figure: {gomulu}")
+    finally:
+        if olusturuldu and kanarya.is_file():
+            kanarya.unlink()
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3780,6 +3869,10 @@ GATES_EXTRA = {
     "decision-latency-is-recorded": (
         gate_decision_latency_is_recorded,
         selftest_decision_latency_is_recorded,
+    ),
+    "measurements-do-not-feed-back": (
+        gate_measurements_do_not_feed_back,
+        selftest_measurements_do_not_feed_back,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),

@@ -44,13 +44,17 @@ Lubot'un kendisi.
       sözlüğünü okuyan bir Rust jetonlayıcı + korpus yükleyici gerekiyor;
       `tokenizer-vocab-is-frozen` kapısı sözlüğün donmuş olduğunu zaten
       doğruluyor, yani iki tarafın aynı sözlüğü paylaştığı denetlenebilir.
-- [ ] **Ölçümün kendine geri beslenmemesi kuralı.** Bulundu ve bu turda
-      kapatıldı: `README.md` korpusun içinde olduğu için ratchet satırındaki
-      korpus türevi sayılar ölçümü kendine bağlıyordu — sabit nokta **yok**
-      (101443 yazınca 101444, 101444 yazınca 101443 ölçülüyor, ölçüldü).
-      Sayılar `training/ratchet.json`'a taşındı (korpusa girmiyor). Kalan iş:
-      bunu bir kapıya bağlamak, yani korpus-içi bir dosyada korpus türevi bir
-      ölçüm göründüğünde reddetmek. Şu an yalnız README'den elle çıkarıldı.
+- [x] **Ölçümün kendine geri beslenmemesi kuralı** (kapı 60
+      `measurements-do-not-feed-back`). Bulundu ve kurala bağlandı: `README.md`
+      korpusun içinde olduğu için ratchet satırındaki korpus türevi sayılar
+      ölçümü kendine bağlıyordu — sabit nokta **yok** (101443 yazınca 101444,
+      101444 yazınca 101443 ölçülüyor; ölçüldü). Sayılar
+      `training/ratchet.json`'a taşındı (korpusa girmiyor). Kapı şimdi 53
+      korpus-içi dosyayı korpusun kendi sayılarına karşı denetliyor. Kendi
+      yazarını yakaladı: ilk sürümde self-test kanaryası gerçek sayıları sabit
+      olarak içeriyordu ve `gates/check.py` de korpus-içi bir dosya — kanarya
+      artık gerçek olamayacak sayılar kullanıyor. Üç kanarya: yakalanan dosya,
+      temiz dosya, uzun bir sayının içinde geçen alt dizi.
 - [x] **Adım 8a — Kıyas sınıfı beyanı.** `training/kiyas_sinifi.py` (kapı 56):
       parametre `model_spec.json`'dan, jeton `egitim_butcesi.py --olc`'ten
       okunuyor (ikinci literal yok). Ölçülen: **924.288 parametre**, sınırın

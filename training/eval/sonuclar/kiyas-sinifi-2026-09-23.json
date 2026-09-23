@@ -7,7 +7,7 @@
     "sonuc": true
   },
   "kaynaklar": {
-    "sure_saniye": 0.353,
+    "sure_saniye": 0.376,
     "girdi_jetonlari": 0,
     "onbellekli_jetonlari": 0,
     "cikti_jetonlari": 0,
@@ -16,10 +16,10 @@
   "kanit": "Parametre model_spec.json'dan, jeton egitim_butcesi.py --olc'den okundu (ikinci literal yok); sinav seti sayildi ve her sorunun content_id'si eval-only.json damgalariyla karsilastirildi.",
   "sinif": {
     "parametre": 924288,
-    "benzersiz_jeton": 102312,
-    "korpus_kayit_sayisi": 1766,
-    "jeton_basina_parametre": 0.110693,
-    "parametre_basina_jeton": 9.034,
+    "benzersiz_jeton": 102654,
+    "korpus_kayit_sayisi": 1767,
+    "jeton_basina_parametre": 0.111063,
+    "parametre_basina_jeton": 9.0039,
     "sinir": [
       {
         "ad": "SmolLM2-135M",
