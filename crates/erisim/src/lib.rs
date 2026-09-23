@@ -40,6 +40,18 @@
 use lubot_read::sha256_hex;
 use std::collections::BTreeSet;
 
+/// The byte that frames the token's fields.
+///
+/// Named rather than spelled inline, because the two places it appears - the
+/// join and the refusal - have to agree, and two literals agreeing is a
+/// coincidence waiting to end.
+const SEPARATOR: char = '\u{1f}';
+
+/// The same byte as text, derived from [`SEPARATOR`] rather than written again.
+fn separator() -> String {
+    SEPARATOR.to_string()
+}
+
 /// Why an authorization refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessError {
@@ -62,6 +74,11 @@ pub enum AccessError {
     /// An empty scope. A capability over nothing is not a narrow capability, it
     /// is one that cannot be used, and minting it is usually a mistake.
     EmptyScope,
+    /// A field carries the byte that frames the token. The token joins its
+    /// fields with a unit separator so that two different field combinations
+    /// cannot reach one digest; a field holding the separator defeats that, so
+    /// it is refused at mint rather than encoded.
+    UnsafeCharacter { ch: char },
 }
 
 impl std::fmt::Display for AccessError {
@@ -94,6 +111,10 @@ impl std::fmt::Display for AccessError {
                 )
             }
             Self::EmptyScope => write!(f, "a capability over an empty scope cannot be used"),
+            Self::UnsafeCharacter { ch } => write!(
+                f,
+                "a field carries {ch:?}, which is the byte that frames the token;                  encoding it would let two different capabilities share one token"
+            ),
         }
     }
 }
@@ -126,7 +147,8 @@ impl Capability {
     ///
     /// # Errors
     ///
-    /// [`AccessError::EmptyScope`].
+    /// [`AccessError::EmptyScope`], or [`AccessError::UnsafeCharacter`] when a
+    /// field carries the byte that frames the token.
     pub fn mint(
         subject: &str,
         scope: &[&str],
@@ -135,6 +157,17 @@ impl Capability {
     ) -> Result<Self, AccessError> {
         if scope.is_empty() {
             return Err(AccessError::EmptyScope);
+        }
+        // The framing byte is refused rather than escaped: escaping would make
+        // the token depend on a second encoding rule, and a rule that lives only
+        // in the reader is a rule a writer can forget.
+        for field in std::iter::once(subject)
+            .chain(scope.iter().copied())
+            .chain(actions.iter().copied())
+        {
+            if let Some(ch) = field.chars().find(|c| *c == SEPARATOR) {
+                return Err(AccessError::UnsafeCharacter { ch });
+            }
         }
         let mut cap = Self {
             subject: subject.to_string(),
@@ -150,14 +183,17 @@ impl Capability {
     /// The digest over every field except the token itself.
     ///
     /// Fields are separated by a byte that cannot appear in any of them, so that
-    /// two different field combinations cannot produce the same digest.
+    /// two different field combinations cannot produce the same digest. That
+    /// property is enforced rather than assumed: [`Self::mint`] refuses a field
+    /// carrying the separator, because a struct built field by field would
+    /// otherwise let `scope = {"a<US>b"}` frame exactly like `{"a", "b"}`.
     #[must_use]
     pub fn compute_token(&self) -> String {
         let mut parts = vec![self.subject.clone(), self.expires_at.to_string()];
         parts.extend(self.scope.iter().cloned());
-        parts.push("\u{1f}scope|actions".to_string());
+        parts.push(format!("{SEPARATOR}scope|actions"));
         parts.extend(self.actions.iter().cloned());
-        sha256_hex(parts.join("\u{1f}").as_bytes())
+        sha256_hex(parts.join(&separator()).as_bytes())
     }
 
     /// Whether the token matches the fields.
@@ -523,5 +559,45 @@ mod tests {
         // Nothing in the call takes a caller identity, so there is no way to
         // impersonate through this API - and no way to be authorized by claiming
         // to be somebody else.
+    }
+
+    #[test]
+    fn a_field_carrying_the_token_separator_is_refused_at_mint() {
+        // Abuse case, demonstrated before it is closed. `compute_token` frames
+        // fields with a unit separator, so a field holding the separator frames
+        // identically to two fields: one scope "a<US>b" and two scopes "a","b"
+        // reach the same digest, and the token then binds neither.
+        let smuggled = Capability {
+            subject: "worker-1".to_string(),
+            scope: BTreeSet::from(["folder/a\u{1f}folder/b".to_string()]),
+            actions: BTreeSet::from(["read".to_string()]),
+            expires_at: 1000,
+            token: String::new(),
+        };
+        let honest = Capability {
+            subject: "worker-1".to_string(),
+            scope: BTreeSet::from(["folder/a".to_string(), "folder/b".to_string()]),
+            actions: BTreeSet::from(["read".to_string()]),
+            expires_at: 1000,
+            token: String::new(),
+        };
+        assert_eq!(
+            smuggled.compute_token(),
+            honest.compute_token(),
+            "the raw framing no longer collides; this test documents why mint refuses"
+        );
+        // So the refusal at the boundary is what makes the module note a
+        // property instead of a claim. Every caller-provided field is checked.
+        for (subject, scope, actions) in [
+            ("worker\u{1f}1", &["folder/a"][..], &["read"][..]),
+            ("worker-1", &["folder/a\u{1f}b"][..], &["read"][..]),
+            ("worker-1", &["folder/a"][..], &["read\u{1f}delete"][..]),
+        ] {
+            assert_eq!(
+                Capability::mint(subject, scope, actions, 1000),
+                Err(AccessError::UnsafeCharacter { ch: '\u{1f}' }),
+                "mint accepted a field carrying the token separator"
+            );
+        }
     }
 }
