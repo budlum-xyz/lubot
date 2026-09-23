@@ -1597,6 +1597,75 @@ def selftest_eval_runs_are_mechanical() -> None:
     assert _eval_run_finding(unmeasured) is not None, "a run without duration accounting passed"
 
 
+# --------------------------------------------------------------------------
+# gate: the frozen BPE vocab is versioned, lossless and structurally sound
+# --------------------------------------------------------------------------
+def gate_tokenizer_vocab_is_frozen() -> str:
+    """The frozen BPE vocab exists, is versioned and lossless: the committed
+    vocab round-trips every record of the corpus this tree builds, its merge
+    table is a valid DAG, its family name matches its file, and its
+    pretoken pattern is the trainer's own; a vocab that is derived on the
+    fly, structurally broken or silently renamed is refused."""
+    vocab = ROOT / "training" / "tokenizer" / "lubot-bpe-v1.json"
+    if not vocab.is_file():
+        raise SystemExit(
+            "training/tokenizer/lubot-bpe-v1.json is missing; the vocab is "
+            "frozen and committed, never derived on the fly"
+        )
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "train_tokenizer.py"),
+         "--verify", "--corpus", "corpus/knowledge-self.jsonl.gz",
+         "--vocab", str(vocab)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            f"tokenizer verify failed: {(proc.stderr or proc.stdout)[-400:]}"
+        )
+    return ("frozen vocab round-trips the corpus, the merge table is a DAG "
+            "and the family name matches the file")
+
+
+def selftest_tokenizer_vocab_is_frozen() -> None:
+    """The canary: a structurally broken vocab and a misnamed family must
+    both be refused by the loader; the trainer must train."""
+    import tempfile
+
+    sys.path.insert(0, str(ROOT / "training"))
+    import train_tokenizer as tt
+
+    with tempfile.TemporaryDirectory() as td:
+        corpus = Path(td) / "c.jsonl"
+        corpus.write_text(
+            json.dumps({"kind": "doc", "text": "donmus sozluk kanaryasi " * 8}) + "\n",
+            encoding="utf-8",
+        )
+        out = Path(td) / "lubot-bpe-v1.json"
+        rc = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "train_tokenizer.py"),
+             "--corpus", str(corpus), "--out", str(out), "--vocab-size", "400"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        ).returncode
+        assert rc == 0, "canary training failed"
+        good = json.loads(out.read_text(encoding="utf-8"))
+        broken = dict(good)
+        broken["merges"] = [[256 + len(good["merges"]) - 1, 65]] + good["merges"][1:]
+        badfile = Path(td) / "bozuk.json"
+        badfile.write_text(json.dumps(broken), encoding="utf-8")
+        try:
+            tt.load_vocab(str(badfile))
+            raise AssertionError("a broken merge table was accepted")
+        except SystemExit:
+            pass
+        misnamed = Path(td) / "baska.json"
+        misnamed.write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            tt.load_vocab(str(misnamed))
+            raise AssertionError("a misnamed family was accepted")
+        except SystemExit:
+            pass
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -1626,6 +1695,7 @@ GATES_EXTRA = {
     "kirmizi-senaryolar": (gate_kirmizi_senaryolar, selftest_kirmizi_senaryolar),
     "sft-evaluation-baseline": (gate_sft_evaluation_baseline, selftest_sft_evaluation_baseline),
     "corpus-build-is-deterministic": (gate_corpus_build_is_deterministic, selftest_corpus_build_is_deterministic),
+    "tokenizer-vocab-is-frozen": (gate_tokenizer_vocab_is_frozen, selftest_tokenizer_vocab_is_frozen),
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
