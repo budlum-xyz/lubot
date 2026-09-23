@@ -1672,6 +1672,83 @@ def selftest_tokenizer_vocab_is_frozen() -> None:
             pass
 
 
+# --------------------------------------------------------------------------
+# gate: the committed model spec is internally consistent (NN-3)
+# --------------------------------------------------------------------------
+def gate_model_spec_is_consistent() -> str:
+    """The committed training/model_spec.json validates against its own
+    rules: structure, the muP table's init/LR formulas per parameter group,
+    the weight-tying resolution (shared embedding + 1/d_model logit scale),
+    the exact tensor-by-tensor param count, and the measured hardware
+    ceiling (K6). A spec whose declared numbers disagree with its formulas,
+    or that steps over the measured ceiling, is refused."""
+    spec_path = ROOT / "training" / "model_spec.json"
+    if not spec_path.exists():
+        raise SystemExit(
+            "training/model_spec.json is missing; the architecture decision is "
+            "committed as data, never carried in someone's head"
+        )
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "model_spec.py"),
+         "--validate", str(spec_path)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            f"model spec failed validation: {(proc.stderr or proc.stdout)[-400:]}"
+        )
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    return (
+        f"model spec {spec['name']} is consistent: muP table, tying, "
+        f"param count {spec['params']['toplam']}, ceiling respected (K6)"
+    )
+
+
+def selftest_model_spec_is_consistent() -> None:
+    """The canary: a spec with a wrong param count, one over the ceiling,
+    an untied readout and a mis-scaled attention must all be refused."""
+    sys.path.insert(0, str(ROOT / "training"))
+    import copy
+
+    import model_spec as ms
+
+    ms.selftest()  # the tool's own consistency proofs carry over
+    base = json.loads((ROOT / "training" / "model_spec.json").read_text(encoding="utf-8"))
+    ms.validate_spec(base)  # the committed spec is the healthy control
+
+    yanlis = copy.deepcopy(base)
+    yanlis["params"]["toplam"] += 1
+    try:
+        ms.validate_spec(yanlis)
+        raise AssertionError("a wrong param count was accepted")
+    except SystemExit:
+        pass
+
+    tasmis = copy.deepcopy(base)
+    tasmis["ceiling_reference"]["max_params_train_fp32_adamw"] = 1
+    try:
+        ms.validate_spec(tasmis)
+        raise AssertionError("a spec over the measured ceiling was accepted")
+    except SystemExit:
+        pass
+
+    bagsiz = copy.deepcopy(base)
+    bagsiz["weight_tying"] = {"tied": False}
+    try:
+        ms.validate_spec(bagsiz)
+        raise AssertionError("an untied readout was accepted")
+    except SystemExit:
+        pass
+
+    olceksiz = copy.deepcopy(base)
+    olceksiz["attention_scale"] = "1/sqrt(d_k)"
+    try:
+        ms.validate_spec(olceksiz)
+        raise AssertionError("a standard 1/sqrt(d_k) attention scale was accepted")
+    except SystemExit:
+        pass
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -1702,6 +1779,7 @@ GATES_EXTRA = {
     "sft-evaluation-baseline": (gate_sft_evaluation_baseline, selftest_sft_evaluation_baseline),
     "corpus-build-is-deterministic": (gate_corpus_build_is_deterministic, selftest_corpus_build_is_deterministic),
     "tokenizer-vocab-is-frozen": (gate_tokenizer_vocab_is_frozen, selftest_tokenizer_vocab_is_frozen),
+    "model-spec-is-consistent": (gate_model_spec_is_consistent, selftest_model_spec_is_consistent),
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
