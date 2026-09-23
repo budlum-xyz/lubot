@@ -58,6 +58,8 @@ pub struct Spec {
     pub n_heads: usize,
     /// MLP inner width.
     pub d_ff: usize,
+    /// Longest sequence the model is built for, as the spec states it.
+    pub max_seq_len: usize,
 }
 
 /// Why a spec was refused.
@@ -79,6 +81,7 @@ impl Spec {
             n_layers: 8,
             n_heads: 2,
             d_ff: 256,
+            max_seq_len: 256,
         }
     }
 
@@ -922,8 +925,123 @@ impl Adamw {
     }
 }
 
+/// What the corpus looks like to a fixed-window trainer, measured.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PencereRaporu {
+    /// Records measured.
+    pub kayit: usize,
+    /// Tokens in total.
+    pub toplam_jeton: usize,
+    /// Full windows of the requested length.
+    pub pencere: usize,
+    /// Tokens that fall in a window.
+    pub kapsanan_jeton: usize,
+    /// Tokens left over in tails too short to fill a window.
+    pub artan_jeton: usize,
+    /// Windows if the corpus is packed into one stream instead of windowed
+    /// record by record.
+    pub paket_pencere: usize,
+    /// Tokens left over when packing.
+    pub paket_artan: usize,
+    /// Median record length in tokens.
+    pub p50: usize,
+    /// 95th percentile record length in tokens.
+    pub p95: usize,
+    /// 99th percentile record length in tokens.
+    pub p99: usize,
+    /// Longest record, in tokens.
+    pub en_uzun: usize,
+}
+
+/// Why a window measurement was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PencereHatasi {
+    /// A zero-length window would produce no training signal.
+    SifirUzunluk,
+    /// No records at all.
+    BosKorpus,
+}
+
+/// Measure the corpus against a fixed window length.
+///
+/// The window length comes from the spec's `max_seq_len`, and the point of
+/// measuring it here is to test that number against the corpus the model will
+/// actually train on rather than the one the spec was written from.
+///
+/// # Errors
+/// [`PencereHatasi::SifirUzunluk`] on a zero window,
+/// [`PencereHatasi::BosKorpus`] on no records.
+pub fn pencere_olcu(
+    jeton_sayilari: &[usize],
+    uzunluk: usize,
+) -> Result<PencereRaporu, PencereHatasi> {
+    if uzunluk == 0 {
+        return Err(PencereHatasi::SifirUzunluk);
+    }
+    if jeton_sayilari.is_empty() {
+        return Err(PencereHatasi::BosKorpus);
+    }
+    let mut sirali = jeton_sayilari.to_vec();
+    sirali.sort_unstable();
+    let toplam: usize = sirali.iter().sum();
+    let pencere: usize = sirali.iter().map(|n| n / uzunluk).sum();
+    // En yakin-rank (nearest-rank) yontemi: rank = ceil(p * n), indeks rank - 1.
+    // Yontem adıyla yaziliyor cunku "p95" tek basina bir sayi degil: (n-1)*p
+    // yuvarlamasi ayni veride bir farkli deger verir ve iki yontem de "p95"
+    // diye okunur. Karisiklik olmamasi icin secilen yontem burada duruyor.
+    let yuzdelik = |p: f64| -> usize {
+        let rank = (p * sirali.len() as f64).ceil() as usize;
+        sirali[rank.saturating_sub(1).min(sirali.len() - 1)]
+    };
+    Ok(PencereRaporu {
+        kayit: jeton_sayilari.len(),
+        toplam_jeton: toplam,
+        pencere,
+        kapsanan_jeton: pencere * uzunluk,
+        artan_jeton: toplam - pencere * uzunluk,
+        paket_pencere: toplam / uzunluk,
+        paket_artan: toplam % uzunluk,
+        p50: yuzdelik(0.50),
+        p95: yuzdelik(0.95),
+        p99: yuzdelik(0.99),
+        en_uzun: *sirali.last().unwrap_or(&0),
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn windows_cover_only_whole_multiples_and_report_the_rest() {
+        let rapor = pencere_olcu(&[10, 7, 25, 3], 8).unwrap();
+        assert_eq!(rapor.kayit, 4);
+        assert_eq!(rapor.toplam_jeton, 45);
+        // Kayit basina: 10/8=1, 7/8=0, 25/8=3, 3/8=0 -> 4 pencere.
+        assert_eq!(rapor.pencere, 4);
+        assert_eq!(rapor.kapsanan_jeton, 32);
+        assert_eq!(rapor.artan_jeton, 13);
+        // Ayni korpus paketlenirse: 45/8 = 5 pencere, 5 jeton artik.
+        assert_eq!(rapor.paket_pencere, 5);
+        assert_eq!(rapor.paket_artan, 5);
+        assert_eq!(rapor.p50, 7);
+        assert_eq!(rapor.en_uzun, 25);
+    }
+
+    #[test]
+    fn percentiles_are_measured_not_guessed() {
+        let sayilar: Vec<usize> = (1..=100).collect();
+        let rapor = pencere_olcu(&sayilar, 4).unwrap();
+        assert_eq!(rapor.p50, 50);
+        assert_eq!(rapor.p95, 95);
+        assert_eq!(rapor.p99, 99);
+        assert_eq!(rapor.en_uzun, 100);
+    }
+
+    #[test]
+    fn a_zero_window_and_an_empty_corpus_are_refused() {
+        assert_eq!(pencere_olcu(&[5], 0), Err(PencereHatasi::SifirUzunluk));
+        assert_eq!(pencere_olcu(&[], 8), Err(PencereHatasi::BosKorpus));
+    }
+
     use super::*;
 
     /// A configuration small enough that a finite-difference check over every
@@ -936,6 +1054,7 @@ mod tests {
             n_layers: 2,
             n_heads: 2,
             d_ff: 6,
+            max_seq_len: 16,
         }
     }
 
@@ -1070,6 +1189,7 @@ mod tests {
         spec.dogrula().unwrap();
         assert_eq!(spec.parametre_sayisi(), 924_288);
         assert_eq!(spec.d_k(), 32);
+        assert_eq!(spec.max_seq_len, 256);
     }
 
     #[test]

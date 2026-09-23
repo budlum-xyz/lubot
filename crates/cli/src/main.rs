@@ -27,6 +27,7 @@ fn usage() -> String {
         "  lubot corpus <file.jsonl.gz>...",
         "  lubot egitim   (trainer self-check: spec, epoch ceiling, measured descent)",
         "  lubot jetonla --vocab <v.json> --corpus <c.jsonl.gz> [--limit N] [--tam]",
+        "  lubot egitim-veri --corpus <c.jsonl.gz> [--uzunluk N]  (window measurement vs the spec)",
         "  lubot ask --corpus <f1,f2> --reader <r> --effort 0.5x..10.0x [--audit f] [--outputs f] [--book b] <question>",
         "  lubot grant issue --reader <r> --key <k> --expires-at <sec> [--book b]",
         "  lubot grant revoke --reader <r> --key <k> [--book b]",
@@ -107,6 +108,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "olc" => cmd_olc(rest),
         "egitim" => cmd_egitim(rest),
         "jetonla" => cmd_jetonla(rest),
+        "egitim-veri" => cmd_egitim_veri(rest),
         "durum" => cmd_durum(rest),
         "guvenlik" => cmd_guvenlik(rest),
         "graf" => cmd_graf(rest),
@@ -1249,6 +1251,150 @@ fn git_stdout(args: &[&str]) -> Result<String, String> {
 /// This exists so the Rust tokenizer can be cross-checked against the Python
 /// one that cut the vocab: same file, same records, ids compared one by one.
 /// Two tokenizers that agree by convention is not an agreement.
+/// Measure the corpus against the spec's window length.
+///
+/// The spec's `max_seq_len` was chosen from the *surface* corpus (p95 ≈ 246).
+/// This measures the corpus the model will actually train on and says plainly
+/// whether that number still holds. It does not adjust anything: a spec whose
+/// assumption is falsified is a finding, not something to patch in passing.
+fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
+    let mut korpus_yolu: Option<String> = None;
+    let mut vocab_yolu = String::from("training/tokenizer/lubot-bpe-v2.json");
+    let mut uzunluk: Option<usize> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--corpus" => {
+                i += 1;
+                korpus_yolu = args.get(i).cloned();
+            }
+            "--vocab" => {
+                i += 1;
+                vocab_yolu = args.get(i).cloned().unwrap_or(vocab_yolu);
+            }
+            "--uzunluk" => {
+                i += 1;
+                uzunluk = Some(
+                    args.get(i)
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .ok_or_else(|| "--uzunluk bir sayi istiyor".to_string())?,
+                );
+            }
+            other => {
+                return Err(format!(
+                    "egitim-veri: bilinmeyen secenek {other}\n{}",
+                    usage()
+                ))
+            }
+        }
+        i += 1;
+    }
+    let korpus_yolu = korpus_yolu.ok_or_else(|| format!("--corpus zorunlu\n{}", usage()))?;
+    let spec = lubot_egitim::Spec::lubot_a1();
+    let uzunluk = uzunluk.unwrap_or(spec.max_seq_len);
+
+    // Spec'in beyani dosyadan okunur ve Rust sabitiyle karsilastirilir.
+    let spec_metin = std::fs::read_to_string("training/model_spec.json")
+        .map_err(|e| format!("model_spec.json okunamadi: {e}"))?;
+    let spec_json: serde_json::Value = serde_json::from_str(&spec_metin)
+        .map_err(|e| format!("model_spec.json JSON degil: {e}"))?;
+    let beyan = spec_json["max_seq_len"]
+        .as_u64()
+        .ok_or_else(|| "model_spec.json: max_seq_len yok".to_string())? as usize;
+    if beyan != spec.max_seq_len {
+        return Err(format!(
+            "spec beyani {} ama lubot-egitim::Spec {} diyor: iki yer anlasmıyor",
+            beyan, spec.max_seq_len
+        ));
+    }
+
+    let sozluk = lubot_jeton::Sozluk::yukle(std::path::Path::new(&vocab_yolu))
+        .map_err(|e| format!("sozluk reddedildi: {e}"))?;
+    let dosya = std::fs::File::open(&korpus_yolu)
+        .map_err(|e| format!("korpus acilamadi: {korpus_yolu} ({e})"))?;
+    let okuyucu: Box<dyn std::io::BufRead> = if std::path::Path::new(&korpus_yolu)
+        .extension()
+        .is_some_and(|e| e == "gz")
+    {
+        Box::new(std::io::BufReader::new(flate2::read::GzDecoder::new(dosya)))
+    } else {
+        Box::new(std::io::BufReader::new(dosya))
+    };
+    let mut sayilar: Vec<usize> = Vec::new();
+    for (sira, satir) in std::io::BufRead::lines(okuyucu).enumerate() {
+        let satir = satir.map_err(|e| format!("korpus okunamadi ({sira}): {e}"))?;
+        let satir = satir.trim();
+        if satir.is_empty() {
+            continue;
+        }
+        let deger: serde_json::Value = serde_json::from_str(satir)
+            .map_err(|e| format!("korpus kaydi {sira} JSON degil: {e}"))?;
+        let metin = deger["text"]
+            .as_str()
+            .ok_or_else(|| format!("korpus kaydi {sira}: `text` alani yok"))?;
+        sayilar.push(sozluk.kodla(metin).len());
+    }
+    let rapor: lubot_egitim::PencereRaporu = lubot_egitim::pencere_olcu(&sayilar, uzunluk)
+        .map_err(|e| {
+            format!(
+                "pencere olcumu reddedildi: {}",
+                match e {
+                    lubot_egitim::PencereHatasi::SifirUzunluk => "pencere uzunlugu sifir",
+                    lubot_egitim::PencereHatasi::BosKorpus => "korpus bos",
+                }
+            )
+        })?;
+
+    let mut md = String::from("# Egitim veri yolu\n\n| olcu | deger |\n|---|---|\n");
+    md.push_str(&format!(
+        "| korpus | {} kayit, {} jeton |\n",
+        rapor.kayit, rapor.toplam_jeton
+    ));
+    md.push_str(&format!(
+        "| kayit uzunlugu (jeton) | p50 {}, p95 {}, p99 {}, en uzun {} |\n",
+        rapor.p50, rapor.p95, rapor.p99, rapor.en_uzun
+    ));
+    md.push_str(&format!(
+        "| pencere | uzunluk {}, {} tam pencere, {} jeton kapsandi, {} jeton artik kuyruklarda |\n",
+        uzunluk, rapor.pencere, rapor.kapsanan_jeton, rapor.artan_jeton
+    ));
+    let kayit_kapsama = 100.0 * rapor.kapsanan_jeton as f64 / rapor.toplam_jeton as f64;
+    let paket_kapsama = 100.0 * (rapor.paket_pencere * uzunluk) as f64 / rapor.toplam_jeton as f64;
+    md.push_str(&format!(
+        "| kapsama | kayit basina pencereleme {:.4}% ({} jeton atilir); paketleme {:.4}% ({} jeton atilir) |\n",
+        kayit_kapsama,
+        rapor.artan_jeton,
+        paket_kapsama,
+        rapor.paket_artan
+    ));
+    if paket_kapsama - kayit_kapsama > 1.0 {
+        md.push_str(&format!(
+            "| bulgu | kayit basina pencereleme jetonlarin {:.2}%'ini atiyor: medyan kayit {} jeton, pencere {} jeton. Kayitlar arasi paketleme olmadan egitim korpusun kucuk bir parcasiyla kosar |\n",
+            100.0 - kayit_kapsama,
+            rapor.p50,
+            uzunluk
+        ));
+    }
+    let hukum = if rapor.p95 <= beyan {
+        format!(
+            "p95 {} <= spec'in max_seq_len beyani {}: beyan bu korpusta DURUYOR",
+            rapor.p95, beyan
+        )
+    } else {
+        format!(
+            "p95 {} > spec'in max_seq_len beyani {}: beyan bu korpusta YANLIS, spec yeniden dogrulanmali",
+            rapor.p95, beyan
+        )
+    };
+    md.push_str(&format!("| hukum | {hukum} |\n"));
+    md.push_str(
+        "| yontem | yuzdelikler en yakin-rank (rank = ceil(p*n)); spec beyani dosyadan okundu ve Rust sabitiyle karsilastirildi |\n",
+    );
+    lubot::validate_output(md.as_bytes(), "egitim-veri")?;
+    print!("{md}");
+    Ok(())
+}
+
 fn cmd_jetonla(args: &[String]) -> Result<(), String> {
     let mut vocab_yolu: Option<String> = None;
     let mut korpus_yolu: Option<String> = None;
@@ -1405,6 +1551,7 @@ fn cmd_egitim(args: &[String]) -> Result<(), String> {
         n_layers: 2,
         n_heads: 2,
         d_ff: 32,
+        max_seq_len: 16,
     };
     kucuk
         .dogrula()

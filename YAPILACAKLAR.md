@@ -49,10 +49,27 @@ Lubot'un kendisi.
       değil; (b) `\d` yerine `is_numeric()` kullanmak Nl/No'yu (½, ², Romen
       rakamı) içeri alırdı, Nd kategorisi kullanıldı. Kalan: bu jetonlayıcıyı
       eğitim çekirdeğine bağlayıp korpus üzerinde gerçek bir tur koşmak.
-- [ ] **Eğitim çekirdeğinin korpusla ilk gerçek turu.** Jetonlayıcı hazır,
-      çekirdek hazır; eksik olan ikisini birleştiren veri yolu (korpus → jeton
-      dizisi → pencere) ve K6 donanımında ölçülecek ilk kayıp eğrisi. Sınav
-      skoru hâlâ ölçülemez: eğitilmiş kontrol noktası yok.
+- [x] **Veri yolu ölçümü** — `lubot egitim-veri` + `pencere_olcu` +
+      `bulgu_veri_yolu`. Ölçülen: **1806 kayıt, 105444 jeton**; kayıt uzunluğu
+      p50 **31**, p95 **168**, p99 **546**, en uzun **2116** jeton. Sonuç iki
+      ayrı hüküm verdi: (1) spec'in `max_seq_len` = 256 beyanı bu korpusta
+      **DURUYOR** (p95 168 ≤ 256) — ama o beyan yüzey korpusundan alınmıştı,
+      şimdi eğitilecek korpusta doğrulandı; (2) asıl kısıt pencere uzunluğu
+      değil **pencereleme stratejisi**: kayıt başına pencereleme **78 pencere
+      (%18.94 kapsama, 85476 jeton atılıyor)**, kayıtlar arası paketleme **411
+      pencere (%99.78, 228 jeton)**. Yani paketleme kurulmazsa eğitim korpusun
+      ~%19'uyla koşar. Yüzdelik yöntemi adı ile yazıldı (en yakın-rank), çünkü
+      "p95" yöntem söylenmeden tek bir sayı değil.
+- [ ] **Kayıtlar arası paketleme.** Ölçüm yukarıda; kodu yazılmadı (bulgu
+      kaydı bunu açıkça söylüyor). Paketleme kurulurken dikkat: kayıt
+      sınırlarını aşan pencere, iki ayrı kaynağın metnini birleştirir — bu
+      alıntı disiplinini (L/Z/AA) etkileyebilir, o yüzden paketleme ya
+      kayıt-başına `content_id` izi taşımalı ya da sınav seti paketleme
+      kurulduktan sonra yeniden damgalanmalı.
+- [ ] **Eğitim çekirdeğinin korpusla ilk gerçek turu.** Jetonlayıcı ve veri yolu
+      ölçümü hazır; eksik olan paketlenmiş pencerelerle koşan tur ve K6
+      donanımında ölçülecek ilk kayıp eğrisi. Sınav skoru hâlâ ölçülemez:
+      eğitilmiş kontrol noktası yok.
 - [x] **Ölçümün kendine geri beslenmemesi kuralı** (kapı 60
       `measurements-do-not-feed-back`). Bulundu ve kurala bağlandı: `README.md`
       korpusun içinde olduğu için ratchet satırındaki korpus türevi sayılar

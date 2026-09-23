@@ -26,6 +26,7 @@ Usage:
 
 from __future__ import annotations
 
+import math
 import argparse
 import gzip
 import importlib.util
@@ -84,10 +85,10 @@ def protokol_tavani() -> int:
     return int(m.group(1))
 
 
-def jeton_say() -> tuple[int, int, str]:
+def jeton_say() -> tuple[int, int, str, list[int]]:
     """Tokenize the corpus this machine builds, with the frozen vocabulary.
 
-    Returns (token count, record count, vocab family). The vocabulary is loaded
+    Returns (token count, record count, vocab family, per-record lengths). The vocabulary is loaded
     through the trainer's own fail-closed loader, so a vocab that has drifted
     structurally is refused here rather than quietly mis-encoding.
     """
@@ -102,14 +103,17 @@ def jeton_say() -> tuple[int, int, str]:
         )
     toplam = 0
     kayit_sayisi = 0
+    uzunluklar: list[int] = []
     with gzip.open(KORPUS, "rt", encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
                 continue
             kayit_sayisi += 1
-            toplam += len(tt.encode(json.loads(line)["text"], vocab))
-    return toplam, kayit_sayisi, aile
+            adet = len(tt.encode(json.loads(line)["text"], vocab))
+            uzunluklar.append(adet)
+            toplam += adet
+    return toplam, kayit_sayisi, aile, uzunluklar
 
 
 def politika_ihlalleri(politika: dict, tavan: int) -> list[str]:
@@ -133,7 +137,27 @@ def butce_olc() -> dict:
     """Measure the budget against the policy. Returns the numbers and any breach."""
     politika = politika_oku()
     tavan = protokol_tavani()
-    jeton, kayit_sayisi, aile = jeton_say()
+    jeton, kayit_sayisi, aile, uzunluklar = jeton_say()
+    # Veri yolu olcumu: ayni jetonlama yolundan geliyor (yukarida her kayit
+    # zaten jetonlandi), yani ikinci bir olcum duzenei yok.
+    pencere_uzunlugu = int(
+        json.loads((ROOT / "training" / "model_spec.json").read_text(encoding="utf-8"))[
+            "max_seq_len"
+        ]
+    )
+    sirali = sorted(uzunluklar) if uzunluklar else []
+
+    def _yuzdelik(p_oran: float) -> int:
+        if not sirali:
+            return 0
+        sira = math.ceil(p_oran * len(sirali))
+        return sirali[max(0, min(len(sirali) - 1, sira - 1))]
+
+    kayit_pencere = sum(n // pencere_uzunlugu for n in uzunluklar)
+    paket_pencere = jeton // pencere_uzunlugu
+    kayit_kapsama = 100.0 * kayit_pencere * pencere_uzunlugu / jeton if jeton else 0.0
+    paket_kapsama = 100.0 * paket_pencere * pencere_uzunlugu / jeton if jeton else 0.0
+
     spec = json.loads((ROOT / "training" / "model_spec.json").read_text(encoding="utf-8"))
     param = spec["params"]["toplam"]
     epoch = politika["max_epochs"]
@@ -185,6 +209,38 @@ def butce_olc() -> dict:
             "olculen_jeton_basina_param": round(jeton / param, 6) if param else 0.0,
             "spec_beyani_jeton_basina_param": 1.94,
             "fark_kati": round(1.94 / (jeton / param), 2) if jeton and param else 0.0,
+        },
+        # BULGU, duzeltme degil: pencereleme stratejisi korpusun ne kadarinin
+        # egitime girdigini belirliyor ve fark burada bir mertebeye yakin.
+        "bulgu_veri_yolu": {
+            "olculen": (
+                f"{kayit_sayisi} kayit, {jeton} jeton; kayit uzunlugu p50 "
+                f"{_yuzdelik(0.50)}, p95 {_yuzdelik(0.95)}, p99 {_yuzdelik(0.99)}, "
+                f"en uzun {sirali[-1] if sirali else 0} jeton. Pencere "
+                f"{pencere_uzunlugu}: kayit basina pencereleme {kayit_pencere} "
+                f"pencere ({round(kayit_kapsama, 4)}% kapsama), kayitlar arasi "
+                f"paketleme {paket_pencere} pencere ({round(paket_kapsama, 4)}%)."
+            ),
+            "hukum": (
+                f"spec'in max_seq_len beyani ({pencere_uzunlugu}) bu korpusta "
+                f"DURUYOR (p95 {_yuzdelik(0.95)} <= {pencere_uzunlugu}), ama kayit "
+                f"basina pencereleme jetonlarin {round(100.0 - kayit_kapsama, 2)}%'ini "
+                f"atiyor cunku medyan kayit {_yuzdelik(0.50)} jeton. Egitim veri yolu "
+                "kayitlar arasi paketleme kurmak zorunda; kurulmazsa egitim korpusun "
+                f"yaklasik {round(kayit_kapsama)}%'iyle kosar."
+            ),
+            "yapilmayan": (
+                "model_spec.json degistirilmedi, pencereleme kodu yazilmadi, korpus "
+                "degistirilmedi. Kayit bulguyu tasir; paketleme ayri bir is."
+            ),
+            "olculen_pencere_uzunlugu": pencere_uzunlugu,
+            "olculen_p50": _yuzdelik(0.50),
+            "olculen_p95": _yuzdelik(0.95),
+            "olculen_p99": _yuzdelik(0.99),
+            "olculen_kayit_pencere": kayit_pencere,
+            "olculen_paket_pencere": paket_pencere,
+            "olculen_kayit_kapsama_yuzde": round(kayit_kapsama, 4),
+            "olculen_paket_kapsama_yuzde": round(paket_kapsama, 4),
         },
         "ihlaller": ihlaller,
         "olculmeyen": [
