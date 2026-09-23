@@ -1,0 +1,196 @@
+{
+  "is": "mup-dikkat-olcegi",
+  "kanit": "training/mup_olcum.py --dogrula ayni olcumu yeniden uretir: d_head 32 -> 128 (4x) icin tohum basina oranlar [0.55042, 0.467003, 0.473838], ortalama 0.497087 (beklenen 0.500); standart kural 0.9759 (beklenen 1.000), olceksiz kural 1.97757 (beklenen 2.000).",
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 2.947
+  },
+  "kosucu": "betik",
+  "not": "Hukum olcumun kendisi hakkindadir: komiteli spec'in 1/d_head olcegi, sqrt(2/fan_in) init ile logitleri d_head buyudukce kucultur (1/sqrt(d_head)); genislikten bagimsiz logit isteyen bir okuma icin 1/sqrt(d_head) gerekir. Bu bir cozulmemis karardir, kayit onu degistirmez: spec metni bu turda degistirilmedi (mimari karar, operator onayi bekler).",
+  "olcum": {
+    "bagli_olceksiz_buyumesi": {
+      "ortalama": 2.013356,
+      "tohum_oranlari": [
+        2.010378,
+        1.980172,
+        2.049518
+      ],
+      "yayilim": 0.069346
+    },
+    "bagli_olmayan_mup_esitligi": 0.012404,
+    "d_head": {
+      "128": 64,
+      "32": 16
+    },
+    "dikkat_logit_rms": {
+      "olceksiz": {
+        "128": [
+          15.920871784215082,
+          16.30398601962592,
+          15.659345337797976
+        ],
+        "32": [
+          6.9955411458492085,
+          8.980712434559422,
+          8.50401824783944
+        ]
+      },
+      "spesifikasyon": {
+        "128": [
+          0.24148979983348243,
+          0.2612205949975524,
+          0.2529903857506708
+        ],
+        "32": [
+          0.4387373065707981,
+          0.559355171230701,
+          0.5339176314634299
+        ]
+      },
+      "standart": {
+        "128": [
+          1.0437910444576053,
+          0.8757901559624438,
+          1.1626288437961447
+        ],
+        "32": [
+          1.0297645331915923,
+          0.9771540484902967,
+          1.1422832121727855
+        ]
+      }
+    },
+    "dikkat_oranlari": {
+      "olceksiz": {
+        "ortalama": 1.97757,
+        "tohum_oranlari": [
+          2.27586,
+          1.815445,
+          1.841405
+        ],
+        "yayilim": 0.460415
+      },
+      "spesifikasyon": {
+        "ortalama": 0.497087,
+        "tohum_oranlari": [
+          0.55042,
+          0.467003,
+          0.473838
+        ],
+        "yayilim": 0.083417
+      },
+      "standart": {
+        "ortalama": 0.9759,
+        "tohum_oranlari": [
+          1.013621,
+          0.896266,
+          1.017811
+        ],
+        "yayilim": 0.121545
+      }
+    },
+    "genislikler": [
+      32,
+      128
+    ],
+    "kafalar": 2,
+    "kontrol": {
+      "dikkat_olceksiz_orani": {
+        "ortalama": 1.97757,
+        "tohum_oranlari": [
+          2.27586,
+          1.815445,
+          1.841405
+        ],
+        "yayilim": 0.460415
+      },
+      "dikkat_standart_orani": {
+        "ortalama": 0.9759,
+        "tohum_oranlari": [
+          1.013621,
+          0.896266,
+          1.017811
+        ],
+        "yayilim": 0.121545
+      },
+      "readout_olceksiz_buyumesi": {
+        "ortalama": 2.013356,
+        "tohum_oranlari": [
+          2.010378,
+          1.980172,
+          2.049518
+        ],
+        "yayilim": 0.069346
+      }
+    },
+    "kriterler": {
+      "dikkat": true,
+      "readout": true
+    },
+    "logit_rms": {
+      "bagli_olcekli": {
+        "128": [
+          0.08908742393439496,
+          0.08824735083490357,
+          0.08866535181801312
+        ],
+        "32": [
+          0.17605886678804022,
+          0.1793073545919439,
+          0.17555057797484153
+        ]
+      },
+      "bagli_olceksiz": {
+        "128": [
+          11.301162057683966,
+          11.293764690864732,
+          11.345772531254003
+        ],
+        "32": [
+          5.621410746838032,
+          5.703425133282807,
+          5.535823611330339
+        ]
+      },
+      "bagli_olmayan_mup": {
+        "128": [
+          0.08898822535055215,
+          0.08935571009105168,
+          0.08809259405832587
+        ],
+        "32": [
+          0.17700551924105978,
+          0.17831364851949819,
+          0.17531613680503755
+        ]
+      }
+    },
+    "olculen": [
+      "dikkat logit RMS'i (1/d_head, 1/sqrt(d_head), olceksiz) d_head 32->128",
+      "readout logit RMS'i (bagli+1/d_model, bagli olmayan muP readout, olceksiz)"
+    ],
+    "olculmeyen": [
+      "egitim dinamigi ve LR transferinin gercek kosudaki davranisi",
+      "tam model (d_model 64, 8 katman, vocab 8192) ve GPU olcumu"
+    ],
+    "sure_saniye": 2.947,
+    "turetilen": {
+      "etiket": "turetilmis: base_lr * P / n; bu makinede olculmedi",
+      "lr_transferi_base_lr_carpani": {
+        "proxy_32_hedef_128": 0.25,
+        "proxy_32_hedef_64": 0.5,
+        "proxy_64_hedef_128": 0.5,
+        "proxy_64_hedef_64": 1.0
+      }
+    },
+    "vocab_proxy": 512
+  },
+  "olcut": {
+    "ad": "dikkat_logit_rms_inin_d_head_buyurken_1_bolu_karekok_d_head_egrisine_uymasi",
+    "sonuc": true
+  },
+  "tarih": "2026-09-23"
+}
