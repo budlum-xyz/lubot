@@ -112,6 +112,23 @@ def jeton_say() -> tuple[int, int, str]:
     return toplam, kayit_sayisi, aile
 
 
+def politika_ihlalleri(politika: dict, tavan: int) -> list[str]:
+    """Breaches that need no corpus.
+
+    CI runs the gate self-tests BEFORE the corpus exists, so a canary that had
+    to tokenize could never run there. Kept pure so the canary is really
+    executed in CI, and used by the measurement so there is only one rule.
+    """
+    ihlaller: list[str] = []
+    epoch = politika["max_epochs"]
+    if epoch > tavan:
+        ihlaller.append(
+            f"max_epochs {epoch} protokol tavanini asiyor ({tavan}, "
+            f"{GRANT_KAYNAGI.relative_to(ROOT)})"
+        )
+    return ihlaller
+
+
 def butce_olc() -> dict:
     """Measure the budget against the policy. Returns the numbers and any breach."""
     politika = politika_oku()
@@ -121,12 +138,7 @@ def butce_olc() -> dict:
     param = spec["params"]["toplam"]
     epoch = politika["max_epochs"]
     gecis = jeton * epoch
-    ihlaller: list[str] = []
-    if epoch > tavan:
-        ihlaller.append(
-            f"max_epochs {epoch} protokol tavanini asiyor ({tavan}, "
-            f"{GRANT_KAYNAGI.relative_to(ROOT)})"
-        )
+    ihlaller = politika_ihlalleri(politika, tavan)
     if jeton <= 0:
         ihlaller.append("korpus hic jeton uretmedi: olculecek bir butce yok")
     return {
@@ -280,12 +292,18 @@ def self_test() -> int:
     range and a malformed policy must each be refused."""
     gercek = POLITIKA.read_text(encoding="utf-8")
     politika = json.loads(gercek)
+    tavan = protokol_tavani()
     try:
+        # Kanarya 1: protokol tavanini asan epoch reddedilmeli. Korpus
+        # gerektirmeyen saf kural uzerinden: CI'da self-test adimi korpus
+        # kurulmadan once kosar.
         asiri = json.loads(json.dumps(politika))
-        asiri["max_epochs"] = protokol_tavani() + 1
-        POLITIKA.write_text(json.dumps(asiri, ensure_ascii=False), encoding="utf-8")
-        if not butce_olc()["ihlaller"]:
+        asiri["max_epochs"] = tavan + 1
+        if not politika_ihlalleri(asiri, tavan):
             raise SystemExit("self-test: protokol tavanini asan epoch yakalanmadi")
+        # Kanarya 2: beyan edilen politika kendi tavanini asmamali.
+        if politika_ihlalleri(politika, tavan):
+            raise SystemExit("self-test: beyan edilen politika kendi tavanini asiyor")
 
         bozuk = json.loads(json.dumps(politika))
         bozuk["weight_decay"] = 1.5
@@ -309,8 +327,15 @@ def self_test() -> int:
     finally:
         POLITIKA.write_text(gercek, encoding="utf-8")
 
+    if not KORPUS.is_file():
+        # CI sirasinda dogru yol: politika denetimi kosuldu, jeton olcumu
+        # korpusdan sonra kapinin kendisinde kosuyor.
+        print("self-test OK (korpus yok: politika kanaryalari kosuldu)")
+        return 0
     if butce_olc()["ihlaller"]:
         raise SystemExit("self-test: beyan edilen politika kendi olcumunde ihlal uretiyor")
+    if butce_olc()["benzersiz_jeton"] <= 0:
+        raise SystemExit("self-test: olcum hic jeton saymadi")
     print("self-test OK")
     return 0
 

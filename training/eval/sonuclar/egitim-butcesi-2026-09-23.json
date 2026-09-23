@@ -1,19 +1,19 @@
 {
   "butce": {
-    "benzersiz_jeton": 89540,
+    "benzersiz_jeton": 89547,
     "bulgu_veri_butcesi": {
-      "fark_kati": 20.03,
+      "fark_kati": 20.02,
       "hukum": "spec'in veri butcesi beyani self korpusu icin tutmuyor: 924.288 parametre 89.443 benzersiz jetona karsi geliyor (jeton basina ~10 parametre). Bu bir BULGUDUR; hangi korpusun egitilecegi operator karari ve model_spec.json bu turda degistirilmedi.",
-      "olculen_benzersiz_jeton": 89540,
-      "olculen_jeton_basina_param": 0.096875,
+      "olculen_benzersiz_jeton": 89547,
+      "olculen_jeton_basina_param": 0.096882,
       "olculen_korpus": "self (corpus/knowledge-self.jsonl.gz)",
       "spec_beyani_jeton_basina_param": 1.94,
       "spec_beyaninin_dayandigi_korpus": "yuzey (1.791.712 jeton, spec notu)"
     },
     "etkin_kaynak_orani": 0.25,
     "ihlaller": [],
-    "jeton_basina_param_bir_epoch": 0.096875,
-    "jeton_basina_param_tam_butce": 0.387498,
+    "jeton_basina_param_bir_epoch": 0.096882,
+    "jeton_basina_param_tam_butce": 0.387529,
     "korpus_kayit_sayisi": 1591,
     "max_epochs": 4,
     "olculmeyen": [
@@ -21,24 +21,24 @@
       "weight_decay'in bu verideki etkisi (egitim kosusu gerektirir)",
       "epoch_basina_kalite_olcutu degerleri (henüz epoch kosulmadi)"
     ],
-    "param_basina_benzersiz_jeton_tersi": 10.3226,
+    "param_basina_benzersiz_jeton_tersi": 10.3218,
     "parametre": 924288,
     "politika_surumu": 1,
     "protokol_epoch_tavani": 4096,
     "sozluk_ailesi": "lubot-bpe-v2",
     "spec_jeton_basina_param_beyani": "1.791.712 token / 924.288 param ≈ 1.94 token/param; Chinchilla referansı 20 (ölçülmedi) → referansa göre ~10 kat fazla parametre; embedding tabanından kaçılamaz, karar metninde beyan",
     "tekrar_carpani": 4,
-    "toplam_gecis": 358160,
+    "toplam_gecis": 358188,
     "weight_decay": 0.1
   },
   "is": "egitim-butcesi-olcumu",
-  "kanit": "training/egitim_butcesi.py --dogrula butceyi donmus lubot-bpe-v2 sozluguyle yeniden sayar: 1591 kayit -> 89540 benzersiz jeton; beyan edilen 4 epoch 358160 gecis eder, etkin kaynak orani 0.25; protokol tavani 4096 (crates/grant/src/training.rs icinden okundu).",
+  "kanit": "training/egitim_butcesi.py --dogrula butceyi donmus lubot-bpe-v2 sozluguyle yeniden sayar: 1591 kayit -> 89547 benzersiz jeton; beyan edilen 4 epoch 358188 gecis eder, etkin kaynak orani 0.25; protokol tavani 4096 (crates/grant/src/training.rs icinden okundu).",
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.307
+    "sure_saniye": 0.295
   },
   "kosucu": "betik",
   "not": "Bu kayit BUTCEYI olcer, getiriyi degil: ayni verinin k. gecisinin marjinal degeri yalniz bir egitim kosusunda olculur ve 'olculmeyen' alaninda listelenir. Etkin kaynak orani 1/epoch'tur; 'daha cok epoch = daha iyi' varsayimi bu oran raporlanmadan korlemesine yapilir.",
