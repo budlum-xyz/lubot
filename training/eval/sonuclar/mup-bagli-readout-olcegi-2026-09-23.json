@@ -6,7 +6,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 2.947
+    "sure_saniye": 2.975
   },
   "kosucu": "betik",
   "not": "Spec'in isaretli karari (paylasilan matris embedding kurallariyla yasar, readout etkisi 1/d_model logit olcegiyle saglanir) init aninda tutuyor; egitim dinamigi hala olculmedi (NN-4 sonraki dilim).",
@@ -176,7 +176,7 @@
       "egitim dinamigi ve LR transferinin gercek kosudaki davranisi",
       "tam model (d_model 64, 8 katman, vocab 8192) ve GPU olcumu"
     ],
-    "sure_saniye": 2.947,
+    "sure_saniye": 2.975,
     "turetilen": {
       "etiket": "turetilmis: base_lr * P / n; bu makinede olculmedi",
       "lr_transferi_base_lr_carpani": {

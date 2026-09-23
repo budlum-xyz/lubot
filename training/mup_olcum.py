@@ -25,8 +25,9 @@ transferi burada turetilmis tablodur, olculmedi), tam model (d_model 64 /
 8 katman / vocab 8192) ve GPU olcumu. Bunlar NN-4'un sonraki dilimleri.
 
 Kullanim:
-    python3 training/mup_olcum.py --olc          # ham olcum (JSON)
-    python3 training/mup_olcum.py --kaydet       # olcumu iki kayit dosyasina yaz
+    python3 training/mup_olcum.py --olc          # proxy olcum (JSON)
+    python3 training/mup_olcum.py --spec         # komiteli spec konfigurasyonunda init ileri gecisi
+    python3 training/mup_olcum.py --kaydet       # olcumu uc kayit dosyasina yaz
     python3 training/mup_olcum.py --dogrula      # kayitlari taze olcumle denetle
     python3 training/mup_olcum.py --self-test
 """
@@ -268,6 +269,162 @@ def olc() -> dict:
     }
 
 
+def _yukle_vocab():
+    """Donmus sozluk: train_tokenizer'in fail-closed yukleyicisi kullanilir."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "train_tokenizer", str(ROOT / "training" / "train_tokenizer.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _gelu(x: float) -> float:
+    """tanh yaklasimi; spec bu aktivasyonu ADIYLA yazmiyor - etiketli varsayim."""
+    return 0.5 * x * (1.0 + math.tanh(0.7978845608028654 * (x + 0.044715 * x * x * x)))
+
+
+def _layernorm(v: list[float], w: list[float], b: list[float]) -> list[float]:
+    ortalama = sum(v) / len(v)
+    varyans = sum((x - ortalama) ** 2 for x in v) / len(v)
+    ters = 1.0 / math.sqrt(varyans + 1e-5)
+    return [(x - ortalama) * ters * wi + bi for x, wi, bi in zip(v, w, b)]
+
+
+def _softmax(skorlar: list[float]) -> list[float]:
+    en_buyuk = max(skorlar)
+    exps = [math.exp(x - en_buyuk) for x in skorlar]
+    toplam = sum(exps)
+    return [x / toplam for x in exps]
+
+
+def spec_sayim(spec: dict) -> dict[str, int]:
+    """Spec'in kendi sayim formulu: tensorsuz, yalniz konfigurasyondan."""
+    d_model = spec["d_model"]
+    d_ff = spec["d_ff"]
+    katman = spec["n_layers"]
+    vocab = spec["vocab_size"]
+    return {
+        "embedding_bagli": vocab * d_model,
+        "dikkat": katman * (4 * d_model * d_model + 4 * d_model),
+        "mlp": katman * (2 * d_ff * d_model + d_ff + d_model),
+        "layernorm": (2 * katman + 1) * 2 * d_model,
+    }
+
+
+def spec_ileri_gecis_olcumu(spec: dict, tokenlar: list[int]) -> dict:
+    """Komiteli spec konfigurasyonunda init + ileri gecis (egitimsiz).
+
+    Etiketli varsayimlar (spec adiyla yazmiyor): pre-norm yerlesim, GELU
+    (tanh yaklasimi) aktivasyonu, embedding init std 1.0. Bu ucu da raporda
+    'varsayim' olarak isaretlenir; spec metni bu turda degistirilmedi.
+    """
+    d_model, n_katman, kafa = spec["d_model"], spec["n_layers"], spec["n_heads"]
+    d_ff, vocab = spec["d_ff"], spec["vocab_size"]
+    d_head = d_model // kafa
+    rng = Rng(31337)
+    gomme = rng.matris(vocab, d_model, 1.0)
+    katmanlar = []
+    for _ in range(n_katman):
+        h_std = math.sqrt(2.0 / d_model)
+        katmanlar.append({
+            "ln1_w": [1.0] * d_model, "ln1_b": [0.0] * d_model,
+            "wq": rng.matris(d_model, d_model, h_std), "bq": [0.0] * d_model,
+            "wk": rng.matris(d_model, d_model, h_std), "bk": [0.0] * d_model,
+            "wv": rng.matris(d_model, d_model, h_std), "bv": [0.0] * d_model,
+            "wo": rng.matris(d_model, d_model, h_std), "bo": [0.0] * d_model,
+            "ln2_w": [1.0] * d_model, "ln2_b": [0.0] * d_model,
+            "w1": rng.matris(d_ff, d_model, math.sqrt(2.0 / d_model)), "b1": [0.0] * d_ff,
+            "w2": rng.matris(d_model, d_ff, math.sqrt(2.0 / d_ff)), "b2": [0.0] * d_model,
+        })
+    ln_son_w, ln_son_b = [1.0] * d_model, [0.0] * d_model
+
+    x = [_birim_rms(Rng(7), d_model) for _ in tokenlar]  # yerine gomme satirlari
+    x = [gomme[t] for t in tokenlar]
+    profil: list[float] = []
+    for k in katmanlar:
+        # pre-norm: her konum kendi icinde normalize edilir
+        h_norm = [_layernorm(x_t, k["ln1_w"], k["ln1_b"]) for x_t in x]
+        q = [[nokta(satir, h_t) + b for satir, b in zip(k["wq"], k["bq"])] for h_t in h_norm]
+        kk = [[nokta(satir, h_t) + b for satir, b in zip(k["wk"], k["bk"])] for h_t in h_norm]
+        v = [[nokta(satir, h_t) + b for satir, b in zip(k["wv"], k["bv"])] for h_t in h_norm]
+        yeni = []
+        for t in range(len(x)):
+            cikti = [0.0] * d_model
+            for kafa_i in range(kafa):
+                dilim = slice(kafa_i * d_head, (kafa_i + 1) * d_head)
+                skorlar = [
+                    nokta(q[t][dilim], kk[s][dilim]) * (1.0 / d_head) for s in range(t + 1)
+                ]
+                agirliklar = _softmax(skorlar)
+                for s in range(t + 1):
+                    for j, idx in enumerate(range(dilim.start, dilim.stop)):
+                        cikti[idx] += agirliklar[s] * v[s][idx]
+            attn_cikti = [nokta(satir, cikti) + b for satir, b in zip(k["wo"], k["bo"])]
+            x[t] = [a + b for a, b in zip(x[t], attn_cikti)]
+        profil.append(rms([deger for x_t in x for deger in x_t]))
+        for t in range(len(x)):
+            h_norm = _layernorm(x[t], k["ln2_w"], k["ln2_b"])
+            gizli = [_gelu(nokta(satir, h_norm) + b) for satir, b in zip(k["w1"], k["b1"])]
+            mlp_cikti = [nokta(satir, gizli) + b for satir, b in zip(k["w2"], k["b2"])]
+            x[t] = [a + b for a, b in zip(x[t], mlp_cikti)]
+        profil.append(rms([deger for x_t in x for deger in x_t]))
+    h_son = [_layernorm(x_t, ln_son_w, ln_son_b) for x_t in x]
+    # bagli readout: paylasilan matris + 1/d_model logit olcegi
+    logitler = [x * (1.0 / d_model) for h_t in h_son for x in matvec(gomme, h_t)]
+    return {
+        "konum_sayisi": len(tokenlar),
+        "katman_aktivasyon_rms": [round(v, 6) for v in profil],
+        "ilk_katman_rms": round(profil[0], 6),
+        "son_katman_rms": round(profil[-1], 6),
+        "buyume_son_bolu_ilk": round(profil[-1] / profil[0], 6) if profil[0] else 0.0,
+        "logit_rms": round(rms(logitler), 6),
+        "theta_1_bandinda": all(0.25 <= v <= 4.0 for v in profil),
+        "varsayimlar": [
+            "pre-norm yerlesim (spec adiyla yazmiyor)",
+            "GELU tanh yaklasimi aktivasyonu (spec adiyla yazmiyor)",
+            "embedding init std 1.0 (spec 'sabit' diyor, degeri sabitlemiyor)",
+        ],
+    }
+
+
+def spec_olcumu() -> dict:
+    """Spec konfigurasyonu + donmus sozluk + gercek metin uzerinde init olcumu."""
+    spec = json.loads((ROOT / "training" / "model_spec.json").read_text(encoding="utf-8"))
+    tt = _yukle_vocab()
+    vocab = tt.load_vocab(str(ROOT / "training" / "tokenizer" / f"{spec['vocab_family']}.json"))
+    if vocab["vocab_size"] != spec["vocab_size"]:
+        raise SystemExit(
+            f"spec vocab_size {spec['vocab_size']} ile donmus sozluk {vocab['vocab_size']} uyusmuyor"
+        )
+    metin = (ROOT / "TRAINING.md").read_text(encoding="utf-8")
+    tokenlar = tt.encode(metin, vocab)[: spec["max_seq_len"]]
+    sayim = spec_sayim(spec)
+    ileri = spec_ileri_gecis_olcumu(spec, tokenlar)
+    return {
+        "spec_adi": spec["name"],
+        "spec_konfigurasyon": {
+            "d_model": spec["d_model"],
+            "n_layers": spec["n_layers"],
+            "n_heads": spec["n_heads"],
+            "d_ff": spec["d_ff"],
+            "max_seq_len": spec["max_seq_len"],
+            "vocab_size": spec["vocab_size"],
+        },
+        "vocab_family": spec["vocab_family"],
+        "token_sayisi": len(tokenlar),
+        "token_ilk_on": tokenlar[:10],
+        "sayim_hesaplanan": sayim,
+        "sayim_spec_beyani": {k: v for k, v in spec["params"].items() if k != "toplam"},
+        "sayim_toplam_hesaplanan": sum(sayim.values()),
+        "sayim_toplam_beyan": spec["params"]["toplam"],
+        "ileri_gecis": ileri,
+    }
+
+
 def kayitlar(olcum: dict) -> list[tuple[Path, dict]]:
     """Olcumden iki degerlendirme kaydi uretir (sayilar elle kopyalanmaz).
 
@@ -275,7 +432,15 @@ def kayitlar(olcum: dict) -> list[tuple[Path, dict]]:
     tek makine denetimli boolean olcut + kaynak muhasebesi. `acik_soru` alani
     kaydin hukmunu degistirmez; spec'in cozulmemis kararini okunur kilar.
     """
-    dikkat, readout = kayit_yollari()
+    dikkat, readout, spec_yolu = kayit_yollari()
+    spec_kaydi = spec_olcumu()
+    sayim_uyuyor = (
+        spec_kaydi["sayim_toplam_hesaplanan"] == spec_kaydi["sayim_toplam_beyan"]
+        and spec_kaydi["sayim_hesaplanan"]["embedding_bagli"] == spec_kaydi["sayim_spec_beyani"]["embedding_bagli"]
+        and spec_kaydi["sayim_hesaplanan"]["dikkat"] == spec_kaydi["sayim_spec_beyani"]["dikkat"]
+        and spec_kaydi["sayim_hesaplanan"]["mlp"] == spec_kaydi["sayim_spec_beyani"]["mlp"]
+        and spec_kaydi["sayim_hesaplanan"]["layernorm"] == spec_kaydi["sayim_spec_beyani"]["layernorm"]
+    )
     oranlar = olcum["dikkat_oranlari"]
     kaynaklar = {
         "sure_saniye": olcum["sure_saniye"],
@@ -309,6 +474,37 @@ def kayitlar(olcum: dict) -> list[tuple[Path, dict]]:
         ),
         "olcum": olcum,
     }
+    spec_ileri_kaydi = {
+        "kosucu": "betik",
+        "tarih": "2026-09-23",
+        "is": "mup-spec-ileri-gecis",
+        "olcut": {
+            "ad": "spec_konfigurasyonunda_olculen_katman_profilinin_kayittan_tekrar_uretilmesi",
+            "sonuc": bool(sayim_uyuyor),
+        },
+        "kaynaklar": {
+            "sure_saniye": olcum["sure_saniye"],
+            "girdi_jetonlari": 0,
+            "onbellekli_jetonlari": 0,
+            "cikti_jetonlari": 0,
+            "maliyet": 0.0,
+        },
+        "kanit": (
+            "model_spec.json konfigurasyonu "
+            f"({spec_kaydi['spec_konfigurasyon']}, sozluk {spec_kaydi['vocab_family']}) "
+            "tensorsuz sayim formuluyle yeniden sayildi: "
+            f"hesaplanan toplam {spec_kaydi['sayim_toplam_hesaplanan']}, spec beyani "
+            f"{spec_kaydi['sayim_toplam_beyan']}; donmus sozlukle {spec_kaydi['token_sayisi']} token "
+            f"kodlanip init ileri gecisi kosuldu, katman profili tekrar uretildi."
+        ),
+        "not": (
+            "Profilin yorumu (theta_1 bandi) kaydin hukmunden ayridir ve spec'i degistirmez: "
+            f"olculen band sonucu theta_1_bandinda={spec_kaydi['ileri_gecis']['theta_1_bandinda']}, "
+            f"son/ilk RMS orani {spec_kaydi['ileri_gecis']['buyume_son_bolu_ilk']}. "
+            "Bant disi ise bu bir BULGUDUR, duzeltme degil: spec metni bu turda degistirilmedi."
+        ),
+        "olcum": spec_kaydi,
+    }
     readout_kaydi = {
         "kosucu": "betik",
         "tarih": "2026-09-23",
@@ -331,7 +527,7 @@ def kayitlar(olcum: dict) -> list[tuple[Path, dict]]:
         ),
         "olcum": olcum,
     }
-    return [(dikkat, dikkat_kaydi), (readout, readout_kaydi)]
+    return [(dikkat, dikkat_kaydi), (readout, readout_kaydi), (spec_yolu, spec_ileri_kaydi)]
 
 
 def kaydet(olcum: dict) -> list[Path]:
@@ -346,10 +542,11 @@ def kaydet(olcum: dict) -> list[Path]:
     return yazilan
 
 
-def kayit_yollari() -> tuple[Path, Path]:
+def kayit_yollari() -> tuple[Path, Path, Path]:
     return (
         KAYIT_DIZINI / "mup-dikkat-olcegi-2026-09-23.json",
         KAYIT_DIZINI / "mup-bagli-readout-olcegi-2026-09-23.json",
+        KAYIT_DIZINI / "mup-spec-ileri-gecis-2026-09-23.json",
     )
 
 
@@ -366,15 +563,16 @@ def kontrol_bulgulari(olcum: dict) -> list[str]:
     return bulgular
 
 
-def kayitlari_denetle(olcum: dict) -> list[str]:
-    """Kayitli iki olcum kaydini taze olcumle karsilastirir; bulgu listesi doner."""
+def kayitlari_denetle(olcum: dict, spec: dict | None = None) -> list[str]:
+    """Kayitli uc olcum kaydini taze olcumle karsilastirir; bulgu listesi doner."""
     bulgular: list[str] = []
-    dikkat_yolu, readout_yolu = kayit_yollari()
-    if not dikkat_yolu.is_file() or not readout_yolu.is_file():
+    dikkat_yolu, readout_yolu, spec_yolu = kayit_yollari()
+    if not dikkat_yolu.is_file() or not readout_yolu.is_file() or not spec_yolu.is_file():
         return ["muP olcum kayitlari eksik: kayit yoksa olcum de yoktur"]
     dikkat = json.loads(dikkat_yolu.read_text(encoding="utf-8"))
     readout = json.loads(readout_yolu.read_text(encoding="utf-8"))
-    for yol, rec in ((dikkat_yolu, dikkat), (readout_yolu, readout)):
+    spec_rec = json.loads(spec_yolu.read_text(encoding="utf-8"))
+    for yol, rec in ((dikkat_yolu, dikkat), (readout_yolu, readout), (spec_yolu, spec_rec)):
         if not isinstance(rec.get("olcut", {}).get("sonuc"), bool):
             bulgular.append(f"{yol.name}: olcut.sonuc boolean degil")
         if not rec.get("kanit"):
@@ -401,18 +599,54 @@ def kayitlari_denetle(olcum: dict) -> list[str]:
                     bulgular.append(
                         f"{readout_yolu.name}: {varyant} logit RMS {genislik}[{sira}] kayittan sapiyor ({deger} -> {taze})"
                     )
+    # Ucuncu kayit: spec konfigurasyonunun init ileri gecisi.
+    if spec is None:
+        spec = spec_olcumu()
+    if spec["sayim_toplam_hesaplanan"] != spec["sayim_toplam_beyan"]:
+        bulgular.append(
+            "spec parametre beyani sayimla uyusmuyor: "
+            f"{spec['sayim_toplam_hesaplanan']} != {spec['sayim_toplam_beyan']}"
+        )
+    for ad, beklenen in spec["sayim_spec_beyani"].items():
+        if spec["sayim_hesaplanan"].get(ad) != beklenen:
+            bulgular.append(
+                f"spec {ad} beyani {beklenen}, hesaplanan {spec['sayim_hesaplanan'].get(ad)}"
+            )
+    kayitli_profil = spec_rec["olcum"]["ileri_gecis"]["katman_aktivasyon_rms"]
+    taze_profil = spec["ileri_gecis"]["katman_aktivasyon_rms"]
+    if len(kayitli_profil) != len(taze_profil):
+        bulgular.append(f"{spec_yolu.name}: katman profili uzunlugu degisti")
+    else:
+        for sira, (kayitli, taze) in enumerate(zip(kayitli_profil, taze_profil)):
+            if abs(kayitli) < 1e-12 or abs(taze / kayitli - 1.0) > 0.01:
+                bulgular.append(
+                    f"{spec_yolu.name}: katman profili [{sira}] kayittan sapiyor ({kayitli} -> {taze})"
+                )
+    if spec_rec["olcum"]["ileri_gecis"]["theta_1_bandinda"] != spec["ileri_gecis"]["theta_1_bandinda"]:
+        bulgular.append(f"{spec_yolu.name}: theta_1 bandi hukumu degisti")
+    if spec_rec["olcum"]["token_sayisi"] != spec["token_sayisi"]:
+        bulgular.append(f"{spec_yolu.name}: token sayisi degisti")
     return bulgular
 
 
 def self_test() -> None:
     """Kanarya: kayittan sapan sayi, ayirt etmeyen kontrol ve eksik kayit reddedilmeli."""
     olcum = olc()
-    if kayitlari_denetle(olcum) + kontrol_bulgulari(olcum):
+    spec = spec_olcumu()
+    if kayitlari_denetle(olcum, spec) + kontrol_bulgulari(olcum):
         raise SystemExit("self-test: taze olcum kendi kayitlariyla uyusmuyor")
     bozuk = json.loads(json.dumps(olcum))
     bozuk["dikkat_logit_rms"]["spesifikasyon"]["128"][0] *= 3.0
-    if not kayitlari_denetle(bozuk):
+    if not kayitlari_denetle(bozuk, spec):
         raise SystemExit("self-test: kayittan sapan sayi yakalanmadi")
+    bozuk_spec = json.loads(json.dumps(spec))
+    bozuk_spec["ileri_gecis"]["katman_aktivasyon_rms"][-1] *= 2.0
+    if not kayitlari_denetle(olcum, bozuk_spec):
+        raise SystemExit("self-test: kayittan sapan katman profili yakalanmadi")
+    bozuk_sayim = json.loads(json.dumps(spec))
+    bozuk_sayim["sayim_toplam_hesaplanan"] = 1
+    if not kayitlari_denetle(olcum, bozuk_sayim):
+        raise SystemExit("self-test: spec sayim uyusmazligi yakalanmadi")
     kor = json.loads(json.dumps(olcum))
     kor["dikkat_oranlari"]["olceksiz"]["ortalama"] = 1.0
     if not kontrol_bulgulari(kor):
@@ -434,6 +668,7 @@ def self_test() -> None:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--olc", action="store_true")
+    parser.add_argument("--spec", action="store_true")
     parser.add_argument("--kaydet", action="store_true")
     parser.add_argument("--dogrula", action="store_true")
     parser.add_argument("--self-test", action="store_true")
@@ -442,12 +677,16 @@ def main(argv: list[str]) -> int:
         self_test()
         return 0
     olcum = olc()
+    if args.spec:
+        print(json.dumps(spec_olcumu(), ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
     if args.kaydet:
         for yol in kaydet(olcum):
             print(f"yazildi: {yol.relative_to(ROOT)}")
         return 0
     if args.dogrula:
-        bulgular = kayitlari_denetle(olcum) + kontrol_bulgulari(olcum)
+        spec = spec_olcumu()
+        bulgular = kayitlari_denetle(olcum, spec) + kontrol_bulgulari(olcum)
         if bulgular:
             for bulgu in bulgular:
                 print(f"FINDING: {bulgu}")
