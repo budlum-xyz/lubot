@@ -508,19 +508,14 @@ fn olcum_olcek(args: &[String]) -> Result<(), String> {
         load.record(value);
         match controller.tick(&load) {
             Decision::ScaleUp { from, to } => {
-                println!("{:>4} load {value:.2} -> scale up {from} to {to}", interval)
+                println!("{interval:>4} load {value:.2} -> scale up {from} to {to}")
             }
             Decision::ScaleDown { from, to } => {
-                println!(
-                    "{:>4} load {value:.2} -> scale down {from} to {to}",
-                    interval
-                )
+                println!("{interval:>4} load {value:.2} -> scale down {from} to {to}")
             }
             Decision::Hold { reason } => {
-                println!(
-                    "{:>4} load {value:.2} -> hold ({}), {} replicas",
-                    interval, reason, controller.replicas
-                )
+                let replicas = controller.replicas;
+                println!("{interval:>4} load {value:.2} -> hold ({reason}), {replicas} replicas")
             }
         }
         interval = interval.saturating_add(1);
