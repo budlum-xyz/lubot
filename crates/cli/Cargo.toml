@@ -30,6 +30,7 @@ lubot-olcek = { path = "../olcek" }
 lubot-izolasyon = { path = "../izolasyon" }
 lubot-kanit = { path = "../kanit" }
 lubot-yetenek = { path = "../yetenek" }
+lubot-egitim = { path = "../egitim" }
 
 [lints]
 workspace = true

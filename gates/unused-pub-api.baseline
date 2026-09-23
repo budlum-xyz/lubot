@@ -30,7 +30,6 @@ grant:EpochEntry
 grant:EpochOutcome
 grant:EpochRefusal
 grant:Id
-grant:MAX_TRAINING_GRANT_EPOCHS
 grant:TrainingDataGrant
 index:BM25_B
 index:BM25_K1
