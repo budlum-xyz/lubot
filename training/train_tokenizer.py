@@ -55,22 +55,26 @@ def open_corpus(path: str):
     return (gzip.open if p.suffix == ".gz" else open)(p, "rt", encoding="utf-8")
 
 
-def corpus_texts(path: str) -> tuple[list[str], dict]:
-    """Kayit metinleri ve olculen korpus istatistikleri."""
+def corpus_texts(paths: list[str]) -> tuple[list[str], dict]:
+    """Kayit metinleri ve olculen korpus istatistikleri. Birden fazla korpus
+    dosyasi verilebilir (yuzey korpusu); ozet sayilar toplanir, sha256 ise
+    dosya sirasiyla birlestirilmis satir akisinin ozetidir."""
     texts: list[str] = []
     records = 0
     characters = 0
     sha = hashlib.sha256()
-    with open_corpus(path) as handle:
-        for line in handle:
-            sha.update(line.encode("utf-8"))
-            text = json.loads(line).get("text", "")
-            texts.append(text)
-            records += 1
-            characters += len(text)
+    for path in paths:
+        with open_corpus(path) as handle:
+            for line in handle:
+                sha.update(line.encode("utf-8"))
+                text = json.loads(line).get("text", "")
+                texts.append(text)
+                records += 1
+                characters += len(text)
     return texts, {
         "records": records,
         "characters": characters,
+        "corpus_files": list(paths),
         "corpus_sha256": sha.hexdigest(),
     }
 
@@ -270,16 +274,17 @@ def write_vocab(out_path: str, merges: list[tuple[int, int]], target_vocab: int,
 # dogrulama
 # --------------------------------------------------------------------------
 
-def verify(vocab_path: str, corpus_path: str) -> dict:
-    """Donmus sozlugu gecerli korpusun her kaydina karsi olcer: kayipsiz geri
-    donus, gercek token sayimi ve kesildigi kaynaktan sapma raporu."""
+def verify(vocab_path: str, corpus_paths: list[str]) -> dict:
+    """Donmus sozlugu verilen korpus dosyalarinin her kaydina karsi olcer:
+    kayipsiz geri donus, gercek token sayimi ve kesildigi kaynaktan sapma
+    raporu."""
     vocab = load_vocab(vocab_path)
     if vocab["pretoken_pattern"] != PRETOKEN_PATTERN:
         raise SystemExit(
             "sozlugun onislem deseni egiticinin gecerli deseninden farkli; "
             "farkli desen farkli ailedir, bilincli surum kesimi gerekir"
         )
-    texts, stats = corpus_texts(corpus_path)
+    texts, stats = corpus_texts(corpus_paths)
 
     failures = 0
     total_tokens = 0
@@ -326,11 +331,11 @@ def _script(argv: list[str]) -> int:
 
 
 def cmd_train(args: argparse.Namespace) -> int:
-    texts, stats = corpus_texts(args.corpus)
+    texts, stats = corpus_texts(args.corpus)  # --corpus tekrarlanabilir
     counts = pretoken_counts(texts)
     merges = train_merges(counts, args.vocab_size)
     write_vocab(args.out, merges, args.vocab_size, {
-        "corpus_path": args.corpus,
+        "corpus_files": stats["corpus_files"],
         "corpus_sha256": stats["corpus_sha256"],
         "records": stats["records"],
         "characters": stats["characters"],
@@ -359,7 +364,7 @@ def cmd_train(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     print(json.dumps(verify(args.vocab, args.corpus), ensure_ascii=False, indent=2))
-    return 0
+    return 0  # --corpus tekrarlanabilir
 
 
 def cmd_self_test() -> int:
@@ -443,7 +448,7 @@ def cmd_self_test() -> int:
                        ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
-        report = verify(str(huge), str(other))
+        report = verify(str(huge), [str(other)])
         assert report["roundtrip_failures"] == 0
         assert report["record_drift"] != 0, "kaynak sapmasi olculmedi"
 
@@ -453,7 +458,7 @@ def cmd_self_test() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", help="korpus jsonl(.gz)")
+    ap.add_argument("--corpus", action="append", help="korpus jsonl(.gz); tekrarlanabilir")
     ap.add_argument("--out", help="kesilecek sozluk dosyasi (egitim)")
     ap.add_argument("--vocab-size", type=int, default=DEFAULT_VOCAB_SIZE)
     ap.add_argument("--verify", action="store_true", help="donmus sozlugu olc")
@@ -465,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_self_test()
     if args.verify:
         if not args.corpus or not args.vocab:
-            raise SystemExit("--verify icin --corpus ve --vocab gerekli")
+            raise SystemExit("--verify icin en az bir --corpus ve --vocab gerekli")
         return cmd_verify(args)
     if args.corpus and args.out:
         return cmd_train(args)
