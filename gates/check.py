@@ -3560,6 +3560,110 @@ def selftest_exam_set_is_held_out() -> None:
             kayit_dosya.write_text(gercek, encoding="utf-8")
 
 
+def _bulgu_alanlari() -> list[tuple[str, str, dict]]:
+    """Every `bulgu*` field in every recorded result, wherever it is nested."""
+    import json as _json
+
+    bulunan: list[tuple[str, str, dict]] = []
+
+    def gez(veri, dosya: str, yol: str) -> None:
+        if isinstance(veri, dict):
+            for anahtar, deger in veri.items():
+                # `bulgu_` rather than `bulgu`: a curriculum class is named
+                # `bulgular`, and a class name is not a claim.
+                if (
+                    anahtar.startswith("bulgu_")
+                    and isinstance(deger, dict)
+                ):
+                    bulunan.append((dosya, f"{yol}.{anahtar}", deger))
+                gez(deger, dosya, f"{yol}.{anahtar}")
+        elif isinstance(veri, list):
+            for i, oge in enumerate(veri):
+                gez(oge, dosya, f"{yol}[{i}]")
+
+    for dosya in sorted((ROOT / "training" / "eval" / "sonuclar").glob("*.json")):
+        gez(_json.loads(dosya.read_text(encoding="utf-8")), dosya.name, "")
+    return bulunan
+
+
+def gate_claims_carry_their_evidence() -> str:
+    """A finding is a claim; a claim without its number and its boundary is
+    refused.
+
+    The failure this prevents is the ordinary one: a sentence that says
+    "measured" and carries no measurement, or a finding that quietly fixes
+    something without saying what it left alone. So every `bulgu*` field states
+    what was measured (with a number in it), what follows from it, and what was
+    deliberately not done.
+    """
+    alanlar = _bulgu_alanlari()
+    if not alanlar:
+        raise SystemExit("no finding is recorded: the gate would pass on nothing")
+    hatalar: list[str] = []
+    for dosya, yol, deger in alanlar:
+        for zorunlu in ("olculen", "hukum", "yapilmayan"):
+            metin = deger.get(zorunlu)
+            if not isinstance(metin, str) or not metin.strip():
+                hatalar.append(f"{dosya}{yol}: `{zorunlu}` yok ya da bos")
+        olculen = deger.get("olculen")
+        if isinstance(olculen, str) and not any(c.isdigit() for c in olculen):
+            hatalar.append(
+                f"{dosya}{yol}: `olculen` hic sayi tasimiyor - olculmus bir "
+                "iddia olcusuz olmaz"
+            )
+    if hatalar:
+        raise SystemExit("a finding does not carry its evidence:\n  " + "\n  ".join(hatalar))
+    return f"{len(alanlar)} finding(s) each carry a measured number, a verdict and what was left alone"
+
+
+def selftest_claims_carry_their_evidence() -> None:
+    """Canaries: a finding with no boundary, and a finding whose `olculen`
+    carries no number, must each be refused."""
+    import json as _json
+
+    sonuclar = ROOT / "training" / "eval" / "sonuclar"
+    hedef = None
+    for dosya in sorted(sonuclar.glob("*.json")):
+        veri = _json.loads(dosya.read_text(encoding="utf-8"))
+        if any(k.startswith("bulgu_") for k in veri) or any(
+            isinstance(v, dict) and any(k.startswith("bulgu_") for k in v)
+            for v in veri.values()
+        ):
+            hedef = dosya
+            break
+    if hedef is None:
+        raise AssertionError("no record carries a finding to break")
+    gercek = hedef.read_text(encoding="utf-8")
+    try:
+        gate_claims_carry_their_evidence()
+
+        # Canary 1: a finding that never says what it left alone.
+        veri = _json.loads(gercek)
+        veri["bulgu_kanarya"] = {"olculen": "1 satir", "hukum": "BULGUDUR"}
+        hedef.write_text(_json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            gate_claims_carry_their_evidence()
+            raise AssertionError("a finding with no boundary was accepted")
+        except SystemExit:
+            pass
+
+        # Canary 2: "measured" with no number in it.
+        veri = _json.loads(gercek)
+        veri["bulgu_kanarya"] = {
+            "olculen": "performans olculdu ve yeterli bulundu",
+            "hukum": "BULGUDUR",
+            "yapilmayan": "hicbir sey degistirilmedi",
+        }
+        hedef.write_text(_json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            gate_claims_carry_their_evidence()
+            raise AssertionError("an unnumbered measurement was accepted")
+        except SystemExit:
+            pass
+    finally:
+        hedef.write_text(gercek, encoding="utf-8")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3612,6 +3716,10 @@ GATES_EXTRA = {
     "exam-set-is-held-out": (
         gate_exam_set_is_held_out,
         selftest_exam_set_is_held_out,
+    ),
+    "claims-carry-their-evidence": (
+        gate_claims_carry_their_evidence,
+        selftest_claims_carry_their_evidence,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),

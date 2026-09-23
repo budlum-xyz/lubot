@@ -57,10 +57,18 @@ Lubot'un kendisi.
       Karşılığı `Sonuc::{Kesin, Yukselt, Red}` ve üç kapalı `Karar` şekli.
 - [x] **agent-desktop / typesafe-mario → ham algı yerine tiplenmiş durum.**
       Karşılığı `crates/read` üç kanalı ve `dosya` yönlendiricisi.
-- [ ] **Canny → "bitti" iddiasının denetimi.** Bir tamamlanma iddiası ancak
-      mekanik kanıtla geçer. Lubot'ta disiplin zaten bu (CI tek doğrulayıcı,
-      ratchet yalnız yükselir); kalan iş: bir commit/PR gövdesindeki her
-      "bitti" ifadesinin yanında SHA + koşu numarası arayan bir kapı.
+- [x] **Canny → iddianın kanıtını taşıması.** Bir iddia ancak mekanik kanıtla
+      geçer. Kapı 58 `claims-carry-their-evidence`: her `bulgu_*` alanı
+      `olculen` (içinde **sayı** olmak zorunda) + `hukum` + `yapilmayan`
+      taşımak zorunda; "ölçüldü" deyip sayı taşımayan bir cümle reddediliyor.
+      Bu turda yakalanan iki gerçek kusur: `bulgu_veri_butcesi.hukum` içinde
+      **sabit "89.443"** yazıyordu (ölçülen 97.515) — dinamikleştirildi; ve
+      alan `olculen`/`yapilmayan` taşımıyordu — normalize edildi. Eşleşme
+      `bulgu_` önekiyle sınırlı, çünkü mufredat sınıflarından birinin adı
+      `bulgular` ve bir sınıf adı iddia değildir.
+- [ ] **Canny'nin kalan yarısı:** commit/PR gövdesindeki "bitti" ifadelerinin
+      yanında SHA + koşu numarası aramak. Çalışma ağacında olmadığı için kapı
+      olarak değil, süreç kuralı olarak duruyor.
 - [ ] **jev-trader → karar gecikmesi ekseni.** Karar yolu üretken yoldan ayrı
       ölçülmeli. Kalan iş: `lubot karar` için tekrarlanabilir bir gecikme
       tabanı (N koşu, medyan) ve bunun ratchet'e `karar_gecikme_ms` olarak
