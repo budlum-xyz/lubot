@@ -45,7 +45,7 @@ One corpus, one source: this repository, rebuilt by CI on every run.
 
 | file | records | kinds | tokens (approx) |
 |---|---|---|---|
-| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 802 | api 241 · behaviour 178 · doc 286 · markdown 93 | ~28K |
+| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 807 | api 241 · behaviour 178 · doc 287 · markdown 101 | ~28K |
 | `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: lubot + budlum + workspace root) | 23604 | api 6015 · behaviour 4684 · doc 7323 · markdown 5582 | ~1.2M |
 
 Every record carries the provenance pair; the provenance gate measures 100%
@@ -98,6 +98,7 @@ text under `chain/<type>`, `request_id` kept), licence PolyForm Shield
 | `sft-evaluation-baseline` | Every SFT row must cite, nothing may duplicate, nothing may be empty |
 | `corpus-build-is-deterministic` | Two builds from the same tree must agree byte for byte |
 | `tokenizer-vocab-is-frozen` | Every frozen BPE vocab family under training/tokenizer/ is committed (never derived on the fly), loads through the fail-closed loader (valid DAG, family name matches the file, the trainer's own pattern) and round-trips every corpus record this machine holds losslessly |
+| `model-spec-is-consistent` | The committed model spec validates against its own rules: muP init/LR formulas per parameter group, the weight-tying resolution (shared embedding + 1/d_model logit scale), the exact tensor-by-tensor param count, and the measured hardware ceiling (K6) |
 | `dependencies-are-used` | A dependency a crate declares but never reaches is supply-chain weight with no cargo to carry: its audit surface is paid for by nobody's usage |
 | `findings-are-disciplined` | A finding is a claim about code; the validator measures the claim |
 | `eval-runs-are-mechanical` | Every recorded evaluation run carries exactly one machine-checkable boolean criterion plus its resource accounting; judgement words and partial credit are refused (one run, one mechanical criterion: the shape this repository measures itself by) |
@@ -184,30 +185,64 @@ ulaştı, açlık yok), 1.791.052 gerçek BPE token, 2.74 bayt/token, kullanım
 7880/8192, kayıpsız geri dönüş 23.600/23.600. v1 ailesi donmuş olarak
 kalır; v2 yeni model ailesidir (EE).
 
+## Mimari spesifikasyonu (NN-3)
+
+`training/model_spec.py` mimari kararını veri olarak taşır ve doğrular;
+kararın kendisi `training/model_spec.json`'da commit edilir (kafada
+taşınmaz). İlk spec **lubot-a1-derin-dar**: d_model 64, 8 katman, 2 başlık
+(d_k 32), d_ff 256, bağlı embedding, max_seq_len 256 (ölçüldü: kayıt
+uzunluğu p95 ≈ 246 token; p99 üstü kayıtlar AST-farkında parçalamaya — JJ —
+kalır).
+
+Parametre muhasebesi tensersiz sayılır (formül `say_params`): embedding
+524.288 · dikkat 133.120 · MLP 264.704 · LayerNorm 2.176 = **924.288
+param** (türetildi). Sandbox tavanı 97.565.184 param (ölçüldü: bench →
+recommend zinciri) — spec tavanın ~105 kat altında (K6); kalıcı tavan owner
+donanımında ölçülünce spec yeniden doğrulanır.
+
+μP parametrizasyonu (yöntem ilhamı: Tensor Programs V, arXiv 2203.03466;
+transformer uygulaması Lingle 2024, arXiv 2404.05728; **ölçülmedi** — ölçüm
+NN-4 eğitim koşusunun işi): embedding başlangıç std'si sabit ve LR α
+(genişlikten bağımsız); hidden ağırlıklar std sqrt(2/fan_in), LR α (hedef
+genişlikte; proxy genişlik P'den transfer istenirse α·P/n); readout std
+sqrt(2)/fan_in, LR α/fan_in; dikkat ölçeği 1/d_k (standart 1/sqrt(d_k)
+değil). Ağırlık bağlama × μP gerilimi işaretli kararla çözülür: paylaşılan
+matris embedding kurallarıyla yaşar, readout'un Θ(1/n²) etkisi ileri geçişte
+logit ölçeği 1/d_model ile sağlanır — bu çözüm NN-4'te ilk denetlenecek
+karardır.
+
+Veri-direction ölçümü: yüzey korpusu 1.791.712 BPE token (ölçüldü) →
+Chinchilla referans dengesi ~89.585 param (20 token/param; oran dışarıdan
+kabullenilmiş referans, ölçülmedi). Bağlı embedding tabanı tek başına
+524.288 param: referans noktası bu sözlükle erişilemez, bilinçli aşılır ve
+spec'te beyan edilir (1,94 token/param ≈ referansın 1/10'u). Derin-dar
+aday ızgarası (63 aday, hepsi ölçülen tavan altında) workspace'te:
+`lubot-sifirdan-kosu/olcum/nn3-adaylar-2026-09-23.json`.
+
 ## Aşama 0-6 karşılama (her zorunlu maddenin yeri)
 
 Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar).
 
 | rapor maddesi | Lubot'taki yeri | ölçüm |
 |---|---|---|
-| 0.1 kapalı devre veri erişimi | kayıt kapısı: provenance çifti (`asset_id`+`content_id`) olmayan örnek korpusa alınmaz (cli loader + `corpus-records-carry-provenance`) | 802 kayıt, çifti olan 802 |
+| 0.1 kapalı devre veri erişimi | kayıt kapısı: provenance çifti (`asset_id`+`content_id`) olmayan örnek korpusa alınmaz (cli loader + `corpus-records-carry-provenance`) | 807 kayıt, çifti olan 807 |
 | 0.2 okuma-yalnız modalite | `crates/read/src/perception.rs`: kapalı 4 küme, üretim varyantı yok | `no-generation-variant` kapısı |
 | 0.3 çıktı yalnızca Markdown | `Answer::render_markdown` tek çıkış + `output_schema::validate_markdown_output`; ikili/görsel/video dönüş tipi yok | `ai-output-schema-enforced`, `output-finalize-closed-loop` |
 | 0.4 uzmanlık: veri inceleme + kodlama | korpus ağırlığı kod kayıtları (api/behaviour/doc) + veri analizi metinleri; sohbet korpusu yoktur | `by_kind`: api 241 / behaviour 178 / doc 285 / markdown 89 |
 | Aşama 1 (uygulanan karar) | Lubot Tier -1 attestation-only yolda çalışır: `require_execution_proof = false`, `execution_class = 0`. Tier -2 Lubot'un ana yolu OLABİLİR DEĞİLDİR; dar alt-görevler için ayrı teknik inceleme (K4 verify-only listesi) | `OPERATOR_THRESHOLD = 2`; tek-operatör üretime alınmaz (Aşama 11) |
 | Aşama 2 | her korpus taramasından önce `is_valid`, her epoch sonunda `consume_epoch`, tükenince DUR | `training/epoch_ledger.py`; canlı kanıt: 2/2'den sonra koşu reddedildi |
-| Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 802 |
+| Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 807 |
 | Aşama 4 | tavanlar kodda sabit: Text 1,048,576 B / Image 16,777,216 px / Audio 3,600,000 ms / Video 4096 kare | `no-generation-variant` kapısı + perception testleri |
-| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 802 kayıt (yüzey: 23.604; hepsi kendi işimiz) |
-| Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 802/802 |
+| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 807 kayıt (yüzey: 23.604; hepsi kendi işimiz) |
+| Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 807/807 |
 
 ## Aşama 12 kararları (rapora karşı, eğitim başlamadan kapatılır)
 
 | rapor maddesi | karar | Lubot'taki karşılığı |
 |---|---|---|
-| 1. Temel model kaynağı | K1: sıfırdan eğitim. | bu ağacın tüm ölçümleri (178 test, 38 kapı; korpus 802 kayıt) sıfırdan eğitim girdisinin kendisidir |
+| 1. Temel model kaynağı | K1: sıfırdan eğitim. | bu ağacın tüm ölçümleri (178 test, 39 kapı; korpus 807 kayıt) sıfırdan eğitim girdisinin kendisidir |
 | 2. `min_verifier_count` / `agreement_threshold` | K5: koşullu 1/1 + geçiş. Lubot'un model sınıfı için zkVM içerik ispatı canlı değilken 2; canlıyken 1. | `OPERATOR_THRESHOLD = 2`; `consumes(1, 2) = false` (Aşama 11) |
-| 3. Dış korpus kapsamı ve bütçesi | K2/K3: dış korpus yok; korpus Lubot'un kendi ağacıdır ve kendi lisansını taşır. | 802 kayıt, tümü PolyForm Shield 1.0.0; kapıda red 0 |
+| 3. Dış korpus kapsamı ve bütçesi | K2/K3: dış korpus yok; korpus Lubot'un kendi ağacıdır ve kendi lisansını taşır. | 807 kayıt, tümü PolyForm Shield 1.0.0; kapıda red 0 |
 | 4. Tier -2 alt-görevler | K4: yalnızca doğrulama (verify-only). | Lubot'un kendisi verify-only okur: aracı hesap, izin, indeks; üretim yüzeyi yok |
 
 ## Aşama 7 / 9 sınır kaydı (dürüst kapsam)
