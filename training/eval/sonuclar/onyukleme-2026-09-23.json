@@ -1,0 +1,90 @@
+{
+  "kosucu": "betik",
+  "tarih": "2026-09-23",
+  "is": "bootstrap-round-is-measured",
+  "tur": 1,
+  "katilimci": "deterministik-okuyucu (egitilmis kontrol noktasi YOK; K6'ya gore hesap sahibin donaniminda ve henuz kosulmadi)",
+  "olcut": {
+    "ad": "negatif_havuzun_her_satiri_bir_neden_tasiyor_ve_yeterlilik_farki_kayitlardan_yeniden_hesaplaniyor",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 0.018,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kanit": "Her curriculum satiri make_sft.py'nin vurdugu ayni kind=curriculum damgasiyla eval_sft.evaluate'e verildi (ayni mekanik denetleyici, ikinci kural yok); gecenler sayildi, gecmeyenler nedeniyle havuza yazildi, yeterlilik farki iki kayit yeniden okunarak hesaplandi.",
+  "siniflar": {
+    "ajan": {
+      "toplam": 22,
+      "gecen": 22
+    },
+    "behaviour": {
+      "toplam": 8,
+      "gecen": 8
+    },
+    "bulgular": {
+      "toplam": 10,
+      "gecen": 10
+    },
+    "davranis": {
+      "toplam": 10,
+      "gecen": 10
+    },
+    "format": {
+      "toplam": 10,
+      "gecen": 10
+    },
+    "gozden": {
+      "toplam": 4,
+      "gecen": 4
+    },
+    "kodlama": {
+      "toplam": 8,
+      "gecen": 8
+    },
+    "okuma": {
+      "toplam": 4,
+      "gecen": 4
+    },
+    "olcum": {
+      "toplam": 5,
+      "gecen": 5
+    },
+    "yetenek": {
+      "toplam": 7,
+      "gecen": 7
+    }
+  },
+  "gecen_toplam": 88,
+  "toplam_satir": 88,
+  "negatif_havuz": {
+    "dosya": "training/eval/negatif-havuz.jsonl",
+    "toplam": 0,
+    "nedenlere_gore": {}
+  },
+  "alt_turler": {
+    "duz": 86,
+    "negative": 2
+  },
+  "yeterlilik_farki": {
+    "karsilastirilabilir": false,
+    "neden": "onceki tur kaydi yok: bu tur bir tabandir, fark olculemez",
+    "yeni_cozulen_siniflar": [],
+    "gerileyen_siniflar": [],
+    "yalniz_tekrar": null
+  },
+  "bulgu_mufredat_isareti": {
+    "olculen": "training/curriculum/format.jsonl icinde 2 satir `kind: \"negative\"` ve bir `rule` alani tasiyor; make_sft.py:84 ayni dosyalari okurken `row[\"kind\"] = \"curriculum\"` ile damgayi KOSULSUZ eziyor.",
+    "hukum": "BULGUDUR, veri sizintisi DEGIL. Iki satirin gecersiz Markdown'i user turunda; asistan cevabi dogru bir red ('Invalid: ... fails the schema; the answer is rejected and regenerated'). Yani egitime giren satirlar gecerli. Kaybolan sey isaretin kendisi:asagidaki bir tuketici kirmizi-senaryo fiksturlerini duz mufredat satirlarindan ayiramaz.",
+    "yapilmayan": "make_sft.py degistirilmedi, format.jsonl degistirilmedi. Hangi isaretin korunacagi bir operator karari; kayit onu tasir."
+  },
+  "olculmeyen": [
+    "egitilmis bir kontrol noktasinin cevap kalitesi (egitim kosusu gerektirir)",
+    "iki kontrol noktasi arasindaki yeterlilik farki (bu tur ilk tur)",
+    "best-of-N seciminin maliyeti (aday uretimi yok)"
+  ],
+  "not": "Bu tur bir TABANDIR: katilimci egitilmis bir model degil, mevcut deterministik okuyucudur. Ilk egitilmis kontrol noktasi kosuldugunda tur 2 bu kayitla karsilastirilacak ve 'yalniz_tekrar' o zaman anlam kazanacak."
+}

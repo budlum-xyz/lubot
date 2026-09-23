@@ -895,7 +895,7 @@ def selftest_queue_continues_uninterruptedly() -> None:
 # --------------------------------------------------------------------------
 # gate: the ratchet holds - measured numbers may not regress
 # --------------------------------------------------------------------------
-RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus", "tokens"]
+RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus", "tokens", "bootstrap"]
 
 
 def gate_ratchet_holds() -> str:
@@ -920,6 +920,7 @@ def gate_ratchet_holds() -> str:
     measured_tests = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout))
     measured_gates = len(GATES)
     measured_corpus = count_corpus_records()
+    measured_bootstrap = len(_onyukleme_turlari())
     # The token budget is measured by the script that owns the tokenizer, not
     # re-implemented here: two counters for one corpus is two answers.
     butce = subprocess.run(
@@ -944,6 +945,7 @@ def gate_ratchet_holds() -> str:
     measured = {
         "tests": measured_tests, "gates": measured_gates, "pedantic": measured_pedantic,
         "corpus": measured_corpus, "tokens": measured_tokens,
+        "bootstrap": measured_bootstrap,
     }
     regressed = []
     for key in ["tests", "gates", "corpus", "tokens"]:
@@ -955,13 +957,16 @@ def gate_ratchet_holds() -> str:
         raise SystemExit("ratchet regressed: " + "; ".join(regressed))
     return (
         f"ratchet holds: tests {measured_tests}, gates {measured_gates}, "
-        f"pedantic {measured_pedantic}, corpus {measured_corpus}, tokens {measured_tokens}"
+        f"pedantic {measured_pedantic}, corpus {measured_corpus}, "
+        f"tokens {measured_tokens}, bootstrap {measured_bootstrap}"
     )
 
 
 def selftest_ratchet_holds() -> None:
     """The direction rules: four rise (>=), pedantic falls (<=)."""
-    assert set(RATCHET_KEYS) == {"tests", "gates", "pedantic", "corpus", "tokens"}
+    assert set(RATCHET_KEYS) == {
+        "tests", "gates", "pedantic", "corpus", "tokens", "bootstrap"
+    }
     baseline = {"tests": 5, "pedantic": 2, "tokens": 100}
     assert 6 >= baseline["tests"], "tests may rise"
     assert 1 <= baseline["pedantic"], "pedantic may fall"
@@ -3231,6 +3236,142 @@ def selftest_decision_head_has_no_generation_surface() -> None:
         lib.write_text(gercek, encoding="utf-8")
 
 
+def _onyukleme_turlari() -> list[dict]:
+    """Recorded bootstrap rounds, oldest first."""
+    import json as _json
+
+    turlar = []
+    for dosya in sorted((ROOT / "training" / "eval" / "sonuclar").glob("onyukleme-*.json")):
+        veri = _json.loads(dosya.read_text(encoding="utf-8"))
+        if isinstance(veri.get("tur"), int):
+            turlar.append(veri)
+    return turlar
+
+
+def gate_bootstrap_round_is_measured() -> str:
+    """A bootstrap round is a measurement, not a claim of progress.
+
+    G's loop only teaches if the refusals say why and the improvement is
+    recomputed. So: the record must re-verify against the data, every negative
+    row must carry a reason, and the competence delta must match what the two
+    records actually say - a round that compares itself to a round that does
+    not exist is a fabricated improvement.
+    """
+    import json as _json
+
+    sonuclar = ROOT / "training" / "eval" / "sonuclar"
+    kayitlar = sorted(sonuclar.glob("onyukleme-*.json"))
+    if not kayitlar:
+        raise SystemExit("no bootstrap round is recorded")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "onyukleme.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the bootstrap round does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    havuz_dosya = ROOT / "training" / "eval" / "negatif-havuz.jsonl"
+    havuz = []
+    if havuz_dosya.is_file():
+        havuz = [
+            _json.loads(line)
+            for line in havuz_dosya.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    nedensiz = [h for h in havuz if not h.get("neden")]
+    if nedensiz:
+        raise SystemExit(
+            f"{len(nedensiz)} negative row(s) carry no reason: a refusal nobody "
+            "explained cannot be learned from"
+        )
+    for kayit_dosya in kayitlar:
+        kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+        bulgu = _eval_run_finding(kayit)
+        if bulgu:
+            raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+        fark = kayit.get("yeterlilik_farki")
+        if not isinstance(fark, dict) or "karsilastirilabilir" not in fark:
+            raise SystemExit(f"{kayit_dosya.name}: no competence delta recorded")
+    # A comparable delta needs a previous round; with one record there is none.
+    if len(kayitlar) == 1:
+        kayit = _json.loads(kayitlar[0].read_text(encoding="utf-8"))
+        if kayit["yeterlilik_farki"]["karsilastirilabilir"]:
+            raise SystemExit(
+                "the only recorded round claims a competence delta: there is no "
+                "previous round to be better than"
+            )
+    return (
+        f"{len(kayitlar)} bootstrap round(s) re-verify; {len(havuz)} negative "
+        "row(s), each with a reason"
+    )
+
+
+def selftest_bootstrap_round_is_measured() -> None:
+    """Canaries: a missing record, an unexplained refusal and a fabricated delta
+    must each be refused."""
+    sonuclar = ROOT / "training" / "eval" / "sonuclar"
+    kayitlar = sorted(sonuclar.glob("onyukleme-*.json"))
+    if not kayitlar:
+        raise AssertionError("the self-test needs a recorded round to break")
+    kayit_dosya = kayitlar[-1]
+    havuz_dosya = ROOT / "training" / "eval" / "negatif-havuz.jsonl"
+    eski_kayit = kayit_dosya.read_text(encoding="utf-8")
+    eski_havuz = havuz_dosya.read_text(encoding="utf-8") if havuz_dosya.is_file() else None
+    try:
+        gate_bootstrap_round_is_measured()
+
+        # Canary 1: a refusal with no reason.
+        satirlar = eski_havuz or ""
+        with havuz_dosya.open("a", encoding="utf-8") as akis:
+            akis.write('{"tur": 1, "sinif": "okuma", "kimlik": "okuma:99", "neden": []}\n')
+        try:
+            gate_bootstrap_round_is_measured()
+            raise AssertionError("a refusal with no reason was accepted")
+        except SystemExit:
+            pass
+        if eski_havuz is None:
+            havuz_dosya.unlink(missing_ok=True)
+        else:
+            havuz_dosya.write_text(satirlar, encoding="utf-8")
+
+        # Canary 2: a delta invented against a round that does not exist.
+        kayit = json.loads(eski_kayit)
+        kayit["yeterlilik_farki"] = {
+            "karsilastirilabilir": True,
+            "onceki_tur": 0,
+            "yeni_cozulen_siniflar": ["okuma"],
+            "gerileyen_siniflar": [],
+            "yalniz_tekrar": False,
+        }
+        kayit_dosya.write_text(
+            json.dumps(kayit, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        try:
+            gate_bootstrap_round_is_measured()
+            raise AssertionError("a fabricated competence delta was accepted")
+        except SystemExit:
+            pass
+
+        # Canary 3: a record that no longer matches the data.
+        kayit = json.loads(eski_kayit)
+        kayit["gecen_toplam"] = kayit["gecen_toplam"] + 1
+        kayit_dosya.write_text(
+            json.dumps(kayit, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        try:
+            gate_bootstrap_round_is_measured()
+            raise AssertionError("a drifted count was accepted")
+        except SystemExit:
+            pass
+    finally:
+        kayit_dosya.write_text(eski_kayit, encoding="utf-8")
+        if eski_havuz is not None:
+            havuz_dosya.write_text(eski_havuz, encoding="utf-8")
+        elif havuz_dosya.is_file():
+            havuz_dosya.unlink()
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3271,6 +3412,10 @@ GATES_EXTRA = {
     "decision-head-has-no-generation-surface": (
         gate_decision_head_has_no_generation_surface,
         selftest_decision_head_has_no_generation_surface,
+    ),
+    "bootstrap-round-is-measured": (
+        gate_bootstrap_round_is_measured,
+        selftest_bootstrap_round_is_measured,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
