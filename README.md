@@ -31,7 +31,7 @@ nothing to check a generation against.
 | context compression: route by content type, pins survive byte for byte, CCR store with digest re-verification, append-only savings ledger | `crates/sikistir` | 11 tests |
 | the runnable binary: corpus load, `ask`, grant book, output audit, closed-loop handoff; `ceilings`; multi-question `batch`; the uninterrupted-work queue (resume, budget, per-job gate check, loud halt); measured baselines that may only rise (`ratchet`); repository `envanter`; restricted `it` (only the listed paths are committed and pushed); the four-step `olc` verification chain; `durum`; the manifest map `graf`; the credential scan `guvenlik`; the file-kind router `dosya`; the ask_user-shaped decision battery `soru` (list/get/cevapla/durum); content search `ara`, measured `indeks`, the ordered reading plan `mufredat`, effort comparison `karsilastir`; context compression `sikistir` (--path/--geri-getir: typed routing, pinned lines, reversible CCR store, measured ledger) and failure mining `ogren` (pattern grouping, two-tier promotion); the queue operator (`queue ls`, `queue iptal` - a cancelled job never runs); batch writes the same audit and closed-loop trace as `ask` | `crates/cli` | 37 tests |
 
-178 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 38 gates, each with its own self-test; the ratchet holds (178 tests, 38 gates, 0 pedantic warnings, 798 corpus records).
+178 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 38 gates, each with its own self-test; the ratchet holds (178 tests, 38 gates, 0 pedantic warnings, 802 corpus records).
 
 ## Permission is an admission decision
 
@@ -134,17 +134,18 @@ nothing it would reject.
 
 ## Corpus and training
 
-The corpus is Lubot's own. `training/build_corpus.py` walks this repository,
-chunks the text-bearing files at the record budget, hashes every chunk, and
-stamps every record with the repository's own licence and a pre-issuance
-provenance pair; nothing outside this tree enters it. A record without an
-allowed licence never enters the corpus - the refusal is at the door, not a
-later filter.
+The corpus is the budlum-xyz surface. `training/build_corpus.py` walks this
+repository (CI, always) and, operator-side through a sources manifest, the
+budlum core and the workspace root documents; each source stamps its own
+licence and per-repo provenance pair, cross-source duplicates enter once,
+and nothing outside the organization's own trees enters it. A record
+without an allowed licence never enters the corpus - the refusal is at the
+door, not a later filter.
 
 The vocab is frozen and versioned: `training/train_tokenizer.py` cuts a
 byte-level BPE vocab from this corpus from scratch (standard library only),
-commits it under `training/tokenizer/`, and a new corpus family is a new
-cut, never a silent drift. `training/bench_hardware.py` measures the run
+commits it under `training/tokenizer/` (v1: self corpus; v2: the surface
+corpus), and a new corpus family is a new cut, never a silent drift. `training/bench_hardware.py` measures the run
 machine (K6) and `training/recommend_model_size.py` turns that measurement
 into a parameter ceiling where every number carries its label: measured,
 derived (formula stated) or not measured.
@@ -153,7 +154,8 @@ What the corpus holds (measured, 2026-09-22):
 
 | corpus | records | licence |
 |---|---|---|
-| `corpus/knowledge-self.jsonl.gz` (built by CI from this repository) | 798 | PolyForm Shield 1.0.0 (own work) |
+| `corpus/knowledge-self.jsonl.gz` (built by CI from this repository) | 802 | PolyForm Shield 1.0.0 (own work) |
+| `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: this repo + budlum + workspace root) | 23600 | PolyForm Shield 1.0.0 + MIT (own work) |
 
 Three gates guard the data: `corpus-records-carry-licence` (every record in
 `corpus/` carries an allowed licence and an attribution),
