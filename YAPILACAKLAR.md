@@ -24,6 +24,33 @@ Lubot'un kendisi.
       sayılır, geçmeyenler **nedeniyle** negatif havuza yazılır, yeterlilik farkı
       iki kayıttan yeniden hesaplanır (kapı 55). Tur 1: 88/88 satır geçti,
       0 negatif, fark karşılaştırılabilir değil (ilk tur bir tabandır).
+- [x] **Eğitim çekirdeği** (iskelette ayrı adı yok, 5 ile 8 arasında duruyor).
+      `crates/egitim` + `lubot egitim`. Repoda backward, optimizer ve train step
+      **yoktu**; spec tamdı ama onu koşacak çekirdek yoktu. K1 gereği sıfırdan:
+      otograd kütüphanesi yok, üçüncü taraf ağırlık yok. `Spec::lubot_a1()`
+      spec'i birebir kuruyor (924.288 parametre), `parametre_sayisi()` bunu
+      testle spec'in beyanına bağlıyor. Doğruluk **savunulmuyor, ölçülüyor**: 19
+      tensör alanının **344 parametresinin tamamı** merkezi sonlu farkla
+      karşılaştırılıyor ve beklenen sayı spec'ten alınıyor, yani sonradan eklenen
+      bir tensör denetimsiz kalamıyor. Sonuç **344/344**. Tolerans göreli +
+      mutlak taban: ölçüldü, en kötü parametrede analitik `-1.280e-6` ve sonlu
+      fark `-1.280e-6` (dört anlamlı basamak aynı) ama naif göreli hata 8.6e-5 —
+      sebebi sonlu farkın yuvarlama tabanı, yanlış gradyan değil. Ölçülen iniş:
+      30 adım, kayıp **4.156951 → 2.501726** (bellek içi dizi; komut bunun
+      korpus ölçümü olmadığını aynı satırda söylüyor). Epoch tavanı buraya
+      yazılmadı, `lubot-grant`'ten okunuyor.
+- [ ] **Eğitim çekirdeğinin korpusa bağlanması.** Rust tarafında tokenizer yok
+      (BPE Python'da), o yüzden çekirdek korpusu henüz okuyamıyor. `lubot-bpe-v2`
+      sözlüğünü okuyan bir Rust jetonlayıcı + korpus yükleyici gerekiyor;
+      `tokenizer-vocab-is-frozen` kapısı sözlüğün donmuş olduğunu zaten
+      doğruluyor, yani iki tarafın aynı sözlüğü paylaştığı denetlenebilir.
+- [ ] **Ölçümün kendine geri beslenmemesi kuralı.** Bulundu ve bu turda
+      kapatıldı: `README.md` korpusun içinde olduğu için ratchet satırındaki
+      korpus türevi sayılar ölçümü kendine bağlıyordu — sabit nokta **yok**
+      (101443 yazınca 101444, 101444 yazınca 101443 ölçülüyor, ölçüldü).
+      Sayılar `training/ratchet.json`'a taşındı (korpusa girmiyor). Kalan iş:
+      bunu bir kapıya bağlamak, yani korpus-içi bir dosyada korpus türevi bir
+      ölçüm göründüğünde reddetmek. Şu an yalnız README'den elle çıkarıldı.
 - [x] **Adım 8a — Kıyas sınıfı beyanı.** `training/kiyas_sinifi.py` (kapı 56):
       parametre `model_spec.json`'dan, jeton `egitim_butcesi.py --olc`'ten
       okunuyor (ikinci literal yok). Ölçülen: **924.288 parametre**, sınırın
