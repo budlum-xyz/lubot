@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the knowledge corpus from a checkout.
+"""Build the knowledge corpus from one or more budlum-xyz checkouts.
 
 What goes in, and why:
 
@@ -13,13 +13,31 @@ What goes in, and why:
 What stays out: raw function bodies. A model trained on raw source learns to
 autocomplete source; the job here is to explain a protocol.
 
-Every record carries where it came from - path and line range - so an answer
-built from it can be walked back to the file. Records built from this
-repository are stamped with its own licence and a pre-issuance provenance
-pair (asset_id_pending), the same rule the v2 builder applies before a
-chain TrainingDataGrant is issued.
+Every record carries where it came from - source name, path and line range -
+so an answer built from it can be walked back to the file. Each source repo
+stamps its records with its own licence and its own pre-issuance provenance
+pair (asset_id + content_id, one asset_id per source repo), so the share of
+each source in the corpus stays measurable (A-section rule). Records built
+from several sources in one run are deduplicated across sources: the same
+passage (the shared licence text, for example) enters once.
 
+Nothing outside the given source trees enters, and a source whose licence is
+not in the closed set is refused at the door, not filtered later.
+
+    # self corpus (CI): one repository
     python3 training/build_corpus.py --repo . --out corpus/knowledge-self.jsonl.gz
+
+    # surface corpus (operator): a sources manifest
+    python3 training/build_corpus.py --sources manifest.json --out corpus/budlum-yuzeyi.jsonl.gz
+
+The manifest lists sources explicitly, so the build is a pure function of
+the trees and the manifest (paths, names, per-source curation):
+
+    {"sources": [
+      {"path": "../lubot", "name": "lubot"},
+      {"path": "../budlum", "name": "budlum"},
+      {"path": "../workspace", "name": "workspace", "root_only": true}
+    ]}
 """
 
 from __future__ import annotations
@@ -33,18 +51,43 @@ from pathlib import Path
 
 SKIP_DIRS = {".git", "target", "node_modules", "corpus", ".github"}
 
+ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0"}
+
 
 def digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-SELF_LICENCE = "PolyForm-Shield-1.0.0"
-SELF_ATTRIBUTION = "lubot (kendi eser; LICENSE.md PolyForm Shield 1.0.0)"
-# v2 ile ayni kural: grant cikmadan kanonik yer tutucu + pending damgasi.
-SELF_ASSET_ID = digest("BDLM_LUBOT_CORPUS_ASSET_V1|self")
+def asset_id_for(source_name: str) -> str:
+    """Kaynak repo basina kanonik (on-issuance) asset kimligi."""
+    return digest(f"BDLM_LUBOT_CORPUS_ASSET_V1|{source_name}")
 
 
-def walk(root: Path):
+def detect_licence(root: Path) -> str:
+    """Kaynak repoya kendi lisans dosyasindan okur; kapali setin disina
+    dusen ya da lisanssiz kaynak kapidan reddedilir."""
+    for name in ("LICENSE.md", "LICENSE"):
+        path = root / name
+        if path.is_file():
+            text = path.read_text(encoding="utf-8", errors="ignore")[:4000]
+            if "PolyForm Shield License 1.0.0" in text:
+                return "PolyForm-Shield-1.0.0"
+            if "MIT License" in text:
+                return "MIT"
+            if "Apache License" in text and "Version 2.0" in text:
+                return "Apache-2.0"
+    raise SystemExit(
+        f"lisans okunamadi ya da kapali setin disinda: {root} "
+        f"(izinli: {sorted(ALLOWED_LICENCES)})"
+    )
+
+
+def walk(root: Path, root_only: bool = False):
+    if root_only:
+        for path in sorted(root.iterdir()):
+            if path.is_file():
+                yield path
+        return
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
@@ -134,24 +177,69 @@ def gate_records(root: Path):
         }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", required=True)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--source-name", default=None)
-    args = parser.parse_args()
-
-    root = Path(args.repo).resolve()
-    source = args.source_name or root.name
-    records = []
-
-    for path in walk(root):
+def collect(root: Path, source: str, root_only: bool):
+    """Tek kaynagin kayitlari; kaynak adi kayda islenir."""
+    for path in walk(root, root_only=root_only):
         rel = str(path.relative_to(root))
         if path.suffix == ".rs":
-            records.extend(rust_records(path, rel))
+            yield from rust_records(path, rel)
         elif path.suffix == ".md":
-            records.extend(markdown_records(path, rel))
-    records.extend(gate_records(root))
+            yield from markdown_records(path, rel)
+    yield from gate_records(root)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", default=None,
+                        help="tek kaynak checkout'u (CI self kurulusu)")
+    parser.add_argument("--source-name", default=None,
+                        help="--repo ile kaynak adi (varsayilan: dizin adi)")
+    parser.add_argument("--sources", default=None,
+                        help="coklu kaynak manifesti (JSON); --repo ile birlikte kullanilmaz")
+    parser.add_argument("--out", required=True)
+    args = parser.parse_args()
+
+    if args.repo and args.sources:
+        raise SystemExit("--repo ve --sources ayni anda verilemez; ya tek kaynak ya manifest")
+
+    if args.repo:
+        root = Path(args.repo).resolve()
+        sources = [{"path": str(root), "name": args.source_name or root.name}]
+    elif args.sources:
+        manifest = json.loads(Path(args.sources).read_text(encoding="utf-8"))
+        sources = manifest["sources"]
+        if not sources:
+            raise SystemExit("manifest bos: en az bir kaynak gerekir")
+    else:
+        raise SystemExit("--repo ya da --sources gerekli")
+
+    records = []
+    per_source = []
+    for spec in sources:
+        root = Path(spec["path"]).resolve()
+        if not root.is_dir():
+            raise SystemExit(f"kaynak dizin yok: {root}")
+        name = spec["name"]
+        root_only = bool(spec.get("root_only", False))
+        licence = spec.get("licence") or detect_licence(root)
+        if licence not in ALLOWED_LICENCES:
+            raise SystemExit(f"kaynak lisansi kapali setin disinda: {name} -> {licence}")
+        attribution = spec.get("attribution") or f"{name} (kendi eser; {licence})"
+        asset_id = asset_id_for(name)
+        batch = list(collect(root, name, root_only))
+        for record in batch:
+            record["source"] = name
+        records.extend(batch)
+        per_source.append({
+            "source": name,
+            "path": str(root),
+            "root_only": root_only,
+            "licence": licence,
+            "attribution": attribution,
+            "asset_id": asset_id,
+            "raw_records": len(batch),
+        })
+    spec_by_name = {s["source"]: s for s in per_source}
 
     seen: set[str] = set()
     unique = []
@@ -160,12 +248,12 @@ def main() -> int:
         if key in seen:
             continue
         seen.add(key)
-        record["source"] = source
+        spec = spec_by_name[record["source"]]
         record["digest"] = key
-        record["licence"] = SELF_LICENCE
-        record["attribution"] = SELF_ATTRIBUTION
+        record["licence"] = spec["licence"]
+        record["attribution"] = spec["attribution"]
         record["content_id"] = key
-        record["asset_id"] = SELF_ASSET_ID
+        record["asset_id"] = spec["asset_id"]
         record["asset_id_pending"] = True
         unique.append(record)
 
@@ -180,18 +268,20 @@ def main() -> int:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     by_kind: dict[str, int] = {}
+    by_source_final: dict[str, int] = {}
     characters = 0
     for record in unique:
         by_kind[record["kind"]] = by_kind.get(record["kind"], 0) + 1
+        by_source_final[record["source"]] = by_source_final.get(record["source"], 0) + 1
         characters += len(record["text"])
     print(json.dumps({
         "records": len(unique),
         "by_kind": by_kind,
         "characters": characters,
         "approx_tokens": characters // 4,
-        "source": source,
-        "asset_id": SELF_ASSET_ID,
-        "asset_id_pending": True,
+        "by_source_raw": {s["source"]: s["raw_records"] for s in per_source},
+        "by_source": by_source_final,
+        "sources": per_source,
     }, ensure_ascii=False))
     return 0
 
