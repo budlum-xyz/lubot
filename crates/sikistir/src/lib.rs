@@ -530,7 +530,7 @@ mod tests {
             + "FAIL [badges-are-current]: README says 2885, run measured 2896\n"
             + &"ok\n".repeat(200);
         let pin = "FAIL [badges-are-current]: README says 2885, run measured 2896".to_string();
-        let sonuc = sikistir(&log, &[pin.clone()]).unwrap();
+        let sonuc = sikistir(&log, std::slice::from_ref(&pin)).unwrap();
         assert!(
             sonuc.metin.contains(&pin),
             "the pinned line must survive byte for byte"
