@@ -26,6 +26,7 @@ fn usage() -> String {
         "usage:",
         "  lubot corpus <file.jsonl.gz>...",
         "  lubot egitim   (trainer self-check: spec, epoch ceiling, measured descent)",
+        "  lubot jetonla --vocab <v.json> --corpus <c.jsonl.gz> [--limit N] [--tam]",
         "  lubot ask --corpus <f1,f2> --reader <r> --effort 0.5x..10.0x [--audit f] [--outputs f] [--book b] <question>",
         "  lubot grant issue --reader <r> --key <k> --expires-at <sec> [--book b]",
         "  lubot grant revoke --reader <r> --key <k> [--book b]",
@@ -105,6 +106,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "it" => cmd_it(rest),
         "olc" => cmd_olc(rest),
         "egitim" => cmd_egitim(rest),
+        "jetonla" => cmd_jetonla(rest),
         "durum" => cmd_durum(rest),
         "guvenlik" => cmd_guvenlik(rest),
         "graf" => cmd_graf(rest),
@@ -1242,6 +1244,124 @@ fn git_stdout(args: &[&str]) -> Result<String, String> {
 /// it is not a corpus measurement and is not reported as one. The gradient
 /// itself is checked against finite differences in `lubot-egitim`'s own tests,
 /// not here.
+/// Apply the frozen vocab to the training corpus and print the ids.
+///
+/// This exists so the Rust tokenizer can be cross-checked against the Python
+/// one that cut the vocab: same file, same records, ids compared one by one.
+/// Two tokenizers that agree by convention is not an agreement.
+fn cmd_jetonla(args: &[String]) -> Result<(), String> {
+    let mut vocab_yolu: Option<String> = None;
+    let mut korpus_yolu: Option<String> = None;
+    let mut limit: usize = 250;
+    let mut tam = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--vocab" => {
+                i += 1;
+                vocab_yolu = args.get(i).cloned();
+            }
+            "--corpus" => {
+                i += 1;
+                korpus_yolu = args.get(i).cloned();
+            }
+            "--limit" => {
+                i += 1;
+                limit = args
+                    .get(i)
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .ok_or_else(|| "--limit bir sayi istiyor".to_string())?;
+            }
+            "--tam" => tam = true,
+            other => return Err(format!("jetonla: bilinmeyen secenek {other}\n{}", usage())),
+        }
+        i += 1;
+    }
+    let vocab_yolu = vocab_yolu.ok_or_else(|| format!("--vocab zorunlu\n{}", usage()))?;
+    let korpus_yolu = korpus_yolu.ok_or_else(|| format!("--corpus zorunlu\n{}", usage()))?;
+    let sozluk = lubot_jeton::Sozluk::yukle(std::path::Path::new(&vocab_yolu)).map_err(|e| {
+        // Reddin sebebi adıyla söylenir: "yaklaşık olarak uyguladım" ile
+        // "uygulayamam" aynı cümleyle geçiştirilemez.
+        let tur = match e {
+            lubot_jeton::SozlukHatasi::DesenDesteklenmiyor(_) => "desen-desteklenmiyor",
+            lubot_jeton::SozlukHatasi::DagBozuk { .. } => "birlestirme-dag-bozuk",
+            lubot_jeton::SozlukHatasi::BoyutUyusmuyor { .. } => "boyut-uyusmuyor",
+            lubot_jeton::SozlukHatasi::BilinmeyenBicim(_) => "bilinmeyen-bicim",
+            lubot_jeton::SozlukHatasi::BirlestirmeBicimiBozuk(_) => "birlestirme-bicimi-bozuk",
+            lubot_jeton::SozlukHatasi::EksikAlan(_) => "eksik-alan",
+            lubot_jeton::SozlukHatasi::BozukJson(_) => "bozuk-json",
+            lubot_jeton::SozlukHatasi::Yok(_) => "sozluk-yok",
+        };
+        format!("sozluk reddedildi [{tur}]: {e}")
+    })?;
+
+    let dosya = std::fs::File::open(&korpus_yolu)
+        .map_err(|e| format!("korpus acilamadi: {korpus_yolu} ({e})"))?;
+    let okuyucu: Box<dyn std::io::BufRead> = if std::path::Path::new(&korpus_yolu)
+        .extension()
+        .is_some_and(|e| e == "gz")
+    {
+        Box::new(std::io::BufReader::new(flate2::read::GzDecoder::new(dosya)))
+    } else {
+        Box::new(std::io::BufReader::new(dosya))
+    };
+
+    let mut cikti = String::new();
+    let mut kayit = 0usize;
+    let mut toplam_jeton = 0usize;
+    let mut toplam_on_jeton = 0usize;
+    for (sira, satir) in std::io::BufRead::lines(okuyucu).enumerate() {
+        let satir = satir.map_err(|e| format!("korpus okunamadi ({sira}): {e}"))?;
+        let satir = satir.trim();
+        if satir.is_empty() {
+            continue;
+        }
+        let deger: serde_json::Value = serde_json::from_str(satir)
+            .map_err(|e| format!("korpus kaydi {sira} JSON degil: {e}"))?;
+        let metin = deger["text"]
+            .as_str()
+            .ok_or_else(|| format!("korpus kaydi {sira}: `text` alani yok"))?;
+        let kimlikler = sozluk.kodla(metin);
+        toplam_on_jeton += lubot_jeton::on_token_sayisi(metin);
+        let geri = sozluk
+            .coz(&kimlikler)
+            .map_err(|e| format!("kayit {sira} geri cozulemedi: {e}"))?;
+        if geri != metin {
+            return Err(format!(
+                "kayit {sira}: kodla/coz kayipsiz degil ({} bayt -> {} bayt)",
+                metin.len(),
+                geri.len()
+            ));
+        }
+        toplam_jeton += kimlikler.len();
+        if kayit < limit {
+            if tam {
+                let liste: Vec<String> = kimlikler.iter().map(|k| k.to_string()).collect();
+                cikti.push_str(&format!(
+                    "{{\"i\":{sira},\"n\":{},\"ids\":[{}]}}\n",
+                    kimlikler.len(),
+                    liste.join(",")
+                ));
+            } else {
+                cikti.push_str(&format!("{{\"i\":{sira},\"n\":{}}}\n", kimlikler.len()));
+            }
+        }
+        kayit += 1;
+    }
+    eprintln!(
+        "jetonla: {} kayit, {} on-jeton, {} jeton, sozluk {} ({} birlestirme, boyut {}, desen {})",
+        kayit,
+        toplam_on_jeton,
+        toplam_jeton,
+        sozluk.aile(),
+        sozluk.birlestirme_sayisi(),
+        sozluk.boyut(),
+        lubot_jeton::DESTEKLENEN_DESEN
+    );
+    print!("{cikti}");
+    Ok(())
+}
+
 fn cmd_egitim(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
         return Err(format!("egitim takes no arguments\n{}", usage()));

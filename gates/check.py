@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+import pathlib
 import gzip
 import json
 import re
@@ -3809,6 +3810,84 @@ def selftest_measurements_do_not_feed_back() -> None:
             kanarya.unlink()
 
 
+def gate_rust_tokenizer_agrees_with_python() -> str:
+    """The Rust tokenizer and the Python one that cut the vocab produce the same ids.
+
+    The vocab was cut in Python; the training core reads it in Rust. Two
+    implementations of one format agreeing by convention is not an agreement,
+    so both are run over the whole corpus and their ids are compared record by
+    record. The Rust side is *executed*, never reimplemented here - a
+    comparison against a copy of the logic would measure the copy.
+    """
+    import json as _json
+
+    korpus = ROOT / "corpus" / "knowledge-self.jsonl.gz"
+    if not korpus.is_file():
+        raise SystemExit(f"corpus is not built: {korpus}")
+    betik = ROOT / "training" / "jeton_capraz.py"
+    proc = subprocess.run(
+        [sys.executable, str(betik), "--corpus", str(korpus), "--json", "--cargo"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            f"the two tokenizers disagree or the Rust side refused: "
+            f"{(proc.stdout or proc.stderr).strip()[-400:]}"
+        )
+    try:
+        olcum = _json.loads(proc.stdout)
+    except ValueError as exc:
+        raise SystemExit(f"cross-check produced no measurement: {exc}") from exc
+    if olcum["uyusmaz_kayit"] != 0:
+        raise SystemExit(f"{olcum['uyusmaz_kayit']} record(s) tokenize differently")
+    if olcum["karsilastirilan_kayit"] != olcum["korpus_kayit"]:
+        raise SystemExit(
+            f"only {olcum['karsilastirilan_kayit']} of {olcum['korpus_kayit']} records "
+            f"were compared"
+        )
+    return (
+        f"{olcum['sozluk']}: {olcum['karsilastirilan_kayit']} record(s) tokenized "
+        f"identically by Rust and Python ({olcum['rust_toplam_jeton']} tokens)"
+    )
+
+
+def selftest_rust_tokenizer_agrees_with_python() -> None:
+    """Canary: a vocab whose pretoken pattern this reader cannot apply must make
+    the cross-check fail, not silently tokenize something else. Needs no corpus."""
+    import tempfile as _tempfile
+
+    dizin = pathlib.Path(_tempfile.mkdtemp(prefix="jeton-kanarya-"))
+    try:
+        vocab = dizin / "sahte-sozluk.json"
+        vocab.write_text(
+            json.dumps({
+                "format": "lubot-bpe",
+                "format_version": 1,
+                "vocab_family": "kanarya-v0",
+                "vocab_size": 257,
+                "pretoken_pattern": r"\w+",
+                "merges": [[97, 98]],
+            }),
+            encoding="utf-8",
+        )
+        korpus = dizin / "korpus.jsonl"
+        korpus.write_text('{"text": "abc"}\n', encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "jeton_capraz.py"),
+             "--vocab", str(vocab), "--corpus", str(korpus), "--json", "--cargo"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if proc.returncode == 0:
+            raise AssertionError(
+                "a vocab with an unsupported pretoken pattern was accepted instead "
+                "of refused"
+            )
+    finally:
+        import shutil as _shutil
+
+        _shutil.rmtree(dizin, ignore_errors=True)
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3873,6 +3952,10 @@ GATES_EXTRA = {
     "measurements-do-not-feed-back": (
         gate_measurements_do_not_feed_back,
         selftest_measurements_do_not_feed_back,
+    ),
+    "rust-tokenizer-agrees-with-python": (
+        gate_rust_tokenizer_agrees_with_python,
+        selftest_rust_tokenizer_agrees_with_python,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),

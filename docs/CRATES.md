@@ -55,6 +55,7 @@ No dependencies inside the workspace. Each one holds a single rule.
 
 | `tomurcuk` | 764 | 10 | `anlama` | The decision head: three closed output shapes and no text-producing surface, checked by a gate rather than by convention. A fixed tier order - deterministic code, then the head, then generation - and a route that skips a tier is refused. Confidence below the threshold escalates instead of deciding, and an empty ledger means the head may not decide alone, so moving a decision to the head stays a measured step. k-of-n agreement over independently initialised heads; deliberately not the chain's operator threshold. |
 | `egitim` | 1169 | 8 | `grant` | The training core, written from scratch: forward pass, cross-entropy, and a hand-written backward pass with no autograd library. Correctness is **measured rather than argued** - every parameter of the small configuration (344 of them, all 19 tensor fields) is compared against a central finite difference, and the expected count is taken from the spec itself so a tensor added later cannot go unchecked. The tolerance is relative with an absolute floor, because a finite difference cannot resolve a gradient of 1e-6: measured, the worst-scoring parameter agrees to four significant digits (-1.280e-6 against -1.280e-6) while its naive relative error reads 8.6e-5. GELU is the tanh form so the coded derivative is the derivative of the coded function. Weight decay is a per-call decision, since decaying a LayerNorm scale shrinks a scale rather than regularising. The epoch ceiling comes from `lubot-grant` and is not restated. What it does **not** have: no tokenizer, so it cannot read the corpus yet, and no trained checkpoint (K6) - `lubot egitim` reports a measured descent on an in-memory sequence and says so in the same line. |
+| `jeton` | 503 | 10 | - | The frozen BPE vocab, read and applied rather than re-cut. The loader is fail-closed on structure (`vocab_size == 256 + merges`, and every merge may only refer to ids defined before it) and **string-compares the pretoken pattern** against the one this file implements - a pattern it cannot apply is a refusal, never an approximation, because a different segmentation would produce plausible ids that mean something else. The segmentation is the subtle part and it is pinned by a test: `[\W_]+` is greedy and `\W` includes whitespace, so `"; oku"` is `"; "` then `"oku"`, not three pretokens - treating the four classes as a partition of characters is the easy way to get this wrong. `\d` is read as the Unicode Nd category; the comment records why each lint-suggested replacement (`is_ascii_digit`, `is_numeric`) would be wrong. Agreement with the Python tokenizer that cut the vocab is **measured, not assumed**: gate 61 runs both over the whole corpus and compares ids record by record (1767/1767 identical, 102654 tokens). |
 
 ## The crates that were here first
 
@@ -76,7 +77,7 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 7509 | 105 | The runnable binary, and the only crate that reaches everything else. |
+| `cli` | 7629 | 105 | The runnable binary, and the only crate that reaches everything else. |
 
 Four modules carry the wiring:
 
