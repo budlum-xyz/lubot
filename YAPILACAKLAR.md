@@ -32,10 +32,16 @@ Lubot'un kendisi.
       "kapışma" iddiası yalnız **görev ekseninde** (alıntı doğruluğu + red
       disiplini) yapılabilir; parametre ekseninde bir iddia kaydı kapı reddediyor.
       Ratchet'e `exam` anahtarı eklendi (sınav sorusu sayısı, yalnız yükselir).
-- [ ] **Adım 8b — Held-out sınav setini yaz.** `training/eval/sinav-seti.jsonl`
-      bugün **0 soru**; damga mekanizması kurulu ve kanaryalı (damgasız bir soru
-      reddediliyor). Kalan iş: soruları yazmak ve her sorunun dayandığı pasajı
-      `eval-only.json`'a damgalamak.
+- [x] **Adım 8b — Held-out sınav seti.** `training/sinav.py` (kapı 57):
+      **12 soru**, her biri kendi pasajının `content_id`'sini
+      `eval-only.json`'a damgalıyor. Seçim kuralı yazılı (elle seçilmiş sınav
+      seçeni ölçer): `doc` kayıtları, `content_id`'ye göre sıralı, dosya başına
+      en fazla bir soru, eşit aralıklı 12 adet. **Eksik olan önleme kapatıldı**:
+      `make_sft.py` artık damgalı pasajları eliyor (`dropped_eval_only`), yani
+      sınav seti gerçekten held-out; `eval_sft`'in reddi ikinci duvar olarak
+      duruyor. Ölçülen: 1701 grounded satır, damgalı 0; SFT 1789 satır
+      (1701 + 88 mufredat). Ne ölçtüğü dar ve kayıtlı: getirme + alıntı; soru
+      metni pasajın ilk satırından türediği için skor bir **üst sınır**.
 - [ ] **Adım 8c — İlk kapışma ölçümü.** Görev ekseninde, taban olarak raporla —
       zafer ilanı değil. Eğitilmiş kontrol noktası yokken (K6) ölçülemez.
 

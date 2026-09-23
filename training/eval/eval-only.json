@@ -1,7 +1,20 @@
 {
-  "note": "Eval-only damga listesi (PP bolumu). Bir held-out degerlendirme sorusu yazildigi an, dayandigi pasajin content_id'si buraya damgalanir. Amac niyetle ayrilmis bir kumenin sessizce sizmasi degil, sizintinin fiziksel olarak imkansiz olmasidir: damgali bir pasaj satira donusmeye calisirsa `eval-set-never-trained` kapisi egitim turunu reddeder.",
-  "kural": "Sizinti ikili bir durumdur: tek damga bile yeterlidir, oran esigi yoktur. Liste bos olsa da mekanizma kuruludur ve kapi kendi ihlalini yakaladigini kanitlar.",
-  "damga_bicimi": "content_id = sha256(pasaj metni); korpus kaydindaki content_id alani ile birebir ayni deger",
-  "yeni_damga": "held-out soru yazildiginda: korpus kaydinin content_id'sini buraya ekle, listeyi sirala; damga kapidan (eval-set-never-trained) gecmeden kabul edilmis sayilmaz",
-  "digests": []
+ "note": "Eval-only damga listesi (PP bolumu). Bir held-out degerlendirme sorusu yazildigi an, dayandigi pasajin content_id'si buraya damgalanir. Amac niyetle ayrilmis bir kumenin sessizce sizmasi degil, sizintinin fiziksel olarak imkansiz olmasidir: damgali bir pasaj satira donusmeye calisirsa `eval-set-never-trained` kapisi egitim turunu reddeder.",
+ "kural": "Sizinti ikili bir durumdur: tek damga bile yeterlidir, oran esigi yoktur. Liste bos olsa da mekanizma kuruludur ve kapi kendi ihlalini yakaladigini kanitlar.",
+ "damga_bicimi": "content_id = sha256(pasaj metni); korpus kaydindaki content_id alani ile birebir ayni deger",
+ "yeni_damga": "held-out soru yazildiginda: korpus kaydinin content_id'sini buraya ekle, listeyi sirala; damga kapidan (eval-set-never-trained) gecmeden kabul edilmis sayilmaz",
+ "digests": [
+  "00ed2c4cda09ca759e842115783fe96fd12393f77386eff2879b45824e28c1bd",
+  "01d0baf833abfe88af3d4aca49d530eb2d15ecdd180da8d63c2cfb089a255c1d",
+  "03135d151c96b1cedb9a1d586786ea8b0166efa326fc89cf9cde3856225c197b",
+  "0726d9ecc4fd2967dc6c184aa90a5c6ee22ae921cb56eee9c4e53a6c94b45f63",
+  "084d5672e0e245b7cf8a2b9bf31936c33cb88771d7fb9ba00e66317e7999bd10",
+  "0c45d4fe7dfd273c646684a749bc59418d6777a408a439c7a16073ee3257bd43",
+  "10ec15a408b2cb5438399efd5b9152d616c204d06a7f34680a266369d19409ca",
+  "15fe76afb7164fbf484816dadb33e309401fa53c2f005fd93d79015ac73eb1cb",
+  "1a8ab3e6127ec40a8448692bc4edfca4ccdfd0540584b70ef14a6db83ce2f72c",
+  "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+  "29e2d96f0f7d2434f280c7ce54bba2526dd969e9bdd836f0db0c700e11ec15c6",
+  "3ff4bcdfe69cce2e182fc5d5130b2ebf95557c5f050f6afcf5680c81f10004ef"
+ ]
 }
