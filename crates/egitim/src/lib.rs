@@ -1,0 +1,1169 @@
+//! The training core: a forward pass, a loss, a backward pass, and the epoch
+//! discipline around them. All of it written here - no framework, no upstream
+//! weights, no autograd library (K1).
+//!
+//! # Why the gradient check is the point
+//!
+//! A hand-written backward pass is the easiest place in a from-scratch trainer
+//! to be quietly wrong: the loss goes down anyway, the model learns something,
+//! and the thing it learns is shaped by a wrong gradient. So correctness here
+//! is not argued, it is measured - [`gradients_match_finite_differences`]
+//! compares every analytic gradient against a central finite difference on a
+//! small configuration and refuses the trainer when the relative error is above
+//! [`GRADIENT_CHECK_TOLERANCE`].
+//!
+//! # The architecture is the spec's, not a guess
+//!
+//! [`Spec::lubot_a1`] reproduces `training/model_spec.json` exactly: 8192 × 64
+//! tied embedding with a `1/d_model` logit scale, 8 pre-norm layers of 2-head
+//! attention and a 64→256 MLP, `1/d_k` attention scale. [`Spec::parametre_sayisi`]
+//! counts the parameters the spec claims (924.288) and a test holds the two
+//! together, so the trainer cannot drift from the spec it is supposed to train.
+//!
+//! # Epochs are the grant crate's business
+//!
+//! The ceiling on how many epochs may run is not restated here. [`egitim_turu`]
+//! asks [`lubot_grant`] for it, because one protocol constant written in two
+//! places is a disagreement waiting to happen.
+
+use lubot_grant::training::MAX_TRAINING_GRANT_EPOCHS;
+
+/// Relative error above which the backward pass is considered wrong.
+pub const GRADIENT_CHECK_TOLERANCE: f64 = 1e-6;
+/// Absolute floor under the relative check.
+///
+/// A central finite difference cannot resolve a gradient whose magnitude is
+/// near the noise floor: with a step of 1e-5 and a loss of order 1, the
+/// round-off in `(k1 - k2) / 2h` is around 1e-10 absolute, which is a *large*
+/// relative error on a gradient of 1e-6 and no signal at all about the
+/// derivative. Measured here: on the tiny configuration the analytic and the
+/// numeric value of the worst-scoring parameter agree to four significant
+/// digits (-1.280e-6 against -1.280e-6) while their naive relative error reads
+/// 8.6e-5. So the check is relative where the gradient is resolvable and
+/// absolute where it is not, instead of reporting noise as a wrong gradient.
+pub const GRADIENT_CHECK_MUTLAK_TABAN: f64 = 1e-9;
+/// LayerNorm epsilon.
+pub const LN_EPS: f64 = 1e-5;
+
+/// The architecture, as the spec states it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spec {
+    /// Vocabulary size.
+    pub vocab: usize,
+    /// Model width.
+    pub d_model: usize,
+    /// Transformer layers.
+    pub n_layers: usize,
+    /// Attention heads.
+    pub n_heads: usize,
+    /// MLP inner width.
+    pub d_ff: usize,
+}
+
+/// Why a spec was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecHatasi {
+    /// A zero dimension.
+    BosBoyut,
+    /// The width does not divide by the head count.
+    BasSayisiBolmuyor,
+}
+
+impl Spec {
+    /// The first training spec (`lubot-a1-derin-dar`).
+    #[must_use]
+    pub const fn lubot_a1() -> Self {
+        Self {
+            vocab: 8192,
+            d_model: 64,
+            n_layers: 8,
+            n_heads: 2,
+            d_ff: 256,
+        }
+    }
+
+    /// Width per head.
+    #[must_use]
+    pub fn d_k(self) -> usize {
+        self.d_model / self.n_heads
+    }
+
+    /// # Errors
+    /// [`SpecHatasi::BosBoyut`] on a zero dimension;
+    /// [`SpecHatasi::BasSayisiBolmuyor`] when heads do not divide the width.
+    pub fn dogrula(self) -> Result<(), SpecHatasi> {
+        if self.vocab == 0 || self.d_model == 0 || self.n_layers == 0 || self.d_ff == 0 {
+            return Err(SpecHatasi::BosBoyut);
+        }
+        if self.n_heads == 0 || self.d_model % self.n_heads != 0 {
+            return Err(SpecHatasi::BasSayisiBolmuyor);
+        }
+        Ok(())
+    }
+
+    /// How many parameters this spec has, counted the way the spec counts them:
+    /// tied embedding once, attention and MLP per layer, two LayerNorms per
+    /// layer and one at the end.
+    #[must_use]
+    pub fn parametre_sayisi(self) -> usize {
+        let d = self.d_model;
+        let embedding = self.vocab * d;
+        let dikkat = self.n_layers * (4 * d * d + 4 * d);
+        let mlp = self.n_layers * (2 * d * self.d_ff + self.d_ff + d);
+        let ln = self.n_layers * 4 * d + 2 * d;
+        embedding + dikkat + mlp + ln
+    }
+}
+
+/// Every weight, in one place.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parametreler {
+    /// Tied token embedding / readout, `[vocab * d_model]`.
+    pub embedding: Vec<f64>,
+    /// Per layer: LayerNorm 1 scale, bias.
+    pub ln1_olcek: Vec<f64>,
+    /// Per layer: LayerNorm 1 bias.
+    pub ln1_sapma: Vec<f64>,
+    /// Per layer: query weights, `[n_layers * d_model * d_model]`.
+    pub wq: Vec<f64>,
+    /// Per layer: query biases.
+    pub bq: Vec<f64>,
+    /// Per layer: key weights.
+    pub wk: Vec<f64>,
+    /// Per layer: key biases.
+    pub bk: Vec<f64>,
+    /// Per layer: value weights.
+    pub wv: Vec<f64>,
+    /// Per layer: value biases.
+    pub bv: Vec<f64>,
+    /// Per layer: output projection weights.
+    pub wo: Vec<f64>,
+    /// Per layer: output projection biases.
+    pub bo: Vec<f64>,
+    /// Per layer: LayerNorm 2 scale.
+    pub ln2_olcek: Vec<f64>,
+    /// Per layer: LayerNorm 2 bias.
+    pub ln2_sapma: Vec<f64>,
+    /// Per layer: MLP up weights, `[n_layers * d_ff * d_model]`.
+    pub w1: Vec<f64>,
+    /// Per layer: MLP up biases.
+    pub b1: Vec<f64>,
+    /// Per layer: MLP down weights, `[n_layers * d_model * d_ff]`.
+    pub w2: Vec<f64>,
+    /// Per layer: MLP down biases.
+    pub b2: Vec<f64>,
+    /// Final LayerNorm scale.
+    pub lnf_olcek: Vec<f64>,
+    /// Final LayerNorm bias.
+    pub lnf_sapma: Vec<f64>,
+}
+
+impl Parametreler {
+    /// Zeroed gradients of the same shape.
+    #[must_use]
+    pub fn sifir_gradyan(&self) -> Parametreler {
+        Self {
+            embedding: vec![0.0; self.embedding.len()],
+            ln1_olcek: vec![0.0; self.ln1_olcek.len()],
+            ln1_sapma: vec![0.0; self.ln1_sapma.len()],
+            wq: vec![0.0; self.wq.len()],
+            bq: vec![0.0; self.bq.len()],
+            wk: vec![0.0; self.wk.len()],
+            bk: vec![0.0; self.bk.len()],
+            wv: vec![0.0; self.wv.len()],
+            bv: vec![0.0; self.bv.len()],
+            wo: vec![0.0; self.wo.len()],
+            bo: vec![0.0; self.bo.len()],
+            ln2_olcek: vec![0.0; self.ln2_olcek.len()],
+            ln2_sapma: vec![0.0; self.ln2_sapma.len()],
+            w1: vec![0.0; self.w1.len()],
+            b1: vec![0.0; self.b1.len()],
+            w2: vec![0.0; self.w2.len()],
+            b2: vec![0.0; self.b2.len()],
+            lnf_olcek: vec![0.0; self.lnf_olcek.len()],
+            lnf_sapma: vec![0.0; self.lnf_sapma.len()],
+        }
+    }
+
+    /// Deterministic pseudo-random fill in `[-1, 1]`, so a test does not depend
+    /// on a lucky draw. Not an initialiser: the μP init scale is the spec's and
+    /// belongs to the run that uses it.
+    #[must_use]
+    pub fn belirgin_doldur(spec: Spec, tohum: u64) -> Self {
+        let mut durum = tohum
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        let mut sonraki = move || {
+            durum = durum
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((durum >> 33) as f64) / ((1u64 << 31) as f64) * 2.0 - 1.0
+        };
+        let d = spec.d_model;
+        let katman = spec.n_layers;
+        Self {
+            embedding: (0..spec.vocab * d).map(|_| sonraki() * 0.1).collect(),
+            ln1_olcek: vec![1.0; katman * d],
+            ln1_sapma: vec![0.0; katman * d],
+            wq: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
+            bq: vec![0.0; katman * d],
+            wk: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
+            bk: vec![0.0; katman * d],
+            wv: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
+            bv: vec![0.0; katman * d],
+            wo: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
+            bo: vec![0.0; katman * d],
+            ln2_olcek: vec![1.0; katman * d],
+            ln2_sapma: vec![0.0; katman * d],
+            w1: (0..katman * spec.d_ff * d)
+                .map(|_| sonraki() * 0.1)
+                .collect(),
+            b1: vec![0.0; katman * spec.d_ff],
+            w2: (0..katman * d * spec.d_ff)
+                .map(|_| sonraki() * 0.1)
+                .collect(),
+            b2: vec![0.0; katman * d],
+            lnf_olcek: vec![1.0; d],
+            lnf_sapma: vec![0.0; d],
+        }
+    }
+}
+
+/// One sequence in, one loss and its gradients out.
+#[must_use]
+pub fn ileri_ve_geri(
+    spec: Spec,
+    p: &Parametreler,
+    girdi: &[usize],
+    hedef: &[usize],
+) -> (f64, Parametreler) {
+    let d = spec.d_model;
+    let t = girdi.len();
+    let mut grad = p.sifir_gradyan();
+
+    // Embedding lookup: x[t] = embedding[token[t]].
+    let mut x = vec![0.0f64; t * d];
+    for (i, tok) in girdi.iter().enumerate() {
+        x[i * d..(i + 1) * d].copy_from_slice(&p.embedding[tok * d..(tok + 1) * d]);
+    }
+
+    let mut caches: Vec<KatmanBellek> = Vec::with_capacity(spec.n_layers);
+    for l in 0..spec.n_layers {
+        let (y, bellek) = katman_ileri(spec, p, l, &x);
+        x = y;
+        caches.push(bellek);
+    }
+
+    // Final LayerNorm.
+    let (mut xn, son_ortalama, son_rstd) = layer_norm_ileri(&x, d, t, &p.lnf_olcek, &p.lnf_sapma);
+
+    // Tied readout with the spec's 1/d_model logit scale, then softmax + CE.
+    let olcek = 1.0 / (d as f64);
+    let mut toplam_kayip = 0.0;
+    let mut dxn = vec![0.0f64; t * d];
+    for i in 0..t {
+        let mut logits = vec![0.0f64; spec.vocab];
+        let xn_satir = &xn[i * d..(i + 1) * d];
+        for (v, logit) in logits.iter_mut().enumerate() {
+            let satir = &p.embedding[v * d..(v + 1) * d];
+            *logit = satir.iter().zip(xn_satir).map(|(a, b)| a * b).sum::<f64>() * olcek;
+        }
+        let (kayip, mut dlogits) = softmax_ce(&logits, hedef[i]);
+        toplam_kayip += kayip;
+        // d/dembedding from the readout, and d/dxn.
+        let dxn_satir = &mut dxn[i * d..(i + 1) * d];
+        for (v, dlogit) in dlogits.iter().enumerate() {
+            // The loss is averaged over positions, so is this contribution:
+            // without the 1/t the tied readout would outweigh the input
+            // embedding by a factor of t.
+            let g = dlogit * olcek / (t as f64);
+            if g == 0.0 {
+                continue;
+            }
+            let grad_satir = &mut grad.embedding[v * d..(v + 1) * d];
+            let emb_satir = &p.embedding[v * d..(v + 1) * d];
+            for ((grad_deger, dxn_deger), (emb_deger, xn_deger)) in grad_satir
+                .iter_mut()
+                .zip(dxn_satir.iter_mut())
+                .zip(emb_satir.iter().zip(xn_satir))
+            {
+                *grad_deger += g * *xn_deger;
+                *dxn_deger += g * *emb_deger;
+            }
+        }
+        dlogits.clear();
+    }
+    // `g` above already carries the 1/t of the averaged loss, so `dxn` is on
+    // the right scale here; dividing again would make every upstream gradient
+    // a factor of t too small.
+    let kayip = toplam_kayip / (t as f64);
+
+    // Final LayerNorm backward.
+    let (dx, dg, db) = layer_norm_geri(&dxn, &xn, &x, d, t, &son_ortalama, &son_rstd, &p.lnf_olcek);
+    for (i, g) in dg.iter().enumerate() {
+        grad.lnf_olcek[i] += g;
+    }
+    for (i, g) in db.iter().enumerate() {
+        grad.lnf_sapma[i] += g;
+    }
+    xn.clear();
+    let mut dx_akis = dx;
+
+    for l in (0..spec.n_layers).rev() {
+        dx_akis = katman_geri(spec, p, &mut grad, l, &caches[l], &dx_akis);
+    }
+
+    // Input embedding gradient: the tied matrix also feeds the readout.
+    for (i, tok) in girdi.iter().enumerate() {
+        for j in 0..d {
+            grad.embedding[tok * d + j] += dx_akis[i * d + j];
+        }
+    }
+    (kayip, grad)
+}
+
+/// What one layer needs to run backward.
+struct KatmanBellek {
+    girdi: Vec<f64>,
+    ln1: Vec<f64>,
+    ortalama1: Vec<f64>,
+    rstd1: Vec<f64>,
+    q: Vec<f64>,
+    k: Vec<f64>,
+    v: Vec<f64>,
+    agirlik: Vec<f64>,
+    attn: Vec<f64>,
+    kalinti1: Vec<f64>,
+    ln2: Vec<f64>,
+    ortalama2: Vec<f64>,
+    rstd2: Vec<f64>,
+    on: Vec<f64>,
+    sonra: Vec<f64>,
+}
+
+#[allow(clippy::too_many_lines)]
+fn katman_ileri(spec: Spec, p: &Parametreler, l: usize, x: &[f64]) -> (Vec<f64>, KatmanBellek) {
+    let d = spec.d_model;
+    let t = x.len() / d;
+    let (ln1, o1, r1) = layer_norm_ileri(
+        x,
+        d,
+        t,
+        &p.ln1_olcek[l * d..(l + 1) * d],
+        &p.ln1_sapma[l * d..(l + 1) * d],
+    );
+    let q = matmul(
+        &ln1,
+        &p.wq[l * d * d..(l + 1) * d * d],
+        &p.bq[l * d..(l + 1) * d],
+        d,
+        d,
+        t,
+    );
+    let k = matmul(
+        &ln1,
+        &p.wk[l * d * d..(l + 1) * d * d],
+        &p.bk[l * d..(l + 1) * d],
+        d,
+        d,
+        t,
+    );
+    let v = matmul(
+        &ln1,
+        &p.wv[l * d * d..(l + 1) * d * d],
+        &p.bv[l * d..(l + 1) * d],
+        d,
+        d,
+        t,
+    );
+    let (attn, agirlik) = dikkat_ileri(spec, &q, &k, &v, t);
+    let cikti = matmul(
+        &attn,
+        &p.wo[l * d * d..(l + 1) * d * d],
+        &p.bo[l * d..(l + 1) * d],
+        d,
+        d,
+        t,
+    );
+    let kalinti1: Vec<f64> = x.iter().zip(cikti.iter()).map(|(a, b)| a + b).collect();
+    let (ln2, o2, r2) = layer_norm_ileri(
+        &kalinti1,
+        d,
+        t,
+        &p.ln2_olcek[l * d..(l + 1) * d],
+        &p.ln2_sapma[l * d..(l + 1) * d],
+    );
+    let on = matmul(
+        &ln2,
+        &p.w1[l * d * spec.d_ff..(l + 1) * d * spec.d_ff],
+        &p.b1[l * spec.d_ff..(l + 1) * spec.d_ff],
+        d,
+        spec.d_ff,
+        t,
+    );
+    let sonra: Vec<f64> = on.iter().map(|z| gelu(*z)).collect();
+    let mlp = matmul(
+        &sonra,
+        &p.w2[l * spec.d_ff * d..(l + 1) * spec.d_ff * d],
+        &p.b2[l * d..(l + 1) * d],
+        spec.d_ff,
+        d,
+        t,
+    );
+    let y: Vec<f64> = kalinti1
+        .iter()
+        .zip(mlp.iter())
+        .map(|(a, b)| a + b)
+        .collect();
+    (
+        y,
+        KatmanBellek {
+            girdi: x.to_vec(),
+            ln1,
+            ortalama1: o1,
+            rstd1: r1,
+            q,
+            k,
+            v,
+            agirlik,
+            attn,
+            kalinti1,
+            ln2,
+            ortalama2: o2,
+            rstd2: r2,
+            on,
+            sonra,
+        },
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn katman_geri(
+    spec: Spec,
+    p: &Parametreler,
+    grad: &mut Parametreler,
+    l: usize,
+    c: &KatmanBellek,
+    dy: &[f64],
+) -> Vec<f64> {
+    let d = spec.d_model;
+    let t = dy.len() / d;
+    let f = spec.d_ff;
+
+    // Residual: the MLP branch and the identity both receive dy.
+    let dmlp = dy;
+    let dsonra = matmul_t(dmlp, &p.w2[l * f * d..(l + 1) * f * d], f, d, t);
+    for i in 0..t {
+        for j in 0..d {
+            grad.b2[l * d + j] += dy[i * d + j];
+        }
+    }
+    for i in 0..t {
+        for j in 0..f {
+            for m in 0..d {
+                grad.w2[l * f * d + m * f + j] += dmlp[i * d + m] * c.sonra[i * f + j];
+            }
+        }
+    }
+    let don: Vec<f64> = dsonra
+        .iter()
+        .zip(c.on.iter())
+        .map(|(g, z)| g * gelu_turev(*z))
+        .collect();
+    let dln2 = matmul_t(&don, &p.w1[l * d * f..(l + 1) * d * f], d, f, t);
+    for i in 0..t {
+        for j in 0..f {
+            grad.b1[l * f + j] += don[i * f + j];
+        }
+    }
+    for i in 0..t {
+        for j in 0..f {
+            for m in 0..d {
+                grad.w1[l * d * f + j * d + m] += don[i * f + j] * c.ln2[i * d + m];
+            }
+        }
+    }
+    let (dkalinti1, dg2, db2) = layer_norm_geri(
+        &dln2,
+        &c.ln2,
+        &c.kalinti1,
+        d,
+        t,
+        &c.ortalama2,
+        &c.rstd2,
+        &p.ln2_olcek[l * d..(l + 1) * d],
+    );
+    for i in 0..d {
+        grad.ln2_olcek[l * d + i] += dg2[i];
+        grad.ln2_sapma[l * d + i] += db2[i];
+    }
+    let dkalinti1: Vec<f64> = dkalinti1
+        .iter()
+        .zip(dy.iter())
+        .map(|(a, b)| a + b)
+        .collect();
+
+    // Attention output projection.
+    let dattn = matmul_t(&dkalinti1, &p.wo[l * d * d..(l + 1) * d * d], d, d, t);
+    for i in 0..t {
+        for j in 0..d {
+            grad.bo[l * d + j] += dkalinti1[i * d + j];
+        }
+    }
+    for i in 0..t {
+        for j in 0..d {
+            for m in 0..d {
+                grad.wo[l * d * d + j * d + m] += dkalinti1[i * d + j] * c.attn[i * d + m];
+            }
+        }
+    }
+    let (dq, dk, dv) = dikkat_geri(spec, &dattn, c, t);
+
+    // Q/K/V projections.
+    let dln1 = matmul_t(&dq, &p.wq[l * d * d..(l + 1) * d * d], d, d, t);
+    let dk_katkisi = matmul_t(&dk, &p.wk[l * d * d..(l + 1) * d * d], d, d, t);
+    let dv_katkisi = matmul_t(&dv, &p.wv[l * d * d..(l + 1) * d * d], d, d, t);
+    for i in 0..t {
+        for j in 0..d {
+            grad.bq[l * d + j] += dq[i * d + j];
+            grad.bk[l * d + j] += dk[i * d + j];
+            grad.bv[l * d + j] += dv[i * d + j];
+        }
+    }
+    for i in 0..t {
+        for j in 0..d {
+            for m in 0..d {
+                grad.wq[l * d * d + j * d + m] += dq[i * d + j] * c.ln1[i * d + m];
+                grad.wk[l * d * d + j * d + m] += dk[i * d + j] * c.ln1[i * d + m];
+                grad.wv[l * d * d + j * d + m] += dv[i * d + j] * c.ln1[i * d + m];
+            }
+        }
+    }
+    let mut dln1_toplam = vec![0.0f64; t * d];
+    for (toplam, parca) in dln1_toplam.iter_mut().zip(
+        dln1.iter()
+            .zip(dk_katkisi.iter())
+            .map(|(a, b)| a + b)
+            .zip(dv_katkisi.iter())
+            .map(|(ab, c2)| ab + c2),
+    ) {
+        *toplam = parca;
+    }
+    let (dx_ln, dg1, db1) = layer_norm_geri(
+        &dln1_toplam,
+        &c.ln1,
+        &c.girdi,
+        d,
+        t,
+        &c.ortalama1,
+        &c.rstd1,
+        &p.ln1_olcek[l * d..(l + 1) * d],
+    );
+    for i in 0..d {
+        grad.ln1_olcek[l * d + i] += dg1[i];
+        grad.ln1_sapma[l * d + i] += db1[i];
+    }
+    dx_ln
+        .iter()
+        .zip(dkalinti1.iter())
+        .map(|(a, b)| a + b)
+        .collect()
+}
+
+/// `y[t] = W x[t] + b`, with `W` row-major `[cikti * girdi]`.
+fn matmul(x: &[f64], w: &[f64], b: &[f64], girdi: usize, cikti: usize, t: usize) -> Vec<f64> {
+    let mut y = vec![0.0f64; t * cikti];
+    for i in 0..t {
+        for o in 0..cikti {
+            let mut toplam = b[o];
+            for m in 0..girdi {
+                toplam += w[o * girdi + m] * x[i * girdi + m];
+            }
+            y[i * cikti + o] = toplam;
+        }
+    }
+    y
+}
+
+/// `dx[t] = W^T dy[t]`, the transpose of [`matmul`] without the bias.
+fn matmul_t(dy: &[f64], w: &[f64], girdi: usize, cikti: usize, t: usize) -> Vec<f64> {
+    let mut dx = vec![0.0f64; t * girdi];
+    for i in 0..t {
+        for m in 0..girdi {
+            let mut toplam = 0.0;
+            for o in 0..cikti {
+                toplam += w[o * girdi + m] * dy[i * cikti + o];
+            }
+            dx[i * girdi + m] = toplam;
+        }
+    }
+    dx
+}
+
+fn layer_norm_ileri(
+    x: &[f64],
+    d: usize,
+    t: usize,
+    olcek: &[f64],
+    sapma: &[f64],
+) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let mut y = vec![0.0f64; t * d];
+    let mut ortalama = vec![0.0f64; t];
+    let mut rstd = vec![0.0f64; t];
+    for i in 0..t {
+        let mut toplam = 0.0;
+        for j in 0..d {
+            toplam += x[i * d + j];
+        }
+        let ort = toplam / (d as f64);
+        let mut varyans = 0.0;
+        for j in 0..d {
+            let fark = x[i * d + j] - ort;
+            varyans += fark * fark;
+        }
+        varyans /= d as f64;
+        let r = 1.0 / (varyans + LN_EPS).sqrt();
+        ortalama[i] = ort;
+        rstd[i] = r;
+        for j in 0..d {
+            y[i * d + j] = (x[i * d + j] - ort) * r * olcek[j] + sapma[j];
+        }
+    }
+    (y, ortalama, rstd)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn layer_norm_geri(
+    dy: &[f64],
+    _y: &[f64],
+    x: &[f64],
+    d: usize,
+    t: usize,
+    ortalama: &[f64],
+    rstd: &[f64],
+    olcek: &[f64],
+) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let mut dx = vec![0.0f64; t * d];
+    let mut dg = vec![0.0f64; d];
+    let mut db = vec![0.0f64; d];
+    let dn = d as f64;
+    for i in 0..t {
+        let r = rstd[i];
+        let ort = ortalama[i];
+        let mut xhat = vec![0.0f64; d];
+        let mut dy_olcek = vec![0.0f64; d];
+        for j in 0..d {
+            xhat[j] = (x[i * d + j] - ort) * r;
+            dy_olcek[j] = dy[i * d + j] * olcek[j];
+            dg[j] += dy[i * d + j] * xhat[j];
+            db[j] += dy[i * d + j];
+        }
+        let mut s1 = 0.0;
+        let mut s2 = 0.0;
+        for j in 0..d {
+            s1 += dy_olcek[j];
+            s2 += dy_olcek[j] * xhat[j];
+        }
+        for j in 0..d {
+            dx[i * d + j] = r * (dy_olcek[j] - s1 / dn - xhat[j] * s2 / dn);
+        }
+    }
+    (dx, dg, db)
+}
+
+/// Causal multi-head attention forward; returns the concatenated heads and the
+/// per-head weights, because backward needs them.
+fn dikkat_ileri(spec: Spec, q: &[f64], k: &[f64], v: &[f64], t: usize) -> (Vec<f64>, Vec<f64>) {
+    let d = spec.d_model;
+    let h = spec.n_heads;
+    let dk = spec.d_k();
+    let mut cikti = vec![0.0f64; t * d];
+    let mut agirliklar = vec![0.0f64; h * t * t];
+    let olcek = 1.0 / (dk as f64).sqrt();
+    for head in 0..h {
+        for i in 0..t {
+            let mut skor = vec![f64::NEG_INFINITY; t];
+            for j in 0..=i {
+                let mut toplam = 0.0;
+                for m in 0..dk {
+                    toplam += q[i * d + head * dk + m] * k[j * d + head * dk + m];
+                }
+                skor[j] = toplam * olcek;
+            }
+            let yumusak = softmax(&skor);
+            for j in 0..t {
+                agirliklar[head * t * t + i * t + j] = yumusak[j];
+            }
+            for m in 0..dk {
+                let mut toplam = 0.0;
+                for j in 0..t {
+                    toplam += yumusak[j] * v[j * d + head * dk + m];
+                }
+                cikti[i * d + head * dk + m] = toplam;
+            }
+        }
+    }
+    (cikti, agirliklar)
+}
+
+fn dikkat_geri(
+    spec: Spec,
+    dattn: &[f64],
+    c: &KatmanBellek,
+    t: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let d = spec.d_model;
+    let h = spec.n_heads;
+    let dk = spec.d_k();
+    let mut dq = vec![0.0f64; t * d];
+    let mut dkd = vec![0.0f64; t * d];
+    let mut dv = vec![0.0f64; t * d];
+    let olcek = 1.0 / (dk as f64).sqrt();
+    for head in 0..h {
+        for i in 0..t {
+            // dv += w_ij * dout ; dw_ij = dout . v_j
+            let mut dw = vec![0.0f64; t];
+            for m in 0..dk {
+                let g = dattn[i * d + head * dk + m];
+                for (j, dw_deger) in dw.iter_mut().enumerate().take(i + 1) {
+                    *dw_deger += g * c.v[j * d + head * dk + m];
+                }
+            }
+            for m in 0..dk {
+                let g = dattn[i * d + head * dk + m];
+                for j in 0..=i {
+                    let w = c.agirlik[head * t * t + i * t + j];
+                    dv[j * d + head * dk + m] += g * w;
+                }
+            }
+            // softmax backward over the causal row.
+            let mut ds = vec![0.0f64; t];
+            let mut dot = 0.0;
+            let satir = &c.agirlik[head * t * t + i * t..head * t * t + (i + 1) * t];
+            for (w, dw_deger) in satir.iter().zip(dw.iter()) {
+                dot += w * dw_deger;
+            }
+            for ((j, ds_deger), dw_deger) in ds.iter_mut().enumerate().take(i + 1).zip(dw.iter()) {
+                let w = c.agirlik[head * t * t + i * t + j];
+                *ds_deger = w * (*dw_deger - dot);
+            }
+            for j in 0..=i {
+                for m in 0..dk {
+                    dq[i * d + head * dk + m] += ds[j] * olcek * c.k[j * d + head * dk + m];
+                    dkd[j * d + head * dk + m] += ds[j] * olcek * c.q[i * d + head * dk + m];
+                }
+            }
+        }
+    }
+    (dq, dkd, dv)
+}
+
+fn softmax(x: &[f64]) -> Vec<f64> {
+    let en_buyuk = x
+        .iter()
+        .fold(f64::NEG_INFINITY, |a, b| if *b > a { *b } else { a });
+    let mut toplam = 0.0;
+    let mut y: Vec<f64> = x
+        .iter()
+        .map(|z| {
+            if z.is_finite() {
+                (z - en_buyuk).exp()
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    for z in &y {
+        toplam += z;
+    }
+    for z in &mut y {
+        *z /= toplam;
+    }
+    y
+}
+
+fn softmax_ce(logits: &[f64], hedef: usize) -> (f64, Vec<f64>) {
+    let olasilik = softmax(logits);
+    let kayip = -olasilik[hedef].ln();
+    let mut d = olasilik;
+    d[hedef] -= 1.0;
+    (kayip, d)
+}
+
+/// GELU, tanh form. The tanh form is used rather than the `erf` form because
+/// its derivative is a closed form of exactly this function, so the gradient
+/// check below compares like with like instead of comparing an analytic
+/// derivative of one function against a numeric derivative of an approximation
+/// of another.
+fn gelu(z: f64) -> f64 {
+    0.5 * z * (1.0 + gelu_ic(z))
+}
+
+/// `tanh(sqrt(2/pi) (z + 0.044715 z^3))`, the inner term of the tanh GELU.
+fn gelu_ic(z: f64) -> f64 {
+    let ic = (2.0 / std::f64::consts::PI).sqrt() * (z + 0.044_715 * z * z * z);
+    ic.tanh()
+}
+
+/// The exact derivative of [`gelu`] as written above.
+fn gelu_turev(z: f64) -> f64 {
+    let t = gelu_ic(z);
+    let dt = (2.0 / std::f64::consts::PI).sqrt() * (1.0 + 3.0 * 0.044_715 * z * z) * (1.0 - t * t);
+    0.5 * (1.0 + t) + 0.5 * z * dt
+}
+
+/// One epoch budget check: the ceiling belongs to the grant crate.
+///
+/// # Errors
+/// A string naming the refusal; a zero epoch count and anything above
+/// [`MAX_TRAINING_GRANT_EPOCHS`] are both refused.
+pub fn epoch_butcesi(istenen: u32) -> Result<u32, String> {
+    if istenen == 0 {
+        return Err("0 epoch: kosulacak bir sey yok".to_string());
+    }
+    if istenen > MAX_TRAINING_GRANT_EPOCHS {
+        return Err(format!(
+            "{istenen} epoch protokol tavanini asiyor ({MAX_TRAINING_GRANT_EPOCHS})"
+        ));
+    }
+    Ok(istenen)
+}
+
+/// AdamW state.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Adamw {
+    /// Step count.
+    pub adim: u64,
+    /// Learning rate.
+    pub ogrenme_orani: f64,
+    /// First-moment decay.
+    pub beta1: f64,
+    /// Second-moment decay.
+    pub beta2: f64,
+    /// Numerical floor under the second-moment root.
+    pub epsilon: f64,
+    /// Weight decay, applied to the hidden weights only: decaying the embedding
+    /// or a LayerNorm scale is not regularisation, it is shrinkage of a scale.
+    pub agirlik_sonumu: f64,
+    m: Vec<f64>,
+    v: Vec<f64>,
+}
+
+impl Adamw {
+    /// # Errors
+    /// A non-finite or non-positive learning rate, or a decay outside `[0, 1)`.
+    pub fn yeni(olcu: usize, ogrenme_orani: f64, agirlik_sonumu: f64) -> Result<Self, String> {
+        if !ogrenme_orani.is_finite() || ogrenme_orani <= 0.0 {
+            return Err(format!("ogrenme orani {ogrenme_orani} gecersiz"));
+        }
+        if !(0.0..1.0).contains(&agirlik_sonumu) {
+            return Err(format!("agirlik sonumu {agirlik_sonumu} [0,1) disinda"));
+        }
+        Ok(Self {
+            adim: 0,
+            ogrenme_orani,
+            beta1: 0.9,
+            beta2: 0.95,
+            epsilon: 1e-8,
+            agirlik_sonumu,
+            m: vec![0.0; olcu],
+            v: vec![0.0; olcu],
+        })
+    }
+
+    /// One decoupled-weight-decay update over one flat parameter block.
+    ///
+    /// `sonumlu` decides whether this block is decayed. It is a parameter of the
+    /// call rather than a property of the optimiser because the answer differs
+    /// per tensor: decaying a LayerNorm scale or the tied embedding shrinks a
+    /// scale the model needs, it does not regularise anything.
+    ///
+    /// # Errors
+    /// A length mismatch between the block, its gradient and the moment state.
+    pub fn adim(&mut self, w: &mut [f64], gradyan: &[f64], sonumlu: bool) -> Result<(), String> {
+        if w.len() != gradyan.len() || w.len() != self.m.len() {
+            return Err(format!(
+                "blok {} gradyan {} durum {} eleman: ayni tensore bakmiyorlar",
+                w.len(),
+                gradyan.len(),
+                self.m.len()
+            ));
+        }
+        self.adim += 1;
+        let Self {
+            adim,
+            ogrenme_orani,
+            beta1,
+            beta2,
+            epsilon,
+            agirlik_sonumu,
+            m,
+            v,
+        } = self;
+        let duzeltme1 = 1.0 - beta1.powi(*adim as i32);
+        let duzeltme2 = 1.0 - beta2.powi(*adim as i32);
+        for (((w_deger, m_deger), v_deger), g) in w
+            .iter_mut()
+            .zip(m.iter_mut())
+            .zip(v.iter_mut())
+            .zip(gradyan)
+        {
+            *m_deger = *beta1 * *m_deger + (1.0 - *beta1) * *g;
+            *v_deger = *beta2 * *v_deger + (1.0 - *beta2) * *g * *g;
+            let m_hat = *m_deger / duzeltme1;
+            let v_hat = *v_deger / duzeltme2;
+            let mut delta = *ogrenme_orani * m_hat / (v_hat.sqrt() + *epsilon);
+            if sonumlu {
+                delta += *ogrenme_orani * *agirlik_sonumu * *w_deger;
+            }
+            *w_deger -= delta;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A configuration small enough that a finite-difference check over every
+    /// parameter finishes quickly, and large enough to contain every code path:
+    /// two layers, two heads, an MLP.
+    fn kucuk_spec() -> Spec {
+        Spec {
+            vocab: 7,
+            d_model: 4,
+            n_layers: 2,
+            n_heads: 2,
+            d_ff: 6,
+        }
+    }
+
+    /// Every parameter field, by name, so the check cannot quietly cover less
+    /// than the model has.
+    fn alanlar(p: &Parametreler) -> Vec<(&'static str, Vec<f64>)> {
+        vec![
+            ("embedding", p.embedding.clone()),
+            ("wq", p.wq.clone()),
+            ("wk", p.wk.clone()),
+            ("wv", p.wv.clone()),
+            ("wo", p.wo.clone()),
+            ("w1", p.w1.clone()),
+            ("w2", p.w2.clone()),
+            ("bq", p.bq.clone()),
+            ("bk", p.bk.clone()),
+            ("bv", p.bv.clone()),
+            ("bo", p.bo.clone()),
+            ("b1", p.b1.clone()),
+            ("b2", p.b2.clone()),
+            ("ln1_olcek", p.ln1_olcek.clone()),
+            ("ln1_sapma", p.ln1_sapma.clone()),
+            ("ln2_olcek", p.ln2_olcek.clone()),
+            ("ln2_sapma", p.ln2_sapma.clone()),
+            ("lnf_olcek", p.lnf_olcek.clone()),
+            ("lnf_sapma", p.lnf_sapma.clone()),
+        ]
+    }
+
+    /// Write one delta into one field. Returns false for a name that does not
+    /// exist, so a renamed field fails the check instead of being skipped.
+    fn yaz(p: &mut Parametreler, ad: &str, i: usize, delta: f64) -> bool {
+        let hedef: &mut Vec<f64> = match ad {
+            "embedding" => &mut p.embedding,
+            "wq" => &mut p.wq,
+            "wk" => &mut p.wk,
+            "wv" => &mut p.wv,
+            "wo" => &mut p.wo,
+            "w1" => &mut p.w1,
+            "w2" => &mut p.w2,
+            "bq" => &mut p.bq,
+            "bk" => &mut p.bk,
+            "bv" => &mut p.bv,
+            "bo" => &mut p.bo,
+            "b1" => &mut p.b1,
+            "b2" => &mut p.b2,
+            "ln1_olcek" => &mut p.ln1_olcek,
+            "ln1_sapma" => &mut p.ln1_sapma,
+            "ln2_olcek" => &mut p.ln2_olcek,
+            "ln2_sapma" => &mut p.ln2_sapma,
+            "lnf_olcek" => &mut p.lnf_olcek,
+            "lnf_sapma" => &mut p.lnf_sapma,
+            _ => return false,
+        };
+        hedef[i] += delta;
+        true
+    }
+
+    /// Every analytic gradient against a central finite difference, over every
+    /// parameter of the model.
+    fn gradients_match_finite_differences() -> Result<(), String> {
+        let spec = kucuk_spec();
+        spec.dogrula().map_err(|e| format!("spec refused: {e:?}"))?;
+        let p = Parametreler::belirgin_doldur(spec, 7);
+        let girdi = vec![0usize, 3, 1, 6];
+        let hedef = vec![3usize, 1, 6, 2];
+        let (kayip0, grad) = ileri_ve_geri(spec, &p, &girdi, &hedef);
+        if !kayip0.is_finite() || kayip0 <= 0.0 {
+            return Err(format!("loss is not a usable number: {kayip0}"));
+        }
+
+        let h = 1e-5;
+        let mut ihlaller: Vec<String> = Vec::new();
+        let mut denetlenen = 0usize;
+        for (ad, degerler) in alanlar(&p) {
+            let analitik_alan = alanlar(&grad)
+                .into_iter()
+                .find(|(n, _)| *n == ad)
+                .map_or_else(Vec::new, |(_, v)| v);
+            if analitik_alan.len() != degerler.len() {
+                return Err(format!("{ad}: gradient shape does not match the parameter"));
+            }
+            for (i, analitik_g) in analitik_alan.iter().enumerate() {
+                let mut arti = p.clone();
+                let mut eksi = p.clone();
+                if !yaz(&mut arti, ad, i, h) || !yaz(&mut eksi, ad, i, -h) {
+                    return Err(format!(
+                        "field {ad} is not writable: the check would skip it"
+                    ));
+                }
+                let (k1, _) = ileri_ve_geri(spec, &arti, &girdi, &hedef);
+                let (k2, _) = ileri_ve_geri(spec, &eksi, &girdi, &hedef);
+                let sonlu = (k1 - k2) / (2.0 * h);
+                let fark = (analitik_g - sonlu).abs();
+                let sinir = GRADIENT_CHECK_MUTLAK_TABAN
+                    + GRADIENT_CHECK_TOLERANCE * analitik_g.abs().max(sonlu.abs());
+                denetlenen += 1;
+                if fark > sinir {
+                    ihlaller.push(format!(
+                        "{ad}[{i}] analitik={analitik_g:.6e} sonlu_fark={sonlu:.6e}"
+                    ));
+                }
+            }
+        }
+        if !ihlaller.is_empty() {
+            return Err(format!(
+                "{} of {denetlenen} gradients disagree: {}",
+                ihlaller.len(),
+                ihlaller.join("; ")
+            ));
+        }
+        // Tied to the spec's own count, not to a number written here: a field
+        // added to the model without being added to the check then fails this
+        // test instead of silently going unchecked.
+        let beklenen = spec.parametre_sayisi();
+        if denetlenen != beklenen {
+            return Err(format!(
+                "{denetlenen} gradients were checked but the spec has {beklenen} parameters"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn backward_matches_finite_differences() {
+        gradients_match_finite_differences().unwrap();
+    }
+
+    #[test]
+    fn the_spec_parameter_count_is_the_one_the_spec_claims() {
+        let spec = Spec::lubot_a1();
+        spec.dogrula().unwrap();
+        assert_eq!(spec.parametre_sayisi(), 924_288);
+        assert_eq!(spec.d_k(), 32);
+    }
+
+    #[test]
+    fn a_spec_whose_heads_do_not_divide_is_refused() {
+        let bozuk = Spec {
+            n_heads: 3,
+            ..Spec::lubot_a1()
+        };
+        assert_eq!(bozuk.dogrula(), Err(SpecHatasi::BasSayisiBolmuyor));
+        let bos = Spec {
+            d_ff: 0,
+            ..Spec::lubot_a1()
+        };
+        assert_eq!(bos.dogrula(), Err(SpecHatasi::BosBoyut));
+    }
+
+    #[test]
+    fn the_epoch_ceiling_comes_from_the_grant_crate() {
+        assert_eq!(
+            epoch_butcesi(0),
+            Err("0 epoch: kosulacak bir sey yok".to_string())
+        );
+        assert_eq!(epoch_butcesi(4), Ok(4));
+        assert!(epoch_butcesi(MAX_TRAINING_GRANT_EPOCHS + 1).is_err());
+        assert_eq!(
+            epoch_butcesi(MAX_TRAINING_GRANT_EPOCHS),
+            Ok(MAX_TRAINING_GRANT_EPOCHS)
+        );
+    }
+
+    #[test]
+    fn gelu_and_its_derivative_agree_with_finite_differences() {
+        for z in [-2.0, -0.5, 0.0, 0.3, 1.7] {
+            let h = 1e-6;
+            let sonlu = (gelu(z + h) - gelu(z - h)) / (2.0 * h);
+            assert!(
+                (gelu_turev(z) - sonlu).abs() < 1e-6,
+                "gelu' at {z}: {} vs {sonlu}",
+                gelu_turev(z)
+            );
+        }
+    }
+
+    #[test]
+    fn a_short_descent_lowers_the_loss() {
+        let spec = kucuk_spec();
+        let mut p = Parametreler::belirgin_doldur(spec, 11);
+        let girdi = vec![0usize, 3, 1, 6, 2];
+        let hedef = vec![3usize, 1, 6, 2, 5];
+        let (baslangic, _) = ileri_ve_geri(spec, &p, &girdi, &hedef);
+        // One optimiser state per block: the moments belong to the tensor they
+        // update, so a state shared across blocks would mix scales.
+        let mut durumlar = [
+            Adamw::yeni(p.embedding.len(), 0.05, 0.1).unwrap(),
+            Adamw::yeni(p.wq.len(), 0.05, 0.1).unwrap(),
+            Adamw::yeni(p.ln1_olcek.len(), 0.05, 0.1).unwrap(),
+            Adamw::yeni(p.w1.len(), 0.05, 0.1).unwrap(),
+            Adamw::yeni(p.lnf_olcek.len(), 0.05, 0.1).unwrap(),
+        ];
+        let mut son = baslangic;
+        for _ in 0..40 {
+            let (kayip, grad) = ileri_ve_geri(spec, &p, &girdi, &hedef);
+            son = kayip;
+            let bloklar: [(&mut [f64], &[f64], bool); 5] = [
+                (&mut p.embedding[..], &grad.embedding[..], false),
+                (&mut p.wq[..], &grad.wq[..], true),
+                (&mut p.ln1_olcek[..], &grad.ln1_olcek[..], false),
+                (&mut p.w1[..], &grad.w1[..], true),
+                (&mut p.lnf_olcek[..], &grad.lnf_olcek[..], false),
+            ];
+            for (durum, (blok, gradyan, sonumlu)) in durumlar.iter_mut().zip(bloklar) {
+                durum.adim(blok, gradyan, sonumlu).unwrap();
+            }
+        }
+        assert!(son.is_finite(), "kayip sonlu degil: {son}");
+        assert!(
+            son < baslangic,
+            "40 adim kaybi dusurmedi: {baslangic} -> {son}"
+        );
+    }
+
+    #[test]
+    fn an_optimizer_whose_state_does_not_match_the_block_is_refused() {
+        let mut adamw = Adamw::yeni(4, 0.01, 0.1).unwrap();
+        let mut w = vec![0.0f64; 4];
+        assert!(adamw.adim(&mut w, &[0.0; 5], true).is_err());
+        assert!(adamw.adim(&mut w, &[0.0; 4], true).is_ok());
+    }
+
+    #[test]
+    fn a_degenerate_optimizer_is_refused() {
+        assert!(Adamw::yeni(10, 0.0, 0.1).is_err());
+        assert!(Adamw::yeni(10, f64::NAN, 0.1).is_err());
+        assert!(Adamw::yeni(10, 1e-3, 1.0).is_err());
+        assert!(Adamw::yeni(10, 1e-3, 0.1).is_ok());
+    }
+}

@@ -25,6 +25,7 @@ fn usage() -> String {
     [
         "usage:",
         "  lubot corpus <file.jsonl.gz>...",
+        "  lubot egitim   (trainer self-check: spec, epoch ceiling, measured descent)",
         "  lubot ask --corpus <f1,f2> --reader <r> --effort 0.5x..10.0x [--audit f] [--outputs f] [--book b] <question>",
         "  lubot grant issue --reader <r> --key <k> --expires-at <sec> [--book b]",
         "  lubot grant revoke --reader <r> --key <k> [--book b]",
@@ -103,6 +104,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "envanter" => cmd_envanter(rest),
         "it" => cmd_it(rest),
         "olc" => cmd_olc(rest),
+        "egitim" => cmd_egitim(rest),
         "durum" => cmd_durum(rest),
         "guvenlik" => cmd_guvenlik(rest),
         "graf" => cmd_graf(rest),
@@ -1230,6 +1232,100 @@ fn git_stdout(args: &[&str]) -> Result<String, String> {
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Trainer self-check: does the from-scratch core forward, back-propagate and
+/// actually descend?
+///
+/// Everything printed here is measured at runtime. The descent runs on a short
+/// in-memory token sequence, so it is evidence that the training path works -
+/// it is not a corpus measurement and is not reported as one. The gradient
+/// itself is checked against finite differences in `lubot-egitim`'s own tests,
+/// not here.
+fn cmd_egitim(args: &[String]) -> Result<(), String> {
+    if !args.is_empty() {
+        return Err(format!("egitim takes no arguments\n{}", usage()));
+    }
+    let spec = lubot_egitim::Spec::lubot_a1();
+    spec.dogrula().map_err(|e| {
+        format!(
+            "egitim spec reddedildi: {}",
+            match e {
+                lubot_egitim::SpecHatasi::BosBoyut => "sifir boyutlu bir eksen",
+                lubot_egitim::SpecHatasi::BasSayisiBolmuyor => "bas sayisi genisligi bolmuyor",
+            }
+        )
+    })?;
+    let tavan = lubot_grant::training::MAX_TRAINING_GRANT_EPOCHS;
+    let mut md = String::from("# Egitim oz-denetimi\n\n| adim | sonuc |\n|---|---|\n");
+    md.push_str(&format!(
+        "| spec | {} parametre, {} katman, d_model {}, {} bas, vocab {} |\n",
+        spec.parametre_sayisi(),
+        spec.n_layers,
+        spec.d_model,
+        spec.n_heads,
+        spec.vocab
+    ));
+    md.push_str(&format!(
+        "| epoch tavani | {} (lubot-grant), istenen 1 -> {} |\n",
+        tavan,
+        lubot_egitim::epoch_butcesi(1)?
+    ));
+    md.push_str(&format!(
+        "| tavan asimi | {} |\n",
+        lubot_egitim::epoch_butcesi(tavan + 1)
+            .map(|n| format!("KABUL EDILDI: {n}"))
+            .unwrap_or_else(|e| format!("reddedildi ({e})"))
+    ));
+
+    // Kisa bir inis: kucuk bir spec, bellek ici dizi.
+    let kucuk = lubot_egitim::Spec {
+        vocab: 64,
+        d_model: 16,
+        n_layers: 2,
+        n_heads: 2,
+        d_ff: 32,
+    };
+    kucuk
+        .dogrula()
+        .map_err(|e| format!("oz-denetim spec reddedildi: {e:?}"))?;
+    let mut p = lubot_egitim::Parametreler::belirgin_doldur(kucuk, 20_260_923);
+    let girdi = [0usize, 7, 3, 11, 5, 1, 9, 2];
+    let hedef = [7usize, 3, 11, 5, 1, 9, 2, 4];
+    let (baslangic, _) = lubot_egitim::ileri_ve_geri(kucuk, &p, &girdi, &hedef);
+    let adim_sayisi = 30u32;
+    let mut embed_durum = lubot_egitim::Adamw::yeni(p.embedding.len(), 0.05, 0.1)?;
+    let mut wq_durum = lubot_egitim::Adamw::yeni(p.wq.len(), 0.05, 0.1)?;
+    let mut son = baslangic;
+    for _ in 0..adim_sayisi {
+        let (kayip, grad) = lubot_egitim::ileri_ve_geri(kucuk, &p, &girdi, &hedef);
+        son = kayip;
+        embed_durum.adim(&mut p.embedding, &grad.embedding, false)?;
+        wq_durum.adim(&mut p.wq, &grad.wq, true)?;
+    }
+    if !son.is_finite() || son >= baslangic {
+        return Err(format!(
+            "egitim yolu kaybi dusurmedi: {baslangic:.6} -> {son:.6}"
+        ));
+    }
+    md.push_str(&format!(
+        "| inis | {adim_sayisi} adim, kayip {baslangic:.6} -> {son:.6} (bellek ici 8 jetonluk dizi, korpus olcumu degil) |\n"
+    ));
+    md.push_str(&format!(
+        "| LayerNorm eps | {:.0e} (lubot-egitim::LN_EPS) |\n",
+        lubot_egitim::LN_EPS
+    ));
+    md.push_str(&format!(
+        "| gradyan denetimi | lubot-egitim testlerinde: her parametre sonlu farkla karsilastirilir, goreli tolerans {:.0e}, mutlak taban {:.0e} |\n",
+        lubot_egitim::GRADIENT_CHECK_TOLERANCE,
+        lubot_egitim::GRADIENT_CHECK_MUTLAK_TABAN
+    ));
+    md.push_str(
+        "| olculmeyen | egitilmis kontrol noktasi yok (K6): sinav skoru, alinti dogrulugu ve kapisma sonucu bu komutun kapsami disinda |\n",
+    );
+    lubot::validate_output(md.as_bytes(), "egitim")?;
+    print!("{md}");
+    Ok(())
 }
 
 fn cmd_olc(args: &[String]) -> Result<(), String> {
