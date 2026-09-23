@@ -895,7 +895,7 @@ def selftest_queue_continues_uninterruptedly() -> None:
 # --------------------------------------------------------------------------
 # gate: the ratchet holds - measured numbers may not regress
 # --------------------------------------------------------------------------
-RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus", "tokens", "bootstrap"]
+RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus", "tokens", "bootstrap", "exam"]
 
 
 def gate_ratchet_holds() -> str:
@@ -921,6 +921,7 @@ def gate_ratchet_holds() -> str:
     measured_gates = len(GATES)
     measured_corpus = count_corpus_records()
     measured_bootstrap = len(_onyukleme_turlari())
+    measured_exam = len(_sinav_satirlari())
     # The token budget is measured by the script that owns the tokenizer, not
     # re-implemented here: two counters for one corpus is two answers.
     butce = subprocess.run(
@@ -945,7 +946,7 @@ def gate_ratchet_holds() -> str:
     measured = {
         "tests": measured_tests, "gates": measured_gates, "pedantic": measured_pedantic,
         "corpus": measured_corpus, "tokens": measured_tokens,
-        "bootstrap": measured_bootstrap,
+        "bootstrap": measured_bootstrap, "exam": measured_exam,
     }
     regressed = []
     for key in ["tests", "gates", "corpus", "tokens"]:
@@ -958,14 +959,15 @@ def gate_ratchet_holds() -> str:
     return (
         f"ratchet holds: tests {measured_tests}, gates {measured_gates}, "
         f"pedantic {measured_pedantic}, corpus {measured_corpus}, "
-        f"tokens {measured_tokens}, bootstrap {measured_bootstrap}"
+        f"tokens {measured_tokens}, bootstrap {measured_bootstrap}, "
+        f"exam {measured_exam}"
     )
 
 
 def selftest_ratchet_holds() -> None:
     """The direction rules: four rise (>=), pedantic falls (<=)."""
     assert set(RATCHET_KEYS) == {
-        "tests", "gates", "pedantic", "corpus", "tokens", "bootstrap"
+        "tests", "gates", "pedantic", "corpus", "tokens", "bootstrap", "exam"
     }
     baseline = {"tests": 5, "pedantic": 2, "tokens": 100}
     assert 6 >= baseline["tests"], "tests may rise"
@@ -3372,6 +3374,100 @@ def selftest_bootstrap_round_is_measured() -> None:
             havuz_dosya.unlink()
 
 
+def _sinav_satirlari() -> list[dict]:
+    """Held-out exam questions; an absent file is an empty set, not an error."""
+    import json as _json
+
+    dosya = ROOT / "training" / "eval" / "sinav-seti.jsonl"
+    if not dosya.is_file():
+        return []
+    return [
+        _json.loads(line)
+        for line in dosya.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def gate_comparison_class_is_declared() -> str:
+    """The opponent is named with numbers, and a match may only be claimed on
+    the task axis.
+
+    GG's calibration: today's "small" open models are 135M-600M parameters, so
+    a 924.288-parameter reader is below that class and a parameter-axis match
+    claim would be a category error. The declaration is re-measured here rather
+    than argued once, because the corpus grows and the class moves with it.
+    """
+    import json as _json
+
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "kiyas-sinifi-2026-09-23.json"
+    if not kayit_dosya.is_file():
+        raise SystemExit("no comparison class is declared")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "kiyas_sinifi.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the comparison class does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    kural = kayit.get("eksen_kurali", {})
+    if kural.get("kapisma_iddiasi_yalniz") != "gorev-eslenegi":
+        raise SystemExit("the record does not confine a match claim to the task axis")
+    if kural.get("reddedilen") != "parametre-eslenegi":
+        raise SystemExit("the record does not refuse the parameter axis")
+    sinif = kayit.get("sinif", {})
+    if not isinstance(sinif.get("parametre"), int) or sinif["parametre"] <= 0:
+        raise SystemExit("the declared class carries no parameter count")
+    return (
+        f"class declared: {sinif['parametre']} params vs the "
+        f"{sinif['sinir'][0]['ad']} boundary, {kayit['sinav_seti']['soru_sayisi']} "
+        "exam question(s), match claims confined to the task axis"
+    )
+
+
+def selftest_comparison_class_is_declared() -> None:
+    """Canaries: a missing record, a boundary breach, an unstamped exam question
+    and a parameter-axis match claim must each be refused."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "kiyas_sinifi", str(ROOT / "training" / "kiyas_sinifi.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    # The script's own canaries. The corpus-free ones always run; the record
+    # round-trip needs the corpus and CI runs this step before the corpus exists.
+    if mod.self_test() != 0:
+        raise AssertionError("the comparison class canaries did not all fire")
+    if not mod.KORPUS.is_file():
+        print(
+            "self-test OK [comparison-class-is-declared] "
+            "(korpus yok: politika kanaryalari kosuldu, kayit kanaryasi atlandi)"
+        )
+        return
+
+    kayit_dosya = mod.KAYIT
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    try:
+        # Canary: with no declaration at all the gate must refuse.
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_comparison_class_is_declared()
+            raise AssertionError("an undeclared comparison class was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3416,6 +3512,10 @@ GATES_EXTRA = {
     "bootstrap-round-is-measured": (
         gate_bootstrap_round_is_measured,
         selftest_bootstrap_round_is_measured,
+    ),
+    "comparison-class-is-declared": (
+        gate_comparison_class_is_declared,
+        selftest_comparison_class_is_declared,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
