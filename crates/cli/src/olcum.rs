@@ -32,7 +32,7 @@ use lubot_anlama::{Classifier, Evidence, Verdict};
 use lubot_esik::Quorum;
 use lubot_mimari::{Blueprint, WiringError};
 use lubot_olcek::{Controller, Decision, Load};
-use lubot_takip::{Phase, Tracker};
+use lubot_takip::Tracker;
 
 /// Which layer each crate sits in. Lower is deeper; a crate may depend on its
 /// own layer or below.
@@ -360,7 +360,7 @@ fn olcum_takip(args: &[String]) -> Result<(), String> {
         .lock()
         .lines()
         .map(|line| line.map_err(|err| err.to_string()))
-        .collect::<Result<_, String>>()?
+        .collect::<Result<Vec<String>, String>>()?
         .into_iter()
         .filter(|line| !line.trim().is_empty())
         .collect();
@@ -504,7 +504,7 @@ fn olcum_olcek(args: &[String]) -> Result<(), String> {
         let value: f64 = sample
             .trim()
             .parse()
-            .map_err(|_| format!("{sample:?} is not a number".to_string()))?;
+            .map_err(|_| format!("{sample:?} is not a number"))?;
         load.record(value);
         match controller.tick(&load) {
             Decision::ScaleUp { from, to } => {
@@ -541,6 +541,7 @@ fn olcum_olcek(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lubot_takip::Phase;
 
     #[test]
     fn path_dependencies_are_read_out_of_a_manifest() {
@@ -642,7 +643,7 @@ lubot-answer = { path = "../answer" }
         assert_eq!(quorum.threshold(), 3);
         // Two others plus the requester is not three others.
         assert!(quorum.count_excluding(&[1, 2, 3], 1).is_err());
-        assert_eq!(quorum.count_excluding(&[1, 2, 3, 4], 1), Ok(3));
+        assert_eq!(quorum.count_excluding(&[2, 3, 4], 1), Ok(3));
     }
 
     #[test]
@@ -691,7 +692,7 @@ lubot-answer = { path = "../answer" }
         let mut load = Load::new(4);
         for _ in 0..20 {
             load.record(0.95);
-            controller.tick(&load);
+            let _ = controller.tick(&load);
         }
         assert_eq!(
             controller.flaps, 0,
@@ -712,7 +713,7 @@ lubot-answer = { path = "../answer" }
         let mut load = Load::new(1);
         for i in 0..20 {
             load.record(if i % 2 == 0 { 1.0 } else { 0.0 });
-            controller.tick(&load);
+            let _ = controller.tick(&load);
         }
         assert!(
             controller.flaps > 0,

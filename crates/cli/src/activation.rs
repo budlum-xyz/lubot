@@ -296,18 +296,18 @@ impl ActivationLedger {
                 reason: activation.closed_reason.clone(),
             });
         }
+        if activation.questions_used >= activation.policy.question_budget {
+            return Err(ActivationError::QuestionBudgetSpent {
+                id,
+                budget: activation.policy.question_budget,
+            });
+        }
         if now >= activation.expires_at {
             self.refused_expired = self.refused_expired.saturating_add(1);
             return Err(ActivationError::Expired {
                 id,
                 expires_at: activation.expires_at,
                 now,
-            });
-        }
-        if activation.questions_used >= activation.policy.question_budget {
-            return Err(ActivationError::QuestionBudgetSpent {
-                id,
-                budget: activation.policy.question_budget,
             });
         }
         if let Some(activation) = self.activations.get_mut(&id) {

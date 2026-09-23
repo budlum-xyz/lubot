@@ -50,6 +50,17 @@ pub enum Phase {
     Failed,
 }
 
+impl std::fmt::Display for Phase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Started => write!(f, "started"),
+            Self::Completed => write!(f, "completed"),
+            Self::Failed => write!(f, "failed"),
+        }
+    }
+}
+
 impl Phase {
     /// Whether this phase is terminal.
     #[must_use]

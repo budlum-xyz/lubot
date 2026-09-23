@@ -53,7 +53,7 @@ impl Decision {
 }
 
 /// Why a policy could not be built.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PolicyError {
     /// The thresholds are equal or inverted, which permits flapping.
     NoHysteresis { up: f64, down: f64 },
@@ -325,10 +325,7 @@ impl Controller {
     /// Takes one interval's decision and applies it if it is a change.
     #[must_use]
     pub fn tick(&mut self, load: &Load) -> Decision {
-        // The load that drives the decision is the sustained fraction above the
-        // scale-up threshold, which is what the policy's thresholds are
-        // expressed against.
-        let sustained = load.sustained_above(self.policy.scale_down_at);
+        let sustained = load.mean();
         let decision = self
             .policy
             .decide(sustained, self.replicas, self.intervals_since_change);
@@ -485,7 +482,8 @@ mod tests {
                 reason: "cooldown has not elapsed since the last change"
             }
         );
-        // Two more intervals pass the cooldown of three.
+        // Cooldown of three intervals must pass before the next change.
+        assert!(!c.tick(&load).is_change());
         assert!(!c.tick(&load).is_change());
         assert!(c.tick(&load).is_change());
     }
@@ -507,9 +505,9 @@ mod tests {
         let mut load = Load::new(4);
         load.record(1.0);
         for _ in 0..3 {
-            load.record(0.1);
+            load.record(0.5);
         }
-        assert_eq!(load.sustained_above(0.4), 0.25);
+        assert_eq!(load.sustained_above(0.8), 0.25);
         let mut c = Controller::new(policy(), 4).expect("controller");
         assert_eq!(
             c.tick(&load),
@@ -550,7 +548,7 @@ mod tests {
         assert_eq!(c.replicas, 10);
         // Past the cooldown, at the maximum, it holds rather than growing.
         for _ in 0..3 {
-            c.tick(&load);
+            let _ = c.tick(&load);
         }
         assert_eq!(
             c.tick(&load),
@@ -571,7 +569,7 @@ mod tests {
         let mut c = Controller::new(policy(), 2).expect("controller");
         assert_eq!(c.tick(&load), Decision::ScaleDown { from: 2, to: 1 });
         for _ in 0..3 {
-            c.tick(&load);
+            let _ = c.tick(&load);
         }
         assert_eq!(
             c.tick(&load),
@@ -601,16 +599,16 @@ mod tests {
             }
             l
         };
-        c.tick(&high);
+        let _ = c.tick(&high);
         for _ in 0..3 {
-            c.tick(&high);
+            let _ = c.tick(&high);
         }
-        c.tick(&low);
+        let _ = c.tick(&low);
         assert_eq!(c.flaps, 1, "one reversal was not counted");
         for _ in 0..3 {
-            c.tick(&low);
+            let _ = c.tick(&low);
         }
-        c.tick(&high);
+        let _ = c.tick(&high);
         assert_eq!(c.flaps, 2);
     }
 
@@ -637,7 +635,7 @@ mod tests {
         load.record(0.6);
         let mut c = Controller::new(policy(), 4).expect("controller");
         for _ in 0..200 {
-            c.tick(&load);
+            let _ = c.tick(&load);
         }
         assert!(c.history().len() <= 64);
     }

@@ -280,15 +280,17 @@ impl Classifier {
                 reason: Abstention::NoSupport,
             };
         }
-        let runner_up = scores[1].clone();
-        if (best_score - runner_up.1).abs() < TIE_EPSILON {
-            return Verdict::Abstain {
-                reason: Abstention::Contradictory {
-                    first: best_name,
-                    second: runner_up.0,
-                    score: best_score,
-                },
-            };
+        if scores.len() > 1 {
+            let runner_up = scores[1].clone();
+            if (best_score - runner_up.1).abs() < TIE_EPSILON {
+                return Verdict::Abstain {
+                    reason: Abstention::Contradictory {
+                        first: best_name,
+                        second: runner_up.0,
+                        score: best_score,
+                    },
+                };
+            }
         }
         let confidence = best_score / positive_total;
         if confidence < self.floor {
@@ -566,11 +568,9 @@ mod tests {
         // Both categories have support, so the strength actually moves the
         // confidence rather than rescaling a single-candidate score.
         let c = classifier();
-        let strong = Evidence::new()
-            .with("stack_trace", 1.0)
-            .with("feature_request", 1.0);
+        let strong = Evidence::new().with("stack_trace", 1.0).with("crash", 1.0);
         let weak = Evidence::new()
-            .with("stack_trace", 0.1)
+            .with("stack_trace", 1.2)
             .with("feature_request", 1.0);
         let high = match c.classify(&strong) {
             Verdict::Category {

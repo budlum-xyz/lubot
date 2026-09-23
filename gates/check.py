@@ -2471,6 +2471,157 @@ def _pub_items_from_text(text: str) -> list[str]:
     return names
 
 
+# --------------------------------------------------------------------------
+# gate: the frozen BPE vocab is versioned, lossless and structurally sound
+# --------------------------------------------------------------------------
+def gate_tokenizer_vocab_is_frozen() -> str:
+    """Every frozen BPE vocab family is committed, versioned and lossless:
+    each vocab under training/tokenizer/ loads through the fail-closed
+    loader, round-trips every corpus record this machine holds, and its
+    pretoken pattern is the trainer's own; a family that is derived on the
+    fly, structurally broken or silently renamed is refused."""
+    vocab_dir = ROOT / "training" / "tokenizer"
+    vocabs = sorted(vocab_dir.glob("lubot-bpe-v*.json"))
+    if not vocabs:
+        raise SystemExit(
+            "training/tokenizer/ has no frozen vocab family; the vocab is "
+            "cut and committed, never derived on the fly"
+        )
+    corpora = sorted((ROOT / "corpus").glob("knowledge-*.jsonl.gz"))
+    if not corpora:
+        raise SystemExit(
+            "no knowledge-*.jsonl.gz corpus under corpus/; CI builds it before the gates"
+        )
+    for vocab in vocabs:
+        cmd = [sys.executable, str(ROOT / "training" / "train_tokenizer.py"),
+               "--verify", "--vocab", str(vocab)]
+        for corpus in corpora:
+            cmd += ["--corpus", str(corpus)]
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            raise SystemExit(
+                f"{vocab.name} failed verification: {(proc.stderr or proc.stdout)[-400:]}"
+            )
+    families = ", ".join(v.stem for v in vocabs)
+    return f"frozen vocab families round-trip every corpus record on this machine: {families}"
+
+
+def selftest_tokenizer_vocab_is_frozen() -> None:
+    """The canary: a structurally broken vocab and a misnamed family must
+    both be refused by the loader; the trainer must train."""
+    import tempfile
+
+    sys.path.insert(0, str(ROOT / "training"))
+    import train_tokenizer as tt
+
+    with tempfile.TemporaryDirectory() as td:
+        corpus = Path(td) / "c.jsonl"
+        corpus.write_text(
+            json.dumps({"kind": "doc", "text": "donmus sozluk kanaryasi " * 8}) + "\n",
+            encoding="utf-8",
+        )
+        out = Path(td) / "lubot-bpe-v1.json"
+        rc = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "train_tokenizer.py"),
+             "--corpus", str(corpus), "--out", str(out), "--vocab-size", "400"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        ).returncode
+        assert rc == 0, "canary training failed"
+        good = json.loads(out.read_text(encoding="utf-8"))
+        broken = dict(good)
+        broken["merges"] = [[256 + len(good["merges"]) - 1, 65]] + good["merges"][1:]
+        badfile = Path(td) / "bozuk.json"
+        badfile.write_text(json.dumps(broken), encoding="utf-8")
+        try:
+            tt.load_vocab(str(badfile))
+            raise AssertionError("a broken merge table was accepted")
+        except SystemExit:
+            pass
+        misnamed = Path(td) / "baska.json"
+        misnamed.write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            tt.load_vocab(str(misnamed))
+            raise AssertionError("a misnamed family was accepted")
+        except SystemExit:
+            pass
+
+
+# --------------------------------------------------------------------------
+# gate: the committed model spec is internally consistent (NN-3)
+# --------------------------------------------------------------------------
+def gate_model_spec_is_consistent() -> str:
+    """The committed training/model_spec.json validates against its own
+    rules: structure, the muP table's init/LR formulas per parameter group,
+    the weight-tying resolution (shared embedding + 1/d_model logit scale),
+    the exact tensor-by-tensor param count, and the measured hardware
+    ceiling (K6). A spec whose declared numbers disagree with its formulas,
+    or that steps over the measured ceiling, is refused."""
+    spec_path = ROOT / "training" / "model_spec.json"
+    if not spec_path.exists():
+        raise SystemExit(
+            "training/model_spec.json is missing; the architecture decision is "
+            "committed as data, never carried in someone's head"
+        )
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "model_spec.py"),
+         "--validate", str(spec_path)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            f"model spec failed validation: {(proc.stderr or proc.stdout)[-400:]}"
+        )
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    return (
+        f"model spec {spec['name']} is consistent: muP table, tying, "
+        f"param count {spec['params']['toplam']}, ceiling respected (K6)"
+    )
+
+
+def selftest_model_spec_is_consistent() -> None:
+    """The canary: a spec with a wrong param count, one over the ceiling,
+    an untied readout and a mis-scaled attention must all be refused."""
+    sys.path.insert(0, str(ROOT / "training"))
+    import copy
+
+    import model_spec as ms
+
+    ms.selftest()  # the tool's own consistency proofs carry over
+    base = json.loads((ROOT / "training" / "model_spec.json").read_text(encoding="utf-8"))
+    ms.validate_spec(base)  # the committed spec is the healthy control
+
+    yanlis = copy.deepcopy(base)
+    yanlis["params"]["toplam"] += 1
+    try:
+        ms.validate_spec(yanlis)
+        raise AssertionError("a wrong param count was accepted")
+    except SystemExit:
+        pass
+
+    tasmis = copy.deepcopy(base)
+    tasmis["ceiling_reference"]["max_params_train_fp32_adamw"] = 1
+    try:
+        ms.validate_spec(tasmis)
+        raise AssertionError("a spec over the measured ceiling was accepted")
+    except SystemExit:
+        pass
+
+    bagsiz = copy.deepcopy(base)
+    bagsiz["weight_tying"] = {"tied": False}
+    try:
+        ms.validate_spec(bagsiz)
+        raise AssertionError("an untied readout was accepted")
+    except SystemExit:
+        pass
+
+    olceksiz = copy.deepcopy(base)
+    olceksiz["attention_scale"] = "1/sqrt(d_k)"
+    try:
+        ms.validate_spec(olceksiz)
+        raise AssertionError("a standard 1/sqrt(d_k) attention scale was accepted")
+    except SystemExit:
+        pass
+
 
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
@@ -2501,6 +2652,8 @@ GATES_EXTRA = {
     "kirmizi-senaryolar": (gate_kirmizi_senaryolar, selftest_kirmizi_senaryolar),
     "sft-evaluation-baseline": (gate_sft_evaluation_baseline, selftest_sft_evaluation_baseline),
     "corpus-build-is-deterministic": (gate_corpus_build_is_deterministic, selftest_corpus_build_is_deterministic),
+    "tokenizer-vocab-is-frozen": (gate_tokenizer_vocab_is_frozen, selftest_tokenizer_vocab_is_frozen),
+    "model-spec-is-consistent": (gate_model_spec_is_consistent, selftest_model_spec_is_consistent),
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),

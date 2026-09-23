@@ -292,13 +292,22 @@ impl Manifest {
     /// entries: it says what format the file is, and a file that claims to be
     /// this format is checked against this format before anything is sealed.
     #[must_use]
-    fn header_lines(&self) -> Vec<String> {
+    pub fn header_lines(&self) -> Vec<String> {
         vec![
             format!("SEQ\t{}", self.sequence),
             format!("CHAIN\t{}", self.chain_id),
             format!("WINDOW\t{}\t{}", self.window_open, self.window_close),
             format!("FEE\t{}", self.fee.render()),
         ]
+    }
+
+    /// All sealed entries in file order: header lines followed by payout lines.
+    #[must_use]
+    pub fn entries(&self) -> Vec<String> {
+        self.header_lines()
+            .into_iter()
+            .chain(self.payouts.iter().map(|p| p.render()))
+            .collect()
     }
 
     /// Checks the batch before it is written.
@@ -575,7 +584,7 @@ mod tests {
     fn a_batch_writes_and_reads_back_byte_for_byte() {
         let mut m = batch();
         let media = m.to_media().expect("write");
-        let read = Manifest::from_media(&media).expect("read");
+        let mut read = Manifest::from_media(&media).expect("read");
         assert_eq!(read, m);
         assert_eq!(read.to_media().expect("rewrite"), media);
     }

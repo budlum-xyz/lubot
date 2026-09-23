@@ -9,7 +9,7 @@ corpus is built from this repository and from nothing outside it.
 | # | Decision |
 |---|---|
 | K1 | Base model: trained from scratch. The served names are ours; no upstream name is used as a served name anywhere in this repository. |
-| K2 | The corpus is Lubot's own tree. The builder walks this repository; every record carries the repository's own licence and provenance. Nothing from outside enters. |
+| K2 | The corpus is the budlum-xyz surface: this repository always, and (operator-side, via a sources manifest) the budlum core plus workspace root documents, each source stamped with its own licence and per-repo provenance. Nothing from outside the organization's own trees enters. (2026-09-22: the single-tree rule widened to the surface; workspace subdirectories enter only after curation.) |
 | K3 | Growth policy: the corpus grows by the repository's own development and by documents admitted through the `doc` command under the closed licence set, with per-record provenance. |
 | K4 | Tier -2 (STARK-provable) path: verify-only, evaluated separately for high-stakes outputs; not part of the main training plan. |
 | K5 | Operator agreement: target 1/1 when the zkVM content proof is live for this model class; until then the transition value is 2 (a single-operator outcome is not consumed). See the transition note in the workspace record. |
@@ -22,6 +22,13 @@ this repository
    -> training/build_corpus.py --repo . --out corpus/knowledge-self.jsonl.gz
       (per record: path, lines, digest, licence, asset_id, content_id;
        a chunk that fails refusal never enters)
+   -> training/train_tokenizer.py --corpus corpus/knowledge-self.jsonl.gz
+      --out training/tokenizer/lubot-bpe-v1.json
+      (frozen, versioned byte-level BPE; a new vocab is a cut, never a drift)
+   -> (operator, surface) training/build_corpus.py --sources manifest.json
+      --out corpus/budlum-yuzeyi.jsonl.gz
+      (budlum + workspace root documents + this repository; per-source
+       asset_id, licence, attribution; cross-source dedup)
    -> training/epoch_ledger.py --check ledger.json --now <block>      (fail-closed grant)
    -> training/make_sft.py --corpus ... --curriculum training/curriculum --out corpus/sft.jsonl
       (grounded rows + curriculum rows; a row that cannot cite is dropped)
@@ -38,7 +45,8 @@ One corpus, one source: this repository, rebuilt by CI on every run.
 
 | file | records | kinds | tokens (approx) |
 |---|---|---|---|
-| `corpus/knowledge-self.jsonl.gz` | 793 | api 241 · behaviour 178 · doc 285 · markdown 89 | ~27K |
+| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 807 | api 241 · behaviour 178 · doc 287 · markdown 101 | ~28K |
+| `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: lubot + budlum + workspace root) | 23604 | api 6015 · behaviour 4684 · doc 7323 · markdown 5582 | ~1.2M |
 
 Every record carries the provenance pair; the provenance gate measures 100%
 of the corpus files present. Refused-at-the-door is measured by the same
@@ -89,6 +97,8 @@ text under `chain/<type>`, `request_id` kept), licence PolyForm Shield
 | `kirmizi-senaryolar` | The red scenarios stay red: generation, image prompts, credential hunts and unmeasured hype are refused out of scope, while a real question about the same corpus is answered - the refusals are scoped, not blanket |
 | `sft-evaluation-baseline` | Every SFT row must cite, nothing may duplicate, nothing may be empty |
 | `corpus-build-is-deterministic` | Two builds from the same tree must agree byte for byte |
+| `tokenizer-vocab-is-frozen` | Every frozen BPE vocab family under training/tokenizer/ is committed (never derived on the fly), loads through the fail-closed loader (valid DAG, family name matches the file, the trainer's own pattern) and round-trips every corpus record this machine holds losslessly |
+| `model-spec-is-consistent` | The committed model spec validates against its own rules: muP init/LR formulas per parameter group, the weight-tying resolution (shared embedding + 1/d_model logit scale), the exact tensor-by-tensor param count, and the measured hardware ceiling (K6) |
 | `dependencies-are-used` | A dependency a crate declares but never reaches is supply-chain weight with no cargo to carry: its audit surface is paid for by nobody's usage |
 | `findings-are-disciplined` | A finding is a claim about code; the validator measures the claim |
 | `eval-runs-are-mechanical` | Every recorded evaluation run carries exactly one machine-checkable boolean criterion plus its resource accounting; judgement words and partial credit are refused (one run, one mechanical criterion: the shape this repository measures itself by) |
@@ -120,30 +130,119 @@ regenerated, never shown or coerced into a nearest format. The format rule
 is applied in the training data (stage 8) and enforced at the exit (stage 9),
 not patched on after generation.
 
+## Donmuş sözlük (NN-2)
+
+`training/train_tokenizer.py` Budlum'a özgü bayt-düzeyi BPE sözlüğünü bu
+ağaçtan sıfırdan eğitir; standart kütüphaneden başka hiçbir şey kullanmaz
+(K1/K2). Sözlük kesildiği an donar: `training/tokenizer/lubot-bpe-v1.json`
+commit edilir, zaman damgası taşımaz ve aynı korpusla yeniden kesim birebir
+aynı dosyayı verir. Korpus bilinçli büyütüldüğünde (A adımı: tüm
+budlum-xyz yüzeyi) yeni sürüm kesilir; her yeni sürüm yeni bir model
+ailesidir, eskisi silinmez (EE). Eğitim, tekrar sayımı 2'nin altına
+düştüğünde hedef sözlük boyutuna ulaşamasa da durur: küçük veride sözlüğü
+veriyle zorlamaz, açlık raporlanır.
+
+Ölçülen (lubot-bpe-v1, kesildiği korpus): 798 kayıt; sözlük 3453 token
+(hedef 4096 idi, tekrar sayımı 2'nin altına düşünce açlıktan durdu),
+41.516 BPE token, 2.75 bayt/token. Tablodaki ~28K "yaklaşık token" sayımı
+karakter/4 tahminidir; gerçek token sayımı bundan böyle donmuş sözlükle
+ölçülür ve iki sayı yan yana raporlanır.
+
+Kapı: `tokenizer-vocab-is-frozen`. Sözlük kesilmiş ve commit edilmiş
+olmalı (türetilemez), birleştirme tablosu geçerli bir DAG olmalı, aile adı
+dosya adıyla uyuşmalı, ön işlem deseni eğiticinin deseni olmalı ve sözlük
+geçerli korpusun her kaydını kayıpsız geri döndürmeli. Kapının çıktısı,
+sözlüğün kesildiği kaynaktan sapmayı (record_drift) her koşuda raporlar:
+sapma büyüdüğünde yeni sürüm kesme kararı veri olarak ortadadır.
+
+## Yüzey korpusu (A adımı)
+
+`--sources` manifesti ile kurucu birden fazla budlum-xyz ağacını tek geçişte
+tarar: her kaynak kendi lisansını (dosyasından otomatik okunur, kapalı setin
+dışındaysa kapıda reddedilir), kendi `asset_id`'sini ve kendi atıfını taşır;
+aynı metin iki kaynakta varsa (ortak lisans metni gibi) bir kez girer. Hiçbir
+kaynak manifestte açıkça yazılmadan giremez.
+
+Ölçülen (budlum-yuzeyi): ilk kuruluş 2026-09-22, 23.600 kayıt (lubot
+`46c23e91`); taze kuruluş 2026-09-23 (lubot `b1a8d92`): 23.604 kayıt (ham
+24.784, 1.180 çapraz-kaynak tekrarı elendi) - lubot 802 · budlum 18.830 ·
+workspace 3.972 (yalnız kök belgeleri); 4.852.776 karakter, ~1.213.194
+yaklaşık token (karakter/4). Self dilimi 798→802: A adımı belge
+güncellemeleri (+4 kayıt, K3 büyüme; sözlük v2 taze kuruluşta 23.604/23.604
+kayıpsız, record_drift +4 raporlanır). budlum tek başına self korpusun
+yaklaşık 24 katı.
+
+Küratörlük (D adımı öncesi geçerli sınırlar): workspace yalnız kök
+belgeleriyle girer; alt dizinler (skills/ üçüncü taraf programlar,
+uploads/, kaynaklar/, fonts/, lubot-aday/ eskimiş aday ağaç) bilinçli olarak
+dışarıda tutulur ve her biri ancak ayrı küratörlük kararıyla girer. budlum
+tam ağaç olarak girer (kendi işimiz, PolyForm Shield 1.0.0). Manifest ve
+kurulmuş korpus verisi workspace deposunda (`lubot-sifirdan-kosu/corpus/`)
+yaşar; CI yalnız self korpusu kurar ve ratchet tabanı self'e bağlı kalır.
+
+Sözlük v2 (lubot-bpe-v2): yüzey korpusundan kesildi - 8192 token (hedefe
+ulaştı, açlık yok), 1.791.052 gerçek BPE token, 2.74 bayt/token, kullanım
+7880/8192, kayıpsız geri dönüş 23.600/23.600. v1 ailesi donmuş olarak
+kalır; v2 yeni model ailesidir (EE).
+
+## Mimari spesifikasyonu (NN-3)
+
+`training/model_spec.py` mimari kararını veri olarak taşır ve doğrular;
+kararın kendisi `training/model_spec.json`'da commit edilir (kafada
+taşınmaz). İlk spec **lubot-a1-derin-dar**: d_model 64, 8 katman, 2 başlık
+(d_k 32), d_ff 256, bağlı embedding, max_seq_len 256 (ölçüldü: kayıt
+uzunluğu p95 ≈ 246 token; p99 üstü kayıtlar AST-farkında parçalamaya — JJ —
+kalır).
+
+Parametre muhasebesi tensersiz sayılır (formül `say_params`): embedding
+524.288 · dikkat 133.120 · MLP 264.704 · LayerNorm 2.176 = **924.288
+param** (türetildi). Sandbox tavanı 97.565.184 param (ölçüldü: bench →
+recommend zinciri) — spec tavanın ~105 kat altında (K6); kalıcı tavan owner
+donanımında ölçülünce spec yeniden doğrulanır.
+
+μP parametrizasyonu (yöntem ilhamı: Tensor Programs V, arXiv 2203.03466;
+transformer uygulaması Lingle 2024, arXiv 2404.05728; **ölçülmedi** — ölçüm
+NN-4 eğitim koşusunun işi): embedding başlangıç std'si sabit ve LR α
+(genişlikten bağımsız); hidden ağırlıklar std sqrt(2/fan_in), LR α (hedef
+genişlikte; proxy genişlik P'den transfer istenirse α·P/n); readout std
+sqrt(2)/fan_in, LR α/fan_in; dikkat ölçeği 1/d_k (standart 1/sqrt(d_k)
+değil). Ağırlık bağlama × μP gerilimi işaretli kararla çözülür: paylaşılan
+matris embedding kurallarıyla yaşar, readout'un Θ(1/n²) etkisi ileri geçişte
+logit ölçeği 1/d_model ile sağlanır — bu çözüm NN-4'te ilk denetlenecek
+karardır.
+
+Veri-direction ölçümü: yüzey korpusu 1.791.712 BPE token (ölçüldü) →
+Chinchilla referans dengesi ~89.585 param (20 token/param; oran dışarıdan
+kabullenilmiş referans, ölçülmedi). Bağlı embedding tabanı tek başına
+524.288 param: referans noktası bu sözlükle erişilemez, bilinçli aşılır ve
+spec'te beyan edilir (1,94 token/param ≈ referansın 1/10'u). Derin-dar
+aday ızgarası (63 aday, hepsi ölçülen tavan altında) workspace'te:
+`lubot-sifirdan-kosu/olcum/nn3-adaylar-2026-09-23.json`.
+
 ## Aşama 0-6 karşılama (her zorunlu maddenin yeri)
 
 Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar).
 
 | rapor maddesi | Lubot'taki yeri | ölçüm |
 |---|---|---|
-| 0.1 kapalı devre veri erişimi | kayıt kapısı: provenance çifti (`asset_id`+`content_id`) olmayan örnek korpusa alınmaz (cli loader + `corpus-records-carry-provenance`) | 793 kayıt, çifti olan 793 |
+| 0.1 kapalı devre veri erişimi | kayıt kapısı: provenance çifti (`asset_id`+`content_id`) olmayan örnek korpusa alınmaz (cli loader + `corpus-records-carry-provenance`) | 807 kayıt, çifti olan 807 |
 | 0.2 okuma-yalnız modalite | `crates/read/src/perception.rs`: kapalı 4 küme, üretim varyantı yok | `no-generation-variant` kapısı |
 | 0.3 çıktı yalnızca Markdown | `Answer::render_markdown` tek çıkış + `output_schema::validate_markdown_output`; ikili/görsel/video dönüş tipi yok | `ai-output-schema-enforced`, `output-finalize-closed-loop` |
 | 0.4 uzmanlık: veri inceleme + kodlama | korpus ağırlığı kod kayıtları (api/behaviour/doc) + veri analizi metinleri; sohbet korpusu yoktur | `by_kind`: api 241 / behaviour 178 / doc 285 / markdown 89 |
 | Aşama 1 (uygulanan karar) | Lubot Tier -1 attestation-only yolda çalışır: `require_execution_proof = false`, `execution_class = 0`. Tier -2 Lubot'un ana yolu OLABİLİR DEĞİLDİR; dar alt-görevler için ayrı teknik inceleme (K4 verify-only listesi) | `OPERATOR_THRESHOLD = 2`; tek-operatör üretime alınmaz (Aşama 11) |
 | Aşama 2 | her korpus taramasından önce `is_valid`, her epoch sonunda `consume_epoch`, tükenince DUR | `training/epoch_ledger.py`; canlı kanıt: 2/2'den sonra koşu reddedildi |
-| Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 793 |
+| Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 807 |
 | Aşama 4 | tavanlar kodda sabit: Text 1,048,576 B / Image 16,777,216 px / Audio 3,600,000 ms / Video 4096 kare | `no-generation-variant` kapısı + perception testleri |
-| Aşama 5 | çekirdek: Lubot'un kendi ağacı (`crates/`, `gates/`, `training/`, `docs/`) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | 793 kayıt, tümü PolyForm Shield 1.0.0 (kendi işimiz) |
-| Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 793/793 |
+| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 807 kayıt (yüzey: 23.604; hepsi kendi işimiz) |
+| Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 807/807 |
 
 ## Aşama 12 kararları (rapora karşı, eğitim başlamadan kapatılır)
 
 | rapor maddesi | karar | Lubot'taki karşılığı |
 |---|---|---|
-| 1. Temel model kaynağı | K1: sıfırdan eğitim. | bu ağacın tüm ölçümleri (178 test, 37 kapı; korpus 793 kayıt) sıfırdan eğitim girdisinin kendisidir |
+| 1. Temel model kaynağı | K1: sıfırdan eğitim. | bu ağacın tüm ölçümleri (178 test, 39 kapı; korpus 807 kayıt) sıfırdan eğitim girdisinin kendisidir |
 | 2. `min_verifier_count` / `agreement_threshold` | K5: koşullu 1/1 + geçiş. Lubot'un model sınıfı için zkVM içerik ispatı canlı değilken 2; canlıyken 1. | `OPERATOR_THRESHOLD = 2`; `consumes(1, 2) = false` (Aşama 11) |
-| 3. Dış korpus kapsamı ve bütçesi | K2/K3: dış korpus yok; korpus Lubot'un kendi ağacıdır ve kendi lisansını taşır. | 793 kayıt, tümü PolyForm Shield 1.0.0; kapıda red 0 |
+| 3. Dış korpus kapsamı ve bütçesi | K2/K3: dış korpus yok; korpus Lubot'un kendi ağacıdır ve kendi lisansını taşır. | 807 kayıt, tümü PolyForm Shield 1.0.0; kapıda red 0 |
 | 4. Tier -2 alt-görevler | K4: yalnızca doğrulama (verify-only). | Lubot'un kendisi verify-only okur: aracı hesap, izin, indeks; üretim yüzeyi yok |
 
 ## Aşama 7 / 9 sınır kaydı (dürüst kapsam)

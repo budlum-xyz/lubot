@@ -337,6 +337,9 @@ impl Trail {
     /// renumbers, which is a log that has already been edited.
     #[must_use]
     pub fn gaps(&self) -> Vec<(u64, u64)> {
+        if self.entries.is_empty() {
+            return Vec::new();
+        }
         let present: BTreeSet<u64> = self.entries.iter().map(|e| e.sequence).collect();
         let mut holes = Vec::new();
         let mut missing_start: Option<u64> = None;

@@ -49,6 +49,17 @@ pub enum Status {
     Expired,
 }
 
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Verified => write!(f, "verified"),
+            Self::Rejected => write!(f, "rejected"),
+            Self::Expired => write!(f, "expired"),
+        }
+    }
+}
+
 impl Status {
     /// Whether this status is a verdict.
     #[must_use]
@@ -277,7 +288,7 @@ impl Ledger {
             let text = if to == Status::Expired {
                 reason.to_string()
             } else {
-                format!("{reason} (never verified)");
+                format!("{reason} (never verified)")
             };
             if self.apply(id, to, &text, now_height).is_ok() {
                 changed += 1;
@@ -463,7 +474,9 @@ mod tests {
             .get(1)
             .and_then(|r| r.transitions.last().map(|t| t.reason.clone()));
         assert!(
-            reason.is_some_and(|r| r.contains("never verified")),
+            reason
+                .as_ref()
+                .is_some_and(|r| r.contains("never verified")),
             "the rejection does not say it was never checked: {reason:?}"
         );
     }

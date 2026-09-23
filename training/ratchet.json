@@ -1,6 +1,6 @@
 {
-  "tests": 178,
-  "gates": 37,
+  "tests": 426,
+  "gates": 49,
   "pedantic": 0,
-  "corpus": 793
+  "corpus": 1577
 }

@@ -250,9 +250,7 @@ impl Queue {
     /// [`QueueError::Empty`].
     pub fn take(&mut self) -> Result<Item, QueueError> {
         let key = self.best_key().ok_or(QueueError::Empty)?.to_string();
-        self.items
-            .remove(&key)
-            .ok_or_else(|| QueueError::Unknown { key })
+        self.items.remove(&key).ok_or(QueueError::Unknown { key })
     }
 
     /// Puts a failed item back, or dead-letters it.
@@ -384,8 +382,8 @@ impl Queue {
             .max_by(|a, b| {
                 a.effective_priority(self.aging_step)
                     .cmp(&b.effective_priority(self.aging_step))
-                    .then_with(|| b.enqueued_at.cmp(&a.enqueued_at).reverse())
-                    .then_with(|| b.key.cmp(&a.key).reverse())
+                    .then_with(|| b.enqueued_at.cmp(&a.enqueued_at))
+                    .then_with(|| b.key.cmp(&a.key))
             })
             .map(|i| i.key.as_str())
     }

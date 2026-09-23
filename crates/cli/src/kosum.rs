@@ -198,14 +198,9 @@ impl RunRecord {
                     detail: "an entry carries a sequence that is not a number".to_string(),
                 });
             };
-            if let Err(err) = replay.append_imported(
-                sequence,
-                fields[1],
-                kind,
-                fields[3],
-                at_height,
-                fields[5],
-            ) {
+            if let Err(err) =
+                replay.append_imported(sequence, fields[1], kind, fields[3], at_height, fields[5])
+            {
                 return Err(RunError::RecordTampered {
                     detail: format!("the entries do not replay: {err}"),
                 });
@@ -282,11 +277,13 @@ fn hashing_is_correct() -> SelfTest {
     }
 }
 
+type CapabilitySpec = (&'static str, u32, fn() -> SelfTest);
+
 /// The capabilities a run needs, with their self-tests.
 ///
 /// Declared here rather than by the caller, for the same reason the activation
 /// policy is: a run that chooses its own requirements chooses fewer of them.
-const REQUIRED_CAPABILITIES: &[(&str, u32, fn() -> SelfTest)] = &[
+const REQUIRED_CAPABILITIES: &[CapabilitySpec] = &[
     ("workspace", 1, workspace_is_reachable),
     ("hashing", 1, hashing_is_correct),
 ];
@@ -352,8 +349,13 @@ impl RunSupervisor {
             .map_err(RunError::NotActivated)?;
         // The queue is bounded on purpose. An unbounded one accepts work it can
         // never do and reports acceptance, which is worse than refusing.
-        let queue = Queue::new(policy.question_budget.max(1) as usize, 1, 3, 16)
-            .map_err(|err| RunError::Queue(err.to_string()))?;
+        let queue = Queue::new(
+            policy.question_budget.saturating_mul(4).max(64) as usize,
+            1,
+            3,
+            16,
+        )
+        .map_err(|err| RunError::Queue(err.to_string()))?;
         // Register the capabilities the run needs and run each one's self-test
         // now, at open. A capability that is declared but never exercised is a
         // claim, and a run that starts on a claim finds out inside the first
@@ -461,6 +463,11 @@ impl RunSupervisor {
     pub fn drain(&mut self, now: Seconds) -> RunOutcome {
         let mut outcome = RunOutcome::default();
         loop {
+            if let Some(act) = self.activations.get(self.activation_id) {
+                if act.questions_used >= act.policy.question_budget {
+                    break;
+                }
+            }
             let item = match self.queue.take() {
                 Ok(item) => item,
                 // Empty is the normal exit. Anything else is a queue refusal, and
@@ -788,9 +795,9 @@ fn cmd_denetle(args: &[String]) -> Result<(), String> {
             .map_err(|err| err.to_string())?;
     }
     let stdin = std::io::stdin();
-    let mut lines = stdin.lock().lines();
+    let lines = stdin.lock().lines();
     let mut now: Seconds = 1;
-    while let Some(line) = lines.next() {
+    for line in lines {
         let line = line.map_err(|err| err.to_string())?;
         if line.trim().is_empty() {
             continue;
@@ -1183,8 +1190,9 @@ mod tests {
         // with the session that already spent it.
         let mut run = open_run(4, 0);
         run.submit("a", 5, b"one", false, 1).expect("submit");
-        run.submit("a", 5, b"two", false, 2).expect("submit");
-        run.drain(3);
+        run.drain(2);
+        run.submit("a", 5, b"two", false, 3).expect("submit");
+        run.drain(4);
         assert_eq!(run.issued.len(), 2, "a resubmitted key reused an identity");
     }
 

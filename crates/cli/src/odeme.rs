@@ -74,9 +74,12 @@ pub struct MediaSummary {
 ///
 /// The first [`MediaFault`] found, named.
 pub fn verify_media(media: &str) -> Result<MediaSummary, MediaFault> {
-    let manifest = Manifest::from_media(media).map_err(MediaFault::Unparsable)?;
+    let manifest = Manifest::from_media(media).map_err(|err| match err {
+        EnvelopeError::Seal(seal_err) => MediaFault::SealBroken(seal_err),
+        other => MediaFault::Unparsable(other),
+    })?;
     manifest.check().map_err(MediaFault::Invalid)?;
-    let entries: Vec<String> = manifest.payouts.iter().map(Payout::render).collect();
+    let entries = manifest.entries();
     let references: Vec<&str> = entries.iter().map(String::as_str).collect();
     Sealer::verify(&references, &manifest.links).map_err(MediaFault::SealBroken)?;
     // `to_media` re-seals as it renders, so a parse that dropped or reordered
@@ -106,7 +109,7 @@ fn parse_payout(spec: &str) -> Result<Payout, String> {
     let Some((recipient, rest)) = spec.split_once(':') else {
         return Err(format!("expected recipient:amount:reference, got {spec:?}"));
     };
-    let Some((amount, reference)) = rest.rsplit_once(':') else {
+    let Some((amount, reference)) = rest.split_once(':') else {
         return Err(format!("expected recipient:amount:reference, got {spec:?}"));
     };
     let amount = Amount::parse(amount).map_err(|err| err.to_string())?;

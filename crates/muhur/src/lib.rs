@@ -237,7 +237,7 @@ mod tests {
         let a = Sealer::final_seal(&["one", "two", "three"]);
         let b = Sealer::final_seal(&["one", "two", "three"]);
         assert_eq!(a, b);
-        assert_eq!(a.as_deref().map(str::len), Some(LINK_HEX_LEN));
+        assert_eq!(a.as_deref().map(str::len), Ok(LINK_HEX_LEN));
     }
 
     #[test]

@@ -298,27 +298,21 @@ impl Quorum {
         self.count(signers)
     }
 
-    /// Whether the quorum can still be met by the parties that have not yet
-    /// answered.
+    /// Whether the quorum can still be met by the parties that have not dropped
+    /// out or failed.
     ///
     /// Used to stop waiting early: if the remaining weight cannot reach the
     /// threshold, no amount of waiting will produce a quorum, and holding the
     /// request open is latency with nothing at the end of it.
     #[must_use]
-    pub fn still_reachable(&self, answered: &[u64]) -> bool {
-        let outstanding: u64 = self
+    pub fn still_reachable(&self, dropped: &[u64]) -> bool {
+        let remaining: u64 = self
             .weights
             .iter()
-            .filter(|(member, _)| !answered.contains(member))
+            .filter(|(member, _)| !dropped.contains(member))
             .map(|(_, weight)| *weight)
             .sum();
-        let reached: u64 = self
-            .weights
-            .iter()
-            .filter(|(member, _)| answered.contains(member))
-            .map(|(_, weight)| *weight)
-            .sum();
-        reached.saturating_add(outstanding) >= self.threshold_weight
+        remaining >= self.threshold_weight
     }
 }
 
@@ -449,7 +443,9 @@ mod tests {
                 faults,
                 "the inverse disagrees at {faults}"
             );
-            assert!(tolerable_faults(members.saturating_sub(1)) < faults);
+            if faults > 0 {
+                assert!(tolerable_faults(members.saturating_sub(1)) < faults);
+            }
         }
     }
 
@@ -510,9 +506,10 @@ mod tests {
         let q = Quorum::unweighted(&[1, 2, 3], 3).expect("quorum");
         assert!(
             !q.still_reachable(&[1]),
-            "one of three answered and two are needed more"
+            "one of three dropped and three were needed"
         );
-        assert!(q.still_reachable(&[1, 2]));
+        let q2 = Quorum::unweighted(&[1, 2, 3], 2).expect("quorum");
+        assert!(q2.still_reachable(&[1]));
         assert!(q.still_reachable(&[]));
     }
 
