@@ -1,6 +1,7 @@
 {
   "tests": 433,
-  "gates": 52,
+  "gates": 53,
   "pedantic": 0,
-  "corpus": 1590
+  "corpus": 1591,
+  "tokens": 89540
 }

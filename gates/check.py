@@ -895,12 +895,12 @@ def selftest_queue_continues_uninterruptedly() -> None:
 # --------------------------------------------------------------------------
 # gate: the ratchet holds - measured numbers may not regress
 # --------------------------------------------------------------------------
-RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus"]
+RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus", "tokens"]
 
 
 def gate_ratchet_holds() -> str:
-    """The baselines in training/ratchet.json hold: tests, gates and corpus
-    may only rise (pedantic may only fall)."""
+    """The baselines in training/ratchet.json hold: tests, gates, corpus and
+    the corpus's unique-token count may only rise (pedantic may only fall)."""
     import json as _json
 
     path = ROOT / "training" / "ratchet.json"
@@ -920,6 +920,18 @@ def gate_ratchet_holds() -> str:
     measured_tests = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout))
     measured_gates = len(GATES)
     measured_corpus = count_corpus_records()
+    # The token budget is measured by the script that owns the tokenizer, not
+    # re-implemented here: two counters for one corpus is two answers.
+    butce = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "egitim_butcesi.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if butce.returncode != 0:
+        raise SystemExit(f"the token budget does not measure: {butce.stderr[-200:]}")
+    try:
+        measured_tokens = json.loads(butce.stdout)["benzersiz_jeton"]
+    except (json.JSONDecodeError, KeyError) as err:
+        raise SystemExit(f"the token budget produced no count: {err}") from err
     clippy = subprocess.run(
         ["cargo", "clippy", "--workspace", "--all-targets", "--", "-W", "pedantic"],
         cwd=ROOT, capture_output=True, text=True, check=False,
@@ -931,25 +943,29 @@ def gate_ratchet_holds() -> str:
     )
     measured = {
         "tests": measured_tests, "gates": measured_gates, "pedantic": measured_pedantic,
-        "corpus": measured_corpus,
+        "corpus": measured_corpus, "tokens": measured_tokens,
     }
     regressed = []
-    for key in ["tests", "gates", "corpus"]:
+    for key in ["tests", "gates", "corpus", "tokens"]:
         if measured[key] < baseline[key]:
             regressed.append(f"{key} {measured[key]} < baseline {baseline[key]}")
     if measured["pedantic"] > baseline["pedantic"]:
         regressed.append(f"pedantic {measured['pedantic']} > baseline {baseline['pedantic']}")
     if regressed:
         raise SystemExit("ratchet regressed: " + "; ".join(regressed))
-    return f"ratchet holds: tests {measured_tests}, gates {measured_gates}, pedantic {measured_pedantic}, corpus {measured_corpus}"
+    return (
+        f"ratchet holds: tests {measured_tests}, gates {measured_gates}, "
+        f"pedantic {measured_pedantic}, corpus {measured_corpus}, tokens {measured_tokens}"
+    )
 
 
 def selftest_ratchet_holds() -> None:
-    """The direction rules: three rise (>=), pedantic falls (<=)."""
-    assert set(RATCHET_KEYS) == {"tests", "gates", "pedantic", "corpus"}
-    baseline = {"tests": 5, "pedantic": 2}
+    """The direction rules: four rise (>=), pedantic falls (<=)."""
+    assert set(RATCHET_KEYS) == {"tests", "gates", "pedantic", "corpus", "tokens"}
+    baseline = {"tests": 5, "pedantic": 2, "tokens": 100}
     assert 6 >= baseline["tests"], "tests may rise"
     assert 1 <= baseline["pedantic"], "pedantic may fall"
+    assert 120 >= baseline["tokens"], "the token budget may rise"
 
 
 
@@ -2973,6 +2989,90 @@ def selftest_data_mix_is_declared() -> None:
             mod.KAYIT = gercek_kayit
 
 
+# --------------------------------------------------------------------------
+# gate: the training budget is declared and measured (NN §8.5, HH)
+# --------------------------------------------------------------------------
+# "More epochs is better" is an assumption until the repetition is a number. The
+# policy declares the epoch count and the weight decay; this gate re-measures the
+# budget the policy is written against and refuses a policy that outruns the
+# protocol ceiling or a budget that does not reproduce.
+
+
+def gate_training_budget_is_declared() -> str:
+    """The regularization/epoch policy exists, its epoch count stays under the
+    grant protocol's ceiling, and the token budget it is written against
+    re-measures with the frozen vocabulary."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "egitim-butcesi-2026-09-23.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit(
+            f"{kayit_yolu.relative_to(ROOT)} is missing: a policy with no measured budget is a guess"
+        )
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "egitim_butcesi.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        raise SystemExit(
+            "the training budget does not reproduce:\n"
+            + "".join(f"  {line}\n" for line in (r.stdout + r.stderr).strip().splitlines())
+        )
+    rec = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    finding = _eval_run_finding(rec)
+    if finding:
+        raise SystemExit(f"{kayit_yolu.name}: {finding}")
+    butce = rec.get("butce")
+    if not isinstance(butce, dict) or "benzersiz_jeton" not in butce:
+        raise SystemExit(f"{kayit_yolu.name}: the record carries no measured budget")
+    return (
+        f"egitim butcesi olculdu: {butce['benzersiz_jeton']} benzersiz jeton, "
+        f"{butce['max_epochs']} epoch -> {butce['toplam_gecis']} gecis, "
+        f"etkin kaynak orani {butce['etkin_kaynak_orani']}, "
+        f"jeton/param {butce['jeton_basina_param_tam_butce']} "
+        f"(protokol tavani {butce['protokol_epoch_tavani']})"
+    )
+
+
+def selftest_training_budget_is_declared() -> None:
+    """The canaries: an epoch count over the protocol ceiling, a weight decay out
+    of range and a policy missing a field must each be refused."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "egitim_butcesi", str(ROOT / "training" / "egitim_butcesi.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    gercek = mod.POLITIKA.read_text(encoding="utf-8")
+    politika = json.loads(gercek)
+    try:
+        asiri = json.loads(json.dumps(politika))
+        asiri["max_epochs"] = mod.protokol_tavani() + 1
+        mod.POLITIKA.write_text(json.dumps(asiri, ensure_ascii=False), encoding="utf-8")
+        if not mod.butce_olc()["ihlaller"]:
+            raise AssertionError("an epoch count over the protocol ceiling was accepted")
+        bozuk = json.loads(json.dumps(politika))
+        bozuk["weight_decay"] = 0.0
+        mod.POLITIKA.write_text(json.dumps(bozuk, ensure_ascii=False), encoding="utf-8")
+        try:
+            mod.politika_oku()
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a zero weight decay was accepted")
+    finally:
+        mod.POLITIKA.write_text(gercek, encoding="utf-8")
+    if mod.butce_olc()["ihlaller"]:
+        raise AssertionError("the committed policy breaches its own measurement")
+    # The ceiling is read from the grant crate, not repeated: prove it is a number
+    # and that it is the crate's, so a second literal cannot drift in.
+    tavan = mod.protokol_tavani()
+    kaynak = mod.GRANT_KAYNAGI.read_text(encoding="utf-8")
+    if f"MAX_TRAINING_GRANT_EPOCHS: u32 = {tavan}" not in kaynak:
+        raise AssertionError("the ceiling was not read from the grant crate")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3010,6 +3110,7 @@ GATES_EXTRA = {
     "eval-set-never-trained": (gate_eval_set_never_trained, selftest_eval_set_never_trained),
     "mup-measurement-reproduced": (gate_mup_measurement_reproduced, selftest_mup_measurement_reproduced),
     "data-mix-is-declared": (gate_data_mix_is_declared, selftest_data_mix_is_declared),
+    "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
     "assert-arity": (gate_assert_arity, selftest_assert_arity),
     "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),

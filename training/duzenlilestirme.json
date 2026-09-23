@@ -1,0 +1,17 @@
+{
+  "surum": 1,
+  "aciklama": "Veri-sınırlı rejimin düzenlileştirme ve epoch politikası (NN §8 adım 5, HH). Beyan edilen her sayı ya ölçülmüştür ya da 'ölçülmedi' diye etiketlidir; etiketsiz sayı yoktur.",
+  "weight_decay": 0.1,
+  "weight_decay_etiket": "ölçülmedi: güçlü ağırlık sönümünün aşırı öğrenmeyi geciktirdiği dış bir bulgudan alınmış yöntem referansı (HH). Lubot'ta ölçüm bir eğitim koşusu gerektirir, henüz yok.",
+  "max_epochs": 4,
+  "max_epochs_etiket": "ölçülmedi: bilinçli seçim. Protokol tavanı crates/grant MAX_TRAINING_GRANT_EPOCHS'tir ve bu politika o tavanı aşamaz; aşım kapı tarafından reddedilir.",
+  "epoch_basina_kalite_olcutu": "held_out_jeton_basina_kayip",
+  "epoch_kurali": "Bir epoch, kaydedilmiş ölçütü iyileştirmiyorsa sonraki epoch başlamaz. Ölçüt ölçülmeden epoch tüketilmez; ölçülmeyen bir iyileşme iyileşme değildir.",
+  "tekrar_degeri": {
+    "metrik": "etkin_kaynak_orani",
+    "tanim": "benzersiz_jeton / toplam_gecis. Tekrar arttıkça 1/epoch'a düşer; 'daha çok epoch = daha iyi' varsayımı bu oran raporlanmadan körlemesine yapılır.",
+    "getiri_azalmasinin_olcumu": "ölçülmedi: aynı verinin k. geçişinin marjinal değeri ancak bir eğitim koşusunda ölçülür. Bu dosya yalnız girdi-tarafı gerçekleri (benzersiz jeton, geçiş sayısı, oran) ölçer."
+  },
+  "karisim_orani_kaynagi": "training/veri-karisimi.json + veri-karisimi kaydı: sentetik/gerçek oranı orada beyan edilir ve ölçülür; bu politika onu tekrar etmez, yalnız ona bağlanır.",
+  "k1_dipnot": "Sıfırdan eğitim tercihi (K1) üç nedenle destekleniyor: alan özgün (kendi RPC adları, TR/EN karışık terminoloji), veri egemenliği gerekli, güncel ablasyonlar küçük-veri rejiminde bu yönü destekliyor. Bu bir yöntem/bulgu referansıdır, veri değildir - K2'yi bozmaz."
+}
