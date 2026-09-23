@@ -45,6 +45,10 @@ def grounded(record: dict) -> dict | None:
         ],
         "kind": record["kind"],
         "citation": citation,
+        # The passage's own digest travels with the row so a leak check stays
+        # mechanical: the evaluator compares this against the eval-only stamp
+        # list (PP) instead of re-parsing a citation string.
+        "content_id": record.get("content_id") or record.get("digest"),
     }
 
 

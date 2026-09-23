@@ -2623,6 +2623,155 @@ def selftest_model_spec_is_consistent() -> None:
         pass
 
 
+# --------------------------------------------------------------------------
+# gate: a passage stamped eval-only never becomes a training row (PP)
+# --------------------------------------------------------------------------
+# An eval set separated by intent leaks the moment discipline slips. This one
+# is separated by digest: the passage's own content_id is stamped, and the
+# check is mechanical from there on.
+
+
+def _eval_only_file_finding(path: Path) -> str | None:
+    """The stamp list's own shape. A malformed list is refused here so it can
+    never pass for an empty one."""
+    if not path.exists():
+        return "the eval-only stamp list is missing: the leak check would run on nothing"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        return f"not JSON: {err}"
+    if not isinstance(data, dict):
+        return "not a JSON object"
+    digests = data.get("digests")
+    if not isinstance(digests, list):
+        return "`digests` is not a list"
+    for digest in digests:
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            return f"`{digest!r}` is not a sha256 digest"
+    if len(set(digests)) != len(digests):
+        return "duplicate digest"
+    return None
+
+
+def gate_eval_set_never_trained() -> str:
+    """The eval-only list holds, and the check proves it fires on the real
+    pipeline rather than only on synthetic rows. The corpus this machine
+    builds is turned into an SFT set; every grounded row must carry the
+    `content_id` of the passage it came from, so the leak check cannot be
+    silently disarmed; and one row's own digest stamped into a temporary list
+    must make the evaluator refuse the whole set."""
+    import tempfile
+
+    stamp_list = ROOT / "training" / "eval" / "eval-only.json"
+    finding = _eval_only_file_finding(stamp_list)
+    if finding:
+        raise SystemExit(f"{stamp_list.relative_to(ROOT)}: {finding}")
+
+    def py(script: str, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(ROOT / script), *args],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+
+    with tempfile.TemporaryDirectory() as td:
+        corpus = str(Path(td) / "knowledge.jsonl")
+        sft = str(Path(td) / "sft.jsonl")
+        r1 = py("training/build_corpus.py", "--repo", ".", "--out", corpus)
+        if r1.returncode != 0:
+            raise SystemExit(f"the corpus the check examines does not build: {r1.stderr[-200:]}")
+        r2 = py("training/make_sft.py", "--corpus", corpus,
+                "--curriculum", "training/curriculum", "--out", sft)
+        if r2.returncode != 0:
+            raise SystemExit(f"the SFT set does not build: {r2.stderr[-200:]}")
+        rows = [
+            json.loads(line)
+            for line in Path(sft).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        grounded = [row for row in rows if row.get("kind") != "curriculum"]
+        if not grounded:
+            raise SystemExit("the SFT set has no grounded rows: the check would pass on nothing")
+        unaddressed = [row for row in grounded if not row.get("content_id")]
+        if unaddressed:
+            raise SystemExit(
+                f"{len(unaddressed)} grounded row(s) carry no content_id: "
+                "the leak check is disarmed"
+            )
+        r3 = py("training/eval_sft.py", "--sft", sft, "--eval-only", str(stamp_list))
+        if r3.returncode != 0:
+            raise SystemExit(f"a stamped passage is in the training set:\n{r3.stdout[-400:]}")
+        stamped = str(Path(td) / "stamped.json")
+        Path(stamped).write_text(
+            json.dumps({"digests": [grounded[0]["content_id"]]}), encoding="utf-8"
+        )
+        r4 = py("training/eval_sft.py", "--sft", sft, "--eval-only", stamped)
+        if r4.returncode == 0:
+            raise SystemExit(
+                "the evaluator accepted a row whose own passage is stamped "
+                "eval-only: the check is decoration"
+            )
+        if "eval-only" not in r4.stdout:
+            raise SystemExit(
+                f"the spiked set was refused without naming the eval-only leak:\n{r4.stdout[-300:]}"
+            )
+        n_grounded = len(grounded)
+
+    stamps = len(json.loads(stamp_list.read_text(encoding="utf-8"))["digests"])
+    return (
+        f"{stamps} stamped passage(s), {n_grounded} grounded row(s) checked, "
+        f"none stamped; the evaluator refuses a spiked stamp"
+    )
+
+
+def selftest_eval_set_never_trained() -> None:
+    """The canaries: a leaked row must produce a finding, an unstamped row
+    must not, and a malformed stamp list must be refused rather than read as
+    empty."""
+    import importlib.util
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location(
+        "eval_sft", str(ROOT / "training" / "eval_sft.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    digest = "a" * 64
+    row = {
+        "messages": [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": "a body long enough to count on its own\n\nSource: a/b.rs:1",
+            },
+        ],
+        "kind": "doc",
+        "citation": "a/b.rs:1",
+        "content_id": digest,
+    }
+    assert any("eval-only" in f for f in mod.evaluate([row], {digest})["findings"]), (
+        "a stamped row passed the evaluator: the gate is decoration"
+    )
+    assert not mod.evaluate([row], {"b" * 64})["findings"], (
+        "an unstamped row was refused"
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        broken = Path(td) / "broken.json"
+        broken.write_text(json.dumps({"digests": ["not-a-digest"]}), encoding="utf-8")
+        if _eval_only_file_finding(broken) is None:
+            raise AssertionError("a malformed stamp list passed for an empty one")
+        doubled = Path(td) / "doubled.json"
+        doubled.write_text(json.dumps({"digests": [digest, digest]}), encoding="utf-8")
+        if _eval_only_file_finding(doubled) is None:
+            raise AssertionError("a duplicated stamp passed")
+        whole = Path(td) / "whole.json"
+        whole.write_text(json.dumps({"digests": [digest]}), encoding="utf-8")
+        if _eval_only_file_finding(whole) is not None:
+            raise AssertionError("a well-formed stamp list was refused")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2657,6 +2806,7 @@ GATES_EXTRA = {
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
+    "eval-set-never-trained": (gate_eval_set_never_trained, selftest_eval_set_never_trained),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
     "assert-arity": (gate_assert_arity, selftest_assert_arity),
     "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),
