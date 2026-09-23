@@ -319,15 +319,35 @@ name = "lubot"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "lubot-anlama",
  "lubot-answer",
+ "lubot-denetim",
  "lubot-doc",
+ "lubot-erisim",
+ "lubot-esik",
  "lubot-grant",
  "lubot-index",
+ "lubot-izolasyon",
+ "lubot-kanit",
+ "lubot-kuyruk",
+ "lubot-mimari",
+ "lubot-muhur",
+ "lubot-olcek",
  "lubot-read",
  "lubot-sikistir",
+ "lubot-takip",
  "lubot-tools",
+ "lubot-usl",
+ "lubot-yetenek",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lubot-anlama"
+version = "0.1.0"
+dependencies = [
+ "lubot-read",
 ]
 
 [[package]]
@@ -341,11 +361,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-denetim"
+version = "0.1.0"
+dependencies = [
+ "lubot-muhur",
+]
+
+[[package]]
 name = "lubot-doc"
 version = "0.1.0"
 dependencies = [
  "pdf-extract",
 ]
+
+[[package]]
+name = "lubot-erisim"
+version = "0.1.0"
+dependencies = [
+ "lubot-read",
+]
+
+[[package]]
+name = "lubot-esik"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-grant"
@@ -361,6 +399,33 @@ dependencies = [
  "lubot-read",
  "unicode-normalization",
 ]
+
+[[package]]
+name = "lubot-izolasyon"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-kanit"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-kuyruk"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-mimari"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-muhur"
+version = "0.1.0"
+dependencies = [
+ "lubot-read",
+]
+
+[[package]]
+name = "lubot-olcek"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-read"
@@ -379,6 +444,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-takip"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-tools"
 version = "0.1.0"
 dependencies = [
@@ -386,6 +455,17 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "lubot-usl"
+version = "0.1.0"
+dependencies = [
+ "lubot-muhur",
+]
+
+[[package]]
+name = "lubot-yetenek"
+version = "0.1.0"
 
 [[package]]
 name = "md-5"
