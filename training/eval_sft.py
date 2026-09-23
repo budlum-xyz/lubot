@@ -11,13 +11,17 @@ builder's contract says cannot happen:
   repetition, not knowledge;
 * an answer body under the measured floor - the smallest body in the pinned
   self-corpus is 41 characters, so 20 is generous and only truly empty or
-  truncated rows trip it.
+  truncated rows trip it;
+* a grounded row whose passage carries an eval-only stamp (PP) - a passage
+  marked as a held-out evaluation source never becomes a training row, and
+  the leak is binary: one row is enough to refuse the set.
 
 Measured on the self-corpus (2026-09-08): 776 rows (748 grounded + 28
 curriculum), zero uncited, zero duplicates, minimum body 41.
 
 Usage:
     python3 training/eval_sft.py --sft corpus/sft.jsonl
+    python3 training/eval_sft.py --sft corpus/sft.jsonl --eval-only training/eval/eval-only.json
     python3 training/eval_sft.py --self-test
 """
 
@@ -26,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -38,7 +43,29 @@ def digest_of(row: dict) -> str:
     return hashlib.sha256((user + "\x00" + assistant).encode("utf-8")).hexdigest()
 
 
-def evaluate(rows: list[dict]) -> dict:
+def load_eval_only(path: Path) -> set[str]:
+    """The eval-only stamp list (PP). Fail closed: a list that cannot be
+    read as a list of unique lowercase sha256 digests is refused, never
+    treated as empty - an unreadable stamp wearing the shape of silence is
+    exactly the leak this list exists to make impossible."""
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        raise SystemExit(f"{path}: not JSON: {err}") from err
+    digests = data.get("digests") if isinstance(data, dict) else None
+    if not isinstance(digests, list):
+        raise SystemExit(f"{path}: `digests` must be a list")
+    for digest in digests:
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SystemExit(f"{path}: not a sha256 digest: {digest!r}")
+    if len(set(digests)) != len(digests):
+        raise SystemExit(f"{path}: duplicate digest")
+    return set(digests)
+
+
+def evaluate(rows: list[dict], eval_only: set[str] | None = None) -> dict:
     """Measure the rows; `findings` empty means the set is trainable."""
     findings: list[str] = []
     grounded = [r for r in rows if r.get("kind") != "curriculum"]
@@ -69,6 +96,13 @@ def evaluate(rows: list[dict]) -> dict:
         findings.append(
             f"{empty} row(s) with an answer body under {MIN_BODY_CHARS} characters"
         )
+    stamps = set(eval_only or ())
+    leaked = sum(
+        1 for row in grounded
+        if row.get("content_id") and row["content_id"] in stamps
+    )
+    if leaked:
+        findings.append(f"{leaked} grounded row(s) whose passage is stamped eval-only")
     characters = sum(len(m["content"]) for r in rows for m in r["messages"])
     return {
         "rows": len(rows),
@@ -76,6 +110,8 @@ def evaluate(rows: list[dict]) -> dict:
         "curriculum": len(curriculum),
         "unique": len(seen),
         "approx_tokens": characters // 4,
+        "eval_only_stamps": len(stamps),
+        "leaked": leaked,
         "findings": findings,
     }
 
@@ -119,12 +155,38 @@ def selftest() -> None:
         }
     ]
     assert any("under" in f for f in evaluate(tiny)["findings"])
+    stamped = "a" * 64
+    leak = [
+        {
+            "messages": [
+                {"role": "user", "content": "q"},
+                {
+                    "role": "assistant",
+                    "content": "a body long enough to count on its own\n\nSource: a/b.rs:1",
+                },
+            ],
+            "kind": "doc",
+            "citation": "a/b.rs:1",
+            "content_id": stamped,
+        }
+    ]
+    assert any(
+        "eval-only" in f for f in evaluate(leak, {stamped})["findings"]
+    ), "a stamped row passed the evaluator: the leak check is decoration"
+    assert not evaluate(leak, {"b" * 64})["findings"], (
+        "an unstamped row was refused: the stamp list is not being read as a set"
+    )
     print("self-test OK")
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sft")
+    parser.add_argument(
+        "--eval-only",
+        default=str(Path(__file__).resolve().parent / "eval" / "eval-only.json"),
+        help="eval-only stamp list (PP); passages listed here never train",
+    )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     if args.self_test:
@@ -135,7 +197,7 @@ def main(argv: list[str]) -> int:
         for line in Path(args.sft).read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    report = evaluate(rows)
+    report = evaluate(rows, load_eval_only(Path(args.eval_only)))
     print(json.dumps({k: v for k, v in report.items() if k != "findings"}, ensure_ascii=False))
     if report["findings"]:
         for finding in report["findings"]:

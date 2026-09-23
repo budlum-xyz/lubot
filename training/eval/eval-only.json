@@ -1,0 +1,7 @@
+{
+  "note": "Eval-only damga listesi (PP bolumu). Bir held-out degerlendirme sorusu yazildigi an, dayandigi pasajin content_id'si buraya damgalanir. Amac niyetle ayrilmis bir kumenin sessizce sizmasi degil, sizintinin fiziksel olarak imkansiz olmasidir: damgali bir pasaj satira donusmeye calisirsa `eval-set-never-trained` kapisi egitim turunu reddeder.",
+  "kural": "Sizinti ikili bir durumdur: tek damga bile yeterlidir, oran esigi yoktur. Liste bos olsa da mekanizma kuruludur ve kapi kendi ihlalini yakaladigini kanitlar.",
+  "damga_bicimi": "content_id = sha256(pasaj metni); korpus kaydindaki content_id alani ile birebir ayni deger",
+  "yeni_damga": "held-out soru yazildiginda: korpus kaydinin content_id'sini buraya ekle, listeyi sirala; damga kapidan (eval-set-never-trained) gecmeden kabul edilmis sayilmaz",
+  "digests": []
+}
