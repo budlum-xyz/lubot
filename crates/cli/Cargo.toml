@@ -16,6 +16,19 @@ lubot-tools = { path = "../tools" }
 lubot-grant = { path = "../grant" }
 lubot-read = { path = "../read" }
 lubot-sikistir = { path = "../sikistir" }
+lubot-muhur = { path = "../muhur" }
+lubot-denetim = { path = "../denetim" }
+lubot-kuyruk = { path = "../kuyruk" }
+lubot-erisim = { path = "../erisim" }
+lubot-mimari = { path = "../mimari" }
+lubot-esik = { path = "../esik" }
+lubot-takip = { path = "../takip" }
+lubot-anlama = { path = "../anlama" }
+lubot-usl = { path = "../usl" }
+lubot-olcek = { path = "../olcek" }
+lubot-izolasyon = { path = "../izolasyon" }
+lubot-kanit = { path = "../kanit" }
+lubot-yetenek = { path = "../yetenek" }
 
 [lints]
 workspace = true
