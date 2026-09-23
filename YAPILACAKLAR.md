@@ -39,11 +39,20 @@ Lubot'un kendisi.
       30 adım, kayıp **4.156951 → 2.501726** (bellek içi dizi; komut bunun
       korpus ölçümü olmadığını aynı satırda söylüyor). Epoch tavanı buraya
       yazılmadı, `lubot-grant`'ten okunuyor.
-- [ ] **Eğitim çekirdeğinin korpusa bağlanması.** Rust tarafında tokenizer yok
-      (BPE Python'da), o yüzden çekirdek korpusu henüz okuyamıyor. `lubot-bpe-v2`
-      sözlüğünü okuyan bir Rust jetonlayıcı + korpus yükleyici gerekiyor;
-      `tokenizer-vocab-is-frozen` kapısı sözlüğün donmuş olduğunu zaten
-      doğruluyor, yani iki tarafın aynı sözlüğü paylaştığı denetlenebilir.
+- [x] **Rust jetonlayıcı** — `crates/jeton` + `lubot jetonla` (kapı 61).
+      Donmuş `lubot-bpe-v2` sözlüğünü okuyor (fail-closed: `vocab_size == 256 +
+      merge`, birleştirme DAG'ı, ve **uygulayamadığı ön-işlem deseni reddediyor**
+      — yaklaşık uygulamak yerine). Ölçülen: **1767/1767 kayıt Python'la birebir
+      aynı jetonlandı, 102654 jeton**, 93712 ön-jeton. İki kolay hata ölçülerek
+      yakalandı: (a) dört sınıfı karakter bölümlemesi sanmak — `[\W_]+` açgözlü
+      ve `\W` boşluğu içerdiği için `"; oku"` → `"; "` + `"oku"`, üç ön-jeton
+      değil; (b) `\d` yerine `is_numeric()` kullanmak Nl/No'yu (½, ², Romen
+      rakamı) içeri alırdı, Nd kategorisi kullanıldı. Kalan: bu jetonlayıcıyı
+      eğitim çekirdeğine bağlayıp korpus üzerinde gerçek bir tur koşmak.
+- [ ] **Eğitim çekirdeğinin korpusla ilk gerçek turu.** Jetonlayıcı hazır,
+      çekirdek hazır; eksik olan ikisini birleştiren veri yolu (korpus → jeton
+      dizisi → pencere) ve K6 donanımında ölçülecek ilk kayıp eğrisi. Sınav
+      skoru hâlâ ölçülemez: eğitilmiş kontrol noktası yok.
 - [x] **Ölçümün kendine geri beslenmemesi kuralı** (kapı 60
       `measurements-do-not-feed-back`). Bulundu ve kurala bağlandı: `README.md`
       korpusun içinde olduğu için ratchet satırındaki korpus türevi sayılar

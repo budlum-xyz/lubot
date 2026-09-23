@@ -329,6 +329,7 @@ dependencies = [
  "lubot-grant",
  "lubot-index",
  "lubot-izolasyon",
+ "lubot-jeton",
  "lubot-kanit",
  "lubot-kuyruk",
  "lubot-mimari",
@@ -412,6 +413,13 @@ dependencies = [
 [[package]]
 name = "lubot-izolasyon"
 version = "0.1.0"
+
+[[package]]
+name = "lubot-jeton"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "lubot-kanit"
