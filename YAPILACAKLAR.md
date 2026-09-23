@@ -24,8 +24,20 @@ Lubot'un kendisi.
       sayılır, geçmeyenler **nedeniyle** negatif havuza yazılır, yeterlilik farkı
       iki kayıttan yeniden hesaplanır (kapı 55). Tur 1: 88/88 satır geçti,
       0 negatif, fark karşılaştırılabilir değil (ilk tur bir tabandır).
-- [ ] **Adım 8 — Ölçme.** L/Z/AA held-out sınav seti + GG'nin doğru kıyas
-      sınıfıyla ilk "kapışma" ölçümü; zafer ilanı değil başlangıç temeli.
+- [x] **Adım 8a — Kıyas sınıfı beyanı.** `training/kiyas_sinifi.py` (kapı 56):
+      parametre `model_spec.json`'dan, jeton `egitim_butcesi.py --olc`'ten
+      okunuyor (ikinci literal yok). Ölçülen: **924.288 parametre**, sınırın
+      (SmolLM2-135M = 135.000.000) **altında**; 96.645 benzersiz jeton;
+      **0.1046 jeton/param** (yani parametre başına 9.56 jeton). Kural:
+      "kapışma" iddiası yalnız **görev ekseninde** (alıntı doğruluğu + red
+      disiplini) yapılabilir; parametre ekseninde bir iddia kaydı kapı reddediyor.
+      Ratchet'e `exam` anahtarı eklendi (sınav sorusu sayısı, yalnız yükselir).
+- [ ] **Adım 8b — Held-out sınav setini yaz.** `training/eval/sinav-seti.jsonl`
+      bugün **0 soru**; damga mekanizması kurulu ve kanaryalı (damgasız bir soru
+      reddediliyor). Kalan iş: soruları yazmak ve her sorunun dayandığı pasajı
+      `eval-only.json`'a damgalamak.
+- [ ] **Adım 8c — İlk kapışma ölçümü.** Görev ekseninde, taban olarak raporla —
+      zafer ilanı değil. Eğitilmiş kontrol noktası yokken (K6) ölçülemez.
 
 ## Dış repolardan derlenen yöntemler
 
