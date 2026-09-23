@@ -162,18 +162,29 @@ def butce_olc() -> dict:
         # differ by an order of magnitude. Recorded, flagged, not resolved -
         # which corpus trains the model is an operator decision.
         "bulgu_veri_butcesi": {
+            "olculen": (
+                f"self korpusu (corpus/knowledge-self.jsonl.gz) {jeton} benzersiz "
+                f"jeton uretiyor; {param} parametreye karsi "
+                f"{round(jeton / param, 6) if param else 0.0} jeton/param. "
+                "Spec'in 1.94 jeton/param beyani YUZEY korpusuna (1.791.712 jeton, "
+                f"spec notu) ait; fark {round(1.94 / (jeton / param), 2) if jeton and param else 0.0} kat."
+            ),
+            "hukum": (
+                f"spec'in veri butcesi beyani self korpusu icin tutmuyor: {param} "
+                f"parametre {jeton} benzersiz jetona karsi geliyor (jeton basina "
+                "~10 parametre). Bu bir BULGUDUR; hangi korpusun egitilecegi "
+                "operator karari."
+            ),
+            "yapilmayan": (
+                "model_spec.json degistirilmedi, spec beyani silinmedi, korpus "
+                "degistirilmedi. Kayit bulguyu tasir, duzeltme yapmaz."
+            ),
             "olculen_korpus": "self (corpus/knowledge-self.jsonl.gz)",
             "olculen_benzersiz_jeton": jeton,
             "spec_beyaninin_dayandigi_korpus": "yuzey (1.791.712 jeton, spec notu)",
             "olculen_jeton_basina_param": round(jeton / param, 6) if param else 0.0,
             "spec_beyani_jeton_basina_param": 1.94,
             "fark_kati": round(1.94 / (jeton / param), 2) if jeton and param else 0.0,
-            "hukum": (
-                "spec'in veri butcesi beyani self korpusu icin tutmuyor: 924.288 parametre "
-                "89.443 benzersiz jetona karsi geliyor (jeton basina ~10 parametre). "
-                "Bu bir BULGUDUR; hangi korpusun egitilecegi operator karari ve "
-                "model_spec.json bu turda degistirilmedi."
-            ),
         },
         "ihlaller": ihlaller,
         "olculmeyen": [
