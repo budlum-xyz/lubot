@@ -3664,6 +3664,62 @@ def selftest_claims_carry_their_evidence() -> None:
         hedef.write_text(gercek, encoding="utf-8")
 
 
+def gate_decision_latency_is_recorded() -> str:
+    """The speed axis has a number on it, and the number says what it includes.
+
+    U makes speed and unit cost a second axis; an axis with no measurement on it
+    is a preference. This checks that the baseline exists, is mechanical, and
+    carries the caveat that the timing includes process startup - without it the
+    figure reads as the head's own cost, which is a smaller and false number.
+    """
+    import json as _json
+
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "karar-gecikme-2026-09-23.json"
+    if not kayit_dosya.is_file():
+        raise SystemExit("no decision-latency baseline is recorded")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "karar_gecikme.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the latency baseline does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    gecikme = kayit["gecikme"]
+    return (
+        f"decision path measured over {gecikme['kosu_sayisi']} runs: median "
+        f"{gecikme['medyan_ms']} ms (process startup included, stated in the record)"
+    )
+
+
+def selftest_decision_latency_is_recorded() -> None:
+    """Canaries: a one-run baseline, a missing caveat and a self-contradicting
+    interval must each be refused. None of them needs the binary."""
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "karar_gecikme.py"), "--self-test"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise AssertionError(f"the latency canaries did not fire: {kosu.stdout[-300:]}")
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "karar-gecikme-2026-09-23.json"
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    try:
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_decision_latency_is_recorded()
+            raise AssertionError("an unrecorded latency axis was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3720,6 +3776,10 @@ GATES_EXTRA = {
     "claims-carry-their-evidence": (
         gate_claims_carry_their_evidence,
         selftest_claims_carry_their_evidence,
+    ),
+    "decision-latency-is-recorded": (
+        gate_decision_latency_is_recorded,
+        selftest_decision_latency_is_recorded,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),

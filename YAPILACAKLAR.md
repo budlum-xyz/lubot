@@ -69,10 +69,17 @@ Lubot'un kendisi.
 - [ ] **Canny'nin kalan yarısı:** commit/PR gövdesindeki "bitti" ifadelerinin
       yanında SHA + koşu numarası aramak. Çalışma ağacında olmadığı için kapı
       olarak değil, süreç kuralı olarak duruyor.
-- [ ] **jev-trader → karar gecikmesi ekseni.** Karar yolu üretken yoldan ayrı
-      ölçülmeli. Kalan iş: `lubot karar` için tekrarlanabilir bir gecikme
-      tabanı (N koşu, medyan) ve bunun ratchet'e `karar_gecikme_ms` olarak
-      girmesi — U bölümünün hız ekseni.
+- [x] **jev-trader → karar gecikmesi ekseni.** `training/karar_gecikme.py`
+      (kapı 59): `lubot karar tek evet:0.9` **50 koşu**, medyan **2.237 ms**,
+      en düşük 2.059 / en yüksek 3.507 ms, sapma 0.357 ms. Ölçülen süre **süreç
+      başlatmayı içeriyor** ve bu, kaydın kapı tarafından zorunlu tutulan
+      `uyari` alanında duruyor: okunacak sayı bir çağırının ödeyeceği **üst
+      sınır**, başlığın kendi maliyeti değil. **Bilerek ratchet'e konmadı**:
+      duvar saati makineye bağlıdır, burada ölçülen sayı daha yavaş bir CI
+      makinesinde "gerileme" gibi görünürdü. Eksen beyan ediliyor, sayı eşik
+      yapılmıyor.
+- [ ] **jev-trader'ın kalanı:** karar başına enerji ve tekrarlı sorularda
+      marjinal maliyet. Ölçüm düzeneği yok; donanım tarafı K6'da.
 - [ ] **Prism → mevcut hattı değiştirmeden önce yargılayan katman.** Kalan iş:
       karar başlığını `ask`'ten önce bir kabul filtresi olarak bağlamak; kapsam
       reddi ve enjeksiyon tespiti başlığa devredilirken kalite bataryasının
