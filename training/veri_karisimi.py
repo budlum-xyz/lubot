@@ -500,7 +500,10 @@ def self_test() -> int:
     BEYAN.write_text(json.dumps(sikisik, ensure_ascii=False), encoding="utf-8")
     try:
         karisim = karisim_olc(satirlari_topla(1, 0))
-        if not karisim["bant_ihlalleri"]:
+        # Kanarya dogru sebepten gecmeli: ihlal TAM YAMALANAN katmani
+        # adlandirmali. Korpus kurulmamisken baska bir katmanin tavanina
+        # carpmak bu kanaryayi yanlis sebeple gecirebilir.
+        if not any(i.startswith("gercek: pay") for i in karisim["bant_ihlalleri"]):
             raise SystemExit("self-test: tavan asimi yakalanmadi")
         # A floor above the measured share has to refuse too, or a stratum can
         # be deleted by accident without anybody deciding to delete it. The

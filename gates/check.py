@@ -3047,10 +3047,12 @@ def selftest_training_budget_is_declared() -> None:
     gercek = mod.POLITIKA.read_text(encoding="utf-8")
     politika = json.loads(gercek)
     try:
+        tavan = mod.protokol_tavani()
         asiri = json.loads(json.dumps(politika))
-        asiri["max_epochs"] = mod.protokol_tavani() + 1
-        mod.POLITIKA.write_text(json.dumps(asiri, ensure_ascii=False), encoding="utf-8")
-        if not mod.butce_olc()["ihlaller"]:
+        asiri["max_epochs"] = tavan + 1
+        # Korpus gerektirmeyen saf kural uzerinden: CI'da "Gate self-tests"
+        # adimi korpus kurulmadan ONCE kosar, butce_olc() burada kosamazdi.
+        if not mod.politika_ihlalleri(asiri, tavan):
             raise AssertionError("an epoch count over the protocol ceiling was accepted")
         bozuk = json.loads(json.dumps(politika))
         bozuk["weight_decay"] = 0.0
@@ -3063,8 +3065,8 @@ def selftest_training_budget_is_declared() -> None:
             raise AssertionError("a zero weight decay was accepted")
     finally:
         mod.POLITIKA.write_text(gercek, encoding="utf-8")
-    if mod.butce_olc()["ihlaller"]:
-        raise AssertionError("the committed policy breaches its own measurement")
+    if mod.politika_ihlalleri(politika, mod.protokol_tavani()):
+        raise AssertionError("the committed policy breaches its own ceiling")
     # The ceiling is read from the grant crate, not repeated: prove it is a number
     # and that it is the crate's, so a second literal cannot drift in.
     tavan = mod.protokol_tavani()
