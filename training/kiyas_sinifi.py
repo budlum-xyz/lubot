@@ -84,9 +84,28 @@ def sinav_satirlari() -> list[dict]:
     ]
 
 
+def _eval_sft():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "eval_sft", str(ROOT / "training" / "eval_sft.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def damgali_kimlikler() -> set[str]:
-    veri = json.loads(DAMGA.read_text(encoding="utf-8"))
-    return set(veri.get("damgalar", []))
+    """The stamped passages, read by the reader that owns the contract.
+
+    `eval_sft.load_eval_only` fails closed on a malformed list and reads the
+    `digests` key. An earlier version of this script read a key named
+    `damgalar`, which does not exist, so the leak check always saw an empty set
+    and would have called every exam question unstamped the day the first one
+    was written. One reader, one key.
+    """
+    return _eval_sft().load_eval_only(DAMGA)
 
 
 def olc() -> dict[str, Any]:

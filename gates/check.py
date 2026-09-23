@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+import gzip
 import json
 import re
 import subprocess
@@ -3468,6 +3469,97 @@ def selftest_comparison_class_is_declared() -> None:
             kayit_dosya.write_text(gercek, encoding="utf-8")
 
 
+def gate_exam_set_is_held_out() -> str:
+    """The exam set is held out physically, not by intention.
+
+    A stamp list nobody honours is a wish. So this checks the whole chain:
+    every question's passage is stamped, no stamp is orphaned, and - the part
+    that matters - building the SFT set from the corpus really drops every
+    stamped passage. Detection without prevention gives a refused run, not a
+    held-out exam.
+    """
+    import json as _json
+    import tempfile
+
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "sinav-seti-2026-09-23.json"
+    if not kayit_dosya.is_file():
+        raise SystemExit("no exam set is declared")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sinav.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"the exam set does not re-verify: {kosu.stdout.strip()[-300:]}")
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    damga = _json.loads((ROOT / "training" / "eval" / "eval-only.json").read_text(encoding="utf-8"))
+    damgalar = damga.get("digests", [])
+    if not damgalar:
+        raise SystemExit("the exam set is declared but nothing is stamped")
+
+    # Prevention, measured: the stamped passages must not survive into the SFT
+    # set. Without the corpus this cannot be run, and the self-test says so.
+    if not (ROOT / "corpus" / "knowledge-self.jsonl.gz").is_file():
+        raise SystemExit("the corpus is missing: prevention cannot be measured")
+    with tempfile.TemporaryDirectory() as td:
+        duz = Path(td) / "korpus.jsonl"
+        with gzip.open(ROOT / "corpus" / "knowledge-self.jsonl.gz", "rb") as kaynak:
+            duz.write_bytes(kaynak.read())
+        sft = Path(td) / "sft.jsonl"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "make_sft.py"),
+             "--corpus", str(duz), "--curriculum", "training/curriculum",
+             "--out", str(sft)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(f"the SFT set does not build: {kosu.stderr[-200:]}")
+        rapor = _json.loads(kosu.stdout)
+        if rapor.get("dropped_eval_only") != len(damgalar):
+            raise SystemExit(
+                f"{len(damgalar)} passage(s) are stamped but make_sft dropped "
+                f"{rapor.get('dropped_eval_only')}: the exam set is not held out"
+            )
+    return (
+        f"{kayit['sinav_seti']['soru_sayisi']} exam question(s), "
+        f"{len(damgalar)} stamped passage(s), all of them dropped from the "
+        "training set"
+    )
+
+
+def selftest_exam_set_is_held_out() -> None:
+    """Canaries: an unstamped question, an orphan stamp and a missing declaration
+    must each be refused; the prevention run needs the corpus and is skipped
+    loudly when it is absent."""
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sinav.py"), "--self-test"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise AssertionError(f"the exam set canaries did not fire: {kosu.stderr[-200:]}")
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "sinav-seti-2026-09-23.json"
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    if not (ROOT / "corpus" / "knowledge-self.jsonl.gz").is_file():
+        print(
+            "self-test OK [exam-set-is-held-out] "
+            "(korpus yok: onleme kosusu atlandi, kural kanaryalari kosuldu)"
+        )
+        return
+    try:
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_exam_set_is_held_out()
+            raise AssertionError("an undeclared exam set was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -3516,6 +3608,10 @@ GATES_EXTRA = {
     "comparison-class-is-declared": (
         gate_comparison_class_is_declared,
         selftest_comparison_class_is_declared,
+    ),
+    "exam-set-is-held-out": (
+        gate_exam_set_is_held_out,
+        selftest_exam_set_is_held_out,
     ),
     "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
