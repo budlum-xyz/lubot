@@ -2880,6 +2880,99 @@ def selftest_mup_measurement_reproduced() -> None:
             mod.KAYIT_DIZINI = gercek
 
 
+# --------------------------------------------------------------------------
+# gate: the training mix is declared, and the declaration is enforced (NN §8.4)
+# --------------------------------------------------------------------------
+# A mix nobody wrote down is a mix nobody can audit: a set that quietly becomes
+# 99% one source still trains and still looks like a set. So the strata are
+# declared in `training/veri-karisimi.json` with a share band each, and the
+# builder refuses rather than adjusts.
+
+
+def gate_data_mix_is_declared() -> str:
+    """The mix is rebuilt from its declaration and the record has to survive it:
+    an undeclared stratum, a share outside its declared band, or a grounded row
+    with no content_id each refuse the build. The record is also checked against
+    the mechanical-run schema, because a mix report is an evaluation run."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "veri-karisimi-2026-09-23.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit(
+            f"{kayit_yolu.relative_to(ROOT)} is missing: an unrecorded mix is a mix nobody declared"
+        )
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "veri_karisimi.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        raise SystemExit(
+            "the declared mix does not rebuild:\n"
+            + "".join(f"  {line}\n" for line in (r.stdout + r.stderr).strip().splitlines())
+        )
+    rec = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    finding = _eval_run_finding(rec)
+    if finding:
+        raise SystemExit(f"{kayit_yolu.name}: {finding}")
+    karisim = rec.get("karisim")
+    if not isinstance(karisim, dict) or "paylar" not in karisim:
+        raise SystemExit(f"{kayit_yolu.name}: the record carries no measured mix")
+    return (
+        f"veri karisimi beyandan yeniden kuruldu: {karisim.get('toplam_satir')} satir, "
+        f"sayilar {karisim.get('satir_sayilari')}, paylar {karisim.get('paylar')}"
+    )
+
+
+def selftest_data_mix_is_declared() -> None:
+    """The canaries: a share outside its band, a band that does not parse, and a
+    missing record must each be refused."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "veri_karisimi", str(ROOT / "training" / "veri_karisimi.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    beyan = json.loads(mod.BEYAN.read_text(encoding="utf-8"))
+    gercek = mod.BEYAN.read_text(encoding="utf-8")
+    sikisik = json.loads(json.dumps(beyan))
+    sikisik["katmanlar"]["gercek"]["taban_pay"] = 0.0
+    sikisik["katmanlar"]["gercek"]["tavan_pay"] = 0.01
+    mod.BEYAN.write_text(json.dumps(sikisik, ensure_ascii=False), encoding="utf-8")
+    try:
+        karisim = mod.karisim_olc(mod.satirlari_topla(1, 0))
+        if not karisim["bant_ihlalleri"]:
+            raise AssertionError("a share above its declared ceiling was accepted")
+    finally:
+        mod.BEYAN.write_text(gercek, encoding="utf-8")
+
+    gecersiz = json.loads(json.dumps(beyan))
+    gecersiz["katmanlar"]["gercek"]["taban_pay"] = 0.9
+    gecersiz["katmanlar"]["gercek"]["tavan_pay"] = 0.1
+    mod.BEYAN.write_text(json.dumps(gecersiz, ensure_ascii=False), encoding="utf-8")
+    try:
+        try:
+            mod.beyan_oku()
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a band whose floor is above its ceiling was accepted")
+    finally:
+        mod.BEYAN.write_text(gercek, encoding="utf-8")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        gercek_kayit = mod.KAYIT
+        mod.KAYIT = Path(td) / "yok.json"
+        try:
+            karisim = mod.karisim_olc(mod.satirlari_topla(1, 0))
+            if not karisim["paylar"]:
+                raise AssertionError("the mix measured nothing and said so")
+        finally:
+            mod.KAYIT = gercek_kayit
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -2916,6 +3009,7 @@ GATES_EXTRA = {
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
     "eval-set-never-trained": (gate_eval_set_never_trained, selftest_eval_set_never_trained),
     "mup-measurement-reproduced": (gate_mup_measurement_reproduced, selftest_mup_measurement_reproduced),
+    "data-mix-is-declared": (gate_data_mix_is_declared, selftest_data_mix_is_declared),
     "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
     "assert-arity": (gate_assert_arity, selftest_assert_arity),
     "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),

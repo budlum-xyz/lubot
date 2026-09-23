@@ -31,7 +31,7 @@ nothing to check a generation against.
 | context compression: route by content type, pins survive byte for byte, CCR store with digest re-verification, append-only savings ledger | `crates/sikistir` | 11 tests |
 | the runnable binary: corpus load, `ask`, grant book, output audit, closed-loop handoff; `ceilings`; multi-question `batch`; the uninterrupted-work queue (resume, budget, per-job gate check, loud halt); measured baselines that may only rise (`ratchet`); repository `envanter`; restricted `it` (only the listed paths are committed and pushed); the four-step `olc` verification chain; `durum`; the manifest map `graf`; the credential scan `guvenlik`; the file-kind router `dosya`; the ask_user-shaped decision battery `soru` (list/get/cevapla/durum); content search `ara`, measured `indeks`, the ordered reading plan `mufredat`, effort comparison `karsilastir`; context compression `sikistir` (--path/--geri-getir: typed routing, pinned lines, reversible CCR store, measured ledger) and failure mining `ogren` (pattern grouping, two-tier promotion); the queue operator (`queue ls`, `queue iptal` - a cancelled job never runs); batch writes the same audit and closed-loop trace as `ask` | `crates/cli` | 37 tests |
 
-433 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 51 gates, each with its own self-test; the ratchet holds (433 tests, 51 gates, 0 pedantic warnings, 1589 corpus records).
+433 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 52 gates, each with its own self-test; the ratchet holds (433 tests, 52 gates, 0 pedantic warnings, 1590 corpus records).
 
 ## Permission is an admission decision
 
