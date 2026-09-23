@@ -1,7 +1,7 @@
 {
-  "tests": 433,
-  "gates": 53,
+  "tests": 447,
+  "gates": 54,
   "pedantic": 0,
-  "corpus": 1591,
-  "tokens": 89547
+  "corpus": 1704,
+  "tokens": 94634
 }

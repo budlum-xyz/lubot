@@ -53,6 +53,8 @@ No dependencies inside the workspace. Each one holds a single rule.
 | `usl` | 710 | 14 | `muhur` | A read media verified by recomputation. `from_media` re-parses every line, verifies the seal, **and compares the rebuilt file byte for byte** - the check most implementations omit. Amounts are minor units; `1.5`, `007`, a swapped line order and a duplicate payout are all refused. |
 | `anlama` | 688 | 16 | `read` | Classification that can decline. Abstention distinguishes *no support* from *contradictory* from *below the floor*, because they need different responses. Ties are not resolved by category spelling. Calibration reports the gap between confidence claimed and accuracy observed, which is the number that says whether the confidence is usable. |
 
+| `tomurcuk` | 764 | 10 | `anlama` | The decision head: three closed output shapes and no text-producing surface, checked by a gate rather than by convention. A fixed tier order - deterministic code, then the head, then generation - and a route that skips a tier is refused. Confidence below the threshold escalates instead of deciding, and an empty ledger means the head may not decide alone, so moving a decision to the head stays a measured step. k-of-n agreement over independently initialised heads; deliberately not the chain's operator threshold. |
+
 ## The crates that were here first
 
 These predate this work and are listed so the table covers the whole workspace
@@ -73,7 +75,7 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 7137 | 101 | The runnable binary, and the only crate that reaches everything else. |
+| `cli` | 7413 | 105 | The runnable binary, and the only crate that reaches everything else. |
 
 Four modules carry the wiring:
 
