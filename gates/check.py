@@ -1601,29 +1601,35 @@ def selftest_eval_runs_are_mechanical() -> None:
 # gate: the frozen BPE vocab is versioned, lossless and structurally sound
 # --------------------------------------------------------------------------
 def gate_tokenizer_vocab_is_frozen() -> str:
-    """The frozen BPE vocab exists, is versioned and lossless: the committed
-    vocab round-trips every record of the corpus this tree builds, its merge
-    table is a valid DAG, its family name matches its file, and its
-    pretoken pattern is the trainer's own; a vocab that is derived on the
+    """Every frozen BPE vocab family is committed, versioned and lossless:
+    each vocab under training/tokenizer/ loads through the fail-closed
+    loader, round-trips every corpus record this machine holds, and its
+    pretoken pattern is the trainer's own; a family that is derived on the
     fly, structurally broken or silently renamed is refused."""
-    vocab = ROOT / "training" / "tokenizer" / "lubot-bpe-v1.json"
-    if not vocab.is_file():
+    vocab_dir = ROOT / "training" / "tokenizer"
+    vocabs = sorted(vocab_dir.glob("lubot-bpe-v*.json"))
+    if not vocabs:
         raise SystemExit(
-            "training/tokenizer/lubot-bpe-v1.json is missing; the vocab is "
-            "frozen and committed, never derived on the fly"
+            "training/tokenizer/ has no frozen vocab family; the vocab is "
+            "cut and committed, never derived on the fly"
         )
-    proc = subprocess.run(
-        [sys.executable, str(ROOT / "training" / "train_tokenizer.py"),
-         "--verify", "--corpus", "corpus/knowledge-self.jsonl.gz",
-         "--vocab", str(vocab)],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    )
-    if proc.returncode != 0:
+    corpora = sorted((ROOT / "corpus").glob("knowledge-*.jsonl.gz"))
+    if not corpora:
         raise SystemExit(
-            f"tokenizer verify failed: {(proc.stderr or proc.stdout)[-400:]}"
+            "no knowledge-*.jsonl.gz corpus under corpus/; CI builds it before the gates"
         )
-    return ("frozen vocab round-trips the corpus, the merge table is a DAG "
-            "and the family name matches the file")
+    for vocab in vocabs:
+        cmd = [sys.executable, str(ROOT / "training" / "train_tokenizer.py"),
+               "--verify", "--vocab", str(vocab)]
+        for corpus in corpora:
+            cmd += ["--corpus", str(corpus)]
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            raise SystemExit(
+                f"{vocab.name} failed verification: {(proc.stderr or proc.stdout)[-400:]}"
+            )
+    families = ", ".join(v.stem for v in vocabs)
+    return f"frozen vocab families round-trip every corpus record on this machine: {families}"
 
 
 def selftest_tokenizer_vocab_is_frozen() -> None:
