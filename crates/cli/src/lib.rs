@@ -3,7 +3,7 @@
 //!
 //! The library behind the `lubot` binary. It is deliberately thin over the
 //! five crates: load a corpus (with the same fail-closed rules the corpus was
-//! built with), answer through [`Reader::ask`], render through the single
+//! built with), answer through [`lubot_answer::Reader::ask`], render through the single
 //! [`Answer::render_markdown`] exit, and keep a grant book plus an output
 //! audit on disk.
 //!
@@ -30,7 +30,11 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod activation;
 pub mod graph;
+pub mod kosum;
+pub mod odeme;
+pub mod olcum;
 pub mod queue;
 pub mod ratchet;
 pub mod sikistir;
