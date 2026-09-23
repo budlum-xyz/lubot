@@ -1,0 +1,46 @@
+{
+  "name": "lubot-a1-derin-dar",
+  "schema": 1,
+  "karar": "NN-3: ilk eğitim spec'i. Derin-dar yönü veri zorlar (Chinchilla referans dengesi ~89.6K param, ölçülmedi; embedding tabanı tek başına 524.288 param — referans noktası bu sözlükle erişilemez, bilinçli aşılır). Sandbox tavanı 105 kat altta kalınır; kalıcı tavan owner donanımında ölçülünce spec yeniden doğrulanır (K6).",
+  "vocab_family": "lubot-bpe-v2",
+  "vocab_size": 8192,
+  "d_model": 64,
+  "n_layers": 8,
+  "n_heads": 2,
+  "d_ff": 256,
+  "max_seq_len": 256,
+  "max_seq_len_etiket": "ölçüldü: yüzey korpusu kayıt uzunluğu p95 ≈ 246 token (2.74 bayt/token); p99 üstü kayıtlar parçalamaya (JJ, AST-farkında) kalır",
+  "weight_tying": {
+    "tied": true,
+    "logit_scale": "1/d_model",
+    "not": "paylaşılan matris embedding kurallarıyla yaşar (init std sabit, LR α); readout'un Θ(1/n²) etkisi ileri geçişte logit ölçeğiyle. İşaretli karar: yöntem ilhamı, ölçülmedi; NN-4'te ilk denetlenecek"
+  },
+  "attention_scale": "1/d_k",
+  "param_groups": [
+    {"tensor": "token_embedding (bağlı readout)", "role": "embedding", "init_std_formulu": "base_init_std (genişlikten bağımsız)", "lr_formulu": "base_lr (genişlikten bağımsız)"},
+    {"tensor": "wq/wk/wv/wo + bias (katman başına)", "role": "hidden", "init_std_formulu": "(2/fan_in) ** 0.5", "lr_formulu": "base_lr (hedef genişlikte); proxy P transferi: base_lr*P/n"},
+    {"tensor": "w1/b1/w2/b2 MLP (katman başına)", "role": "hidden", "init_std_formulu": "(2/fan_in) ** 0.5", "lr_formulu": "base_lr (hedef genişlikte); proxy P transferi: base_lr*P/n"},
+    {"tensor": "layernorm'lar (katman + final)", "role": "layernorm", "init": "1 (bias 0)", "lr": "base_lr"}
+  ],
+  "mu_p_etiket": "yöntem ilhamı: Tensor Programs V (arXiv 2203.03466) + Lingle 2024 (arXiv 2404.05728); bu makinede ölçülmedi — ölçüm NN-4'ün işi",
+  "params": {
+    "embedding_bagli": 524288,
+    "dikkat": 133120,
+    "mlp": 264704,
+    "layernorm": 2176,
+    "toplam": 924288
+  },
+  "params_etiket": "turetildi: tensersiz sayım formülü (model_spec.say_params)",
+  "corpus_reference": {
+    "kaynak": "budlum-yuzeyi.jsonl.gz (2026-09-23 taze kuruluş, lubot b1a8d92)",
+    "bpe_tokens": 1791712,
+    "etiket": "ölçüldü (train_tokenizer --verify)"
+  },
+  "tokens_per_param_not": "1.791.712 token / 924.288 param ≈ 1.94 token/param; Chinchilla referansı 20 (ölçülmedi) → referansa göre ~10 kat fazla parametre; embedding tabanından kaçılamaz, karar metninde beyan",
+  "ceiling_reference": {
+    "max_params_train_fp32_adamw": 97565184,
+    "kaynak": "workspace lubot-sifirdan-kosu/olcum/tavan-sandbox-2026-09-23.json (bench_hardware -> recommend_model_size zinciri, sandbox CPU 2026-09-23)",
+    "label": "olculdu (bench_hardware zinciri, turetildi tavan)",
+    "not": "sandbox geçicidir; kalıcı tavan owner donanımı ölçülünce bu sayı ve spec yeniden doğrulanır (K6)"
+  }
+}
