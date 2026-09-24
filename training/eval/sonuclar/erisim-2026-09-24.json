@@ -1,0 +1,44 @@
+{
+  "is": "Alma katmani sinav seti uzerinde olculdu: damgalanmis pasaj ilk 3 alinti icinde mi? Model cagrilmaz, bu yuzden jeton alanlari sifir; olcum BM25 sirasidir.",
+  "kanit": {
+    "bulunamayan": [
+      {
+        "neden": "ilk n icinde yok",
+        "soru": "sinav-01"
+      },
+      {
+        "neden": "ilk n icinde yok",
+        "soru": "sinav-02"
+      }
+    ],
+    "ikinci_olcum": {
+      "bulunamayan": [
+        {
+          "neden": "ilk n icinde yok",
+          "soru": "sinav-07"
+        }
+      ],
+      "ilk_n_icinde": 11,
+      "ilk_sirada": 5,
+      "sorgu_alani": "alinti"
+    },
+    "ilk_n_icinde": 10,
+    "ilk_sirada": 10,
+    "n": 3,
+    "sorgu_alani": "tam",
+    "soru": 12
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 4.57
+  },
+  "kosucu": "ara",
+  "olcut": {
+    "ad": "sorularin_yuzde_sekseninde_damga_ilk_uc_alintida",
+    "sonuc": true
+  },
+  "tarih": "2026-09-24"
+}
