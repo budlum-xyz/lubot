@@ -70,7 +70,7 @@ each one shows it to hold, not a claim about how it was written.
 | `read` | 855 | 28 | The three source channels, SHA-256 provenance, the corpus surface, magic-byte file kind with route refusals before reading. |
 | `index` | 617 | 21 | Passages with line ranges, secret masking on the write path, normalized BM25 with a coverage floor. |
 | `grant` | 719 | 19 | View grants, revocation, expiry, the audit log. Permission is settled before the index is searched, so a refused item is never scored. |
-| `tools` | 1729 | 47 | The exact-rational calculator, the command router, deterministic command-risk shapes. |
+| `tools` | 1760 | 48 | The exact-rational calculator, the command router, deterministic command-risk shapes. |
 | `sikistir` | 672 | 11 | Context compression: typed routing, pins that survive byte for byte, a CCR store with digest re-verification, an append-only savings ledger. |
 | `doc` | 106 | 4 | Rich-document reading: PDF text extraction, paragraph-aware chunking. |
 | `answer` | 590 | 15 | The assembled reading loop with a schema-validated exit. |

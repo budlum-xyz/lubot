@@ -22,3 +22,10 @@
 - oneri: --ogrenme-orani 0.01 -> 0.003875 (aile optimizasyon)
 - adim butcesi: 265
 - ATILDI: skor 7.357786 (mevcut 4.980211, esik 0.001)
+- TABAN: adim 140, iki kosu ayni kaybi verdi (6.671741)
+
+# Oturum 2026-09-24T15:29:19 - adim butcesi 140
+
+## Deney 3 (2026-09-24T15:29:19) - kaynak: dugme-uzayi
+- oneri: --agirlik-sonumu 0.1 -> 0.037500000000000006 (aile optimizasyon)
+- adim butcesi: 140
