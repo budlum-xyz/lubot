@@ -501,6 +501,37 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       (`doc-pdf-feeds-corpus`), ses girdisi kapsam dışı. Görsel **girdi** QQ
       maddesinde ayrıca duruyor.
 
+## Android arayüzü (APK)
+
+- [x] **JNI köprüsü** — `crates/arayuz`, 367 satır, 4 test. Kendi mantığı yok:
+      CLI'ın koştuğu `ask` yolunu cihaza açıyor. Dört dışa aktarım: `kurulus`,
+      `soru`, `belgeEkle`, `surum`. Hata yutulmuyor, `HATA:` önekiyle Java'ya
+      dönüyor ve arayüz onu olduğu gibi gösteriyor.
+- [x] **Sade arayüz** — `android/`: tek ekran, AndroidX yok, framework
+      bileşenleriyle. Soru kutusu, iki düğme (Sor / Belge al), kaydırılabilir
+      ve seçilebilir cevap alanı, durum satırı. Ağ izni yok: Lubot cihaz
+      dışına çıkmıyor, korpus cihazda.
+- [x] **Cihazdan içerik alma** — `ACTION_OPEN_DOCUMENT` ile seçilen metin
+      okunuyor ve izole kayda ekleniyor. **K2 korunuyor:** cihaz belgesi
+      korpusa karışmıyor; `source: cihaz`, `licence: kullanici-girdisi` ile
+      ayrı dosyada duruyor, alıntı hangi kayda ait olduğunu kaybetmiyor.
+- [x] **Gradle'siz APK derlemesi** — `android/derle.sh`: aapt2 → javac
+      (UTF-8) → d8 → zip → zipalign → apksigner. AGP 8 Java 17 istiyor,
+      zincirde Java 11 var; o yüzden Android'in kendi araçları kullanılıyor.
+      Betik paketin içeriğini doğrulamadan "bitti" demiyor: dex, `.so`,
+      korpus, manifest ve arsc pakette mi diye bakıyor.
+      Ölçülen çıktı: **784 KB, imzalı, arm64-v8a**, Rust cdylib 1.4 MB.
+- [ ] **Cihazda çalışma doğrulaması.** Burada ölçülemedi: sandbox'ta cihaz ya
+      da emülatör yok. APK imzalı ve içeriği doğrulanmış, ama JNI çağrısının
+      gerçek bir cihazda cevap döndürdüğü **ölçülmedi**.
+- [ ] **Diğer ABI'ler.** Yalnız `arm64-v8a` derlendi; `armeabi-v7a` ve
+      `x86_64` (emülatör) betikte parametre olarak durmuyor.
+- [ ] **OPERATÖR KARARI — cihazdan gelen belge kalıcı korpusa girebilir mi?**
+      Şu an girmiyor, izole duruyor. K2 korpusun budlum yüzeyi olduğunu
+      söylüyor; cihazdan gelen içerik dışarıdan geliyor. Kalıcı kabul K3'ün
+      `doc` yolunu ve lisans/provenans kaydını gerektirir. Karar operatörün;
+      bu madde o kararı bekliyor, kod o kararı vermeden ilerlemiyor.
+
 ## Operatör kararı bekleyen bulgular (kod değiştirilmedi)
 
 - [ ] **`bulgu_veri_butcesi`.** Spec'in 1.94 token/param beyanı **yüzey**

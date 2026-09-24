@@ -1,9 +1,9 @@
 {
-  "tests": 474,
+  "tests": 478,
   "gates": 61,
   "pedantic": 0,
-  "corpus": 1850,
-  "tokens": 115517,
+  "corpus": 1873,
+  "tokens": 116861,
   "bootstrap": 1,
   "exam": 12
 }
