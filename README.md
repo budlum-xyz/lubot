@@ -163,6 +163,13 @@ Three gates guard the data: `corpus-records-carry-licence` (every record in
 `corpus-records-carry-provenance` (every record carries the asset_id +
 content_id pair), and `ratchet-holds` (the record count may only rise).
 
+Measured numbers age, and one of them is re-measured by CI: the
+comparison-class record is rebuilt from this tree on every run, so the order
+of a commit is edit -> `python3 training/build_corpus.py --repo .` ->
+`python3 training/kiyas_sinifi.py --kur` -> `python3 gates/check.py --all` ->
+commit. A record regenerated before the last edit is stale by construction,
+and the gate says so with both numbers.
+
 Epoch accounting is fail-closed: `training/epoch_ledger.py` is the
 pipeline-side half of the chain `TrainingDataGrant` (time + max epochs); a
 corpus pass refuses to start on an expired or exhausted grant, and each
