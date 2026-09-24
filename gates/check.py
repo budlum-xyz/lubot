@@ -4746,18 +4746,28 @@ def selftest_corpus_kinds_agree() -> None:
 
 
 # --- I: alma (retrieval) yuzeyinin olcumu -----------------------------------
+# Almak, model cagirmaz: BM25 ayni korpusu tarar. Bu yuzden olcum ikiliyi
+# ister ama agirlik istemez - ve ikili yoksa `cargo run` ile 12 soru 12 kez
+# derlemeye kalkisirdi; bir kez release derlenir.
+
+
+def _er_ikili() -> str:
+    """Olcum icin ikili spec'i: release yoksa bir kez derlenir."""
+    import shlex
+
+    if not (ROOT / "target" / "release" / "lubot").is_file():
+        subprocess.run(["cargo", "build", "--release", "-p", "lubot"], cwd=ROOT,
+                       capture_output=True, text=True, check=False)
+    return shlex.join(_binary())
 
 
 def _er_kos(*ek: str) -> list[str]:
-    """Kucuk olcum kosusu: ikili + korpus + sinav seti + ek bayraklar."""
-    import shlex
-
-    ikili = shlex.join(_binary())
+    """Alma olcumu: korpus + sinav seti + ikili, verilen ek bayraklarla."""
     return [
         sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
         "--corpus", "corpus/knowledge-self.jsonl.gz",
         "--sorular", "training/eval/sinav-seti.jsonl",
-        "--bin", ikili, *ek,
+        "--bin", _er_ikili(), *ek,
     ]
 
 
@@ -4775,9 +4785,7 @@ def gate_retrieval_at_k_is_measured() -> str:
     korpusu BM25 ile tarar ve damganin kacinci sirada ciktigi olculur.
     Kapi olcumu yeniden kosar, sayilarin ic tutarliligini (ilk sirada <=
     ilk n <= soru) ve kaydin agacla birlikte yasamasini denetler: kayittaki
-    sayi ile taze olcum uyusmuyorsa kayit yeniden uretilmelidir."""
-    import shlex
-
+    sayi taze olcumle uyusmuyorsa kayit yeniden uretilmelidir."""
     kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "erisim-2026-09-24.json"
     if not kayit_yolu.is_file():
         raise SystemExit("alma olcumu kaydi yok: training/eval/sonuclar/erisim-2026-09-24.json")
@@ -4785,17 +4793,32 @@ def gate_retrieval_at_k_is_measured() -> str:
     bulgu = _eval_run_finding(kayit)
     if bulgu:
         raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
-    if "/" in shlex.split(_er_kos()[4])[0] and not (ROOT / "target" / "release" / "lubot").is_file():
-        subprocess.run(["cargo", "build", "--release", "-p", "lubot"], cwd=ROOT,
-                       capture_output=True, text=True, check=False)
     taze = _er_olc()
     if not (taze["ilk_sirada"] <= taze["ilk_n_icinde"] <= taze["soru"]):
-        raise SystemExit(f"olcum ic tutarsiz: {taze['ilk_sirada']}/{taze['ilk_n_icinde']}/{taze['soru']}")
+        raise SystemExit(
+            f"olcum ic tutarsiz: ilk sirada {taze['ilk_sirada']}, "
+            f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}, soru {taze['soru']}"
+        )
     if len(taze["sirali"]) != taze["soru"]:
         raise SystemExit("her soru icin sira kaydi yok")
-    if taze["bulunamayan"] and len(taze["bulunamayan"]) > taze["soru"] - taze["ilk_n_icinde"]:
+    if len(taze["bulunamayan"]) > taze["soru"] - taze["ilk_n_icinde"]:
         raise SystemExit("bulunamayan listesi isabetsizlikle uyusmuyor")
     kanit = kayit["kanit"]
+    # Iki alan ayri olculur: yonerge soruyu seyreltiyorsa yalniz cekirdek
+    # cumleyle olcum daha iyi cikar; kayit bu ayrimi kanit.ikinci_olcum'de
+    # tasir ve kapi ikisini de taze olcumle karsilastirir.
+    kayit_alinti = kanit.get("ikinci_olcum")
+    if not isinstance(kayit_alinti, dict) or kayit_alinti.get("sorgu_alani") != "alinti":
+        raise SystemExit("kayit ikinci olcumu tasimiyor: iki sorgu bicimi olculmemis")
+    alinti = _er_olc("--sorgu-alani", "alinti")
+    if (alinti["ilk_sirada"], alinti["ilk_n_icinde"]) != (
+        kayit_alinti["ilk_sirada"], kayit_alinti["ilk_n_icinde"]
+    ):
+        raise SystemExit(
+            f"kayit bayat (alinti): kayitta {kayit_alinti['ilk_sirada']}/"
+            f"{kayit_alinti['ilk_n_icinde']}, olcum {alinti['ilk_sirada']}/"
+            f"{alinti['ilk_n_icinde']} - kaydi yeniden uret"
+        )
     if (taze["ilk_sirada"], taze["ilk_n_icinde"]) != (kanit["ilk_sirada"], kanit["ilk_n_icinde"]):
         raise SystemExit(
             f"kayit bayat: kayitta {kanit['ilk_sirada']}/{kanit['ilk_n_icinde']}, "
@@ -4806,13 +4829,14 @@ def gate_retrieval_at_k_is_measured() -> str:
         raise SystemExit("alma olcumu deterministik degil")
     return (
         f"alma olculdu: damga ilk sirada {taze['ilk_sirada']}/{taze['soru']}, "
-        f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}/{taze['soru']}"
+        f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}/{taze['soru']}; "
+        f"yalniz cekirdek cumleyle ilk {alinti['n']} icinde {alinti['ilk_n_icinde']}/{alinti['soru']}"
     )
 
 
 def selftest_retrieval_at_k_is_measured() -> None:
-    """Kanarya: korpusta olmayan damga 'bulunamayan' listesine duser ve
-    eksik girdiler kosuyu durdurur."""
+    """Kanarya: eksik korpus ve bos soru seti ayri ayri reddedilir - reddin
+    sebebi mesajdan okunur (ikili yoklugu degil)."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as td:
@@ -4822,20 +4846,24 @@ def selftest_retrieval_at_k_is_measured() -> None:
             "soru_kimligi": "kanarya-01", "soru": "cevap nedir",
             "content_id": "0" * 64, "kaynak_dosya": "yok.md",
         }) + "\n", encoding="utf-8")
-        kosu = subprocess.run([
+        eksik = subprocess.run([
             sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
             "--corpus", str(kok / "yok.jsonl.gz"), "--sorular", str(sorular),
-            "--bin", str(kok / "yok-bin"),
+            "--bin", _er_ikili(),
         ], cwd=ROOT, capture_output=True, text=True, check=False)
-        assert kosu.returncode != 0, "eksik korpus kabul edildi"
+        assert eksik.returncode != 0 and "korpus yok" in (eksik.stderr + eksik.stdout), (
+            "eksik korpus reddedilmedi: " + eksik.stderr[-200:]
+        )
         bos = kok / "bos.jsonl"
         bos.write_text("\n", encoding="utf-8")
-        kosu2 = subprocess.run([
+        bos_kosu = subprocess.run([
             sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
             "--corpus", "corpus/knowledge-self.jsonl.gz", "--sorular", str(bos),
-            "--bin", "target/release/lubot",
+            "--bin", _er_ikili(),
         ], cwd=ROOT, capture_output=True, text=True, check=False)
-        assert kosu2.returncode != 0, "bos soru seti kabul edildi"
+        assert bos_kosu.returncode != 0 and "soru seti bos" in (bos_kosu.stderr + bos_kosu.stdout), (
+            "bos soru seti reddedilmedi: " + bos_kosu.stderr[-200:]
+        )
 
 
 GATES_EXTRA = {
