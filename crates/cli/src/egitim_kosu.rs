@@ -468,7 +468,7 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
                     "adim {} epoch {}: kayip {:.6}, dogrulama {:.6}",
                     adim_kaydi.adim, adim_kaydi.epoch, adim_kaydi.kayip, d.kayip
                 );
-            } else if adim_kaydi.adim % bildirim == 0 {
+            } else if adim_kaydi.adim.is_multiple_of(bildirim) {
                 eprintln!(
                     "adim {} epoch {}: kayip {:.6} (lr {:.5}, gradyan {:.4})",
                     adim_kaydi.adim,
@@ -645,7 +645,7 @@ fn kosu_markdown(
         rapor.en_iyi_dogrulama.map_or("olculmedi".to_string(), |d| {
             format!(
                 "{d:.6} (adim {})",
-                rapor.en_iyi_dogrulama_adimi.map_or(0, |a| a)
+                rapor.en_iyi_dogrulama_adimi.unwrap_or(0)
             )
         })
     ));

@@ -669,6 +669,37 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       red); kaybolan şey işaretin kendisi. Hangi işaretin korunacağı operatör
       kararı.
 
+## Operatör kararları (uygulandı)
+
+**2026-09-24 — Süreç belgeleri cevap yüzeyinden damgalı.** Ölçülen arıza:
+"ilk eğitim spec'i nedir, hangi parametreler?" sorusu bu dosyanın iş
+sırası bölümlerinden üç dev pasaj döküyordu (gerçek cevap korpusun
+içindeyken). Karar: plan/süreç belgeleri korpustan **çıkarılmaz**,
+damgalanır (`served: false`) — arşiv ve ciro bütünlüğü korunur (kayıt
+sayısı gerilemez), ama damgalı kayıt ne aranabilir ne alıntılanabilir.
+
+- `training/servis-politikasi.json` tek gerçek listedir; builder
+  fail-closed (politika yok/bozuk/hiçbir kayda dokunmuyor → kurulum reddi).
+- Zincir: builder damgası → `LoadedCorpus.served_ids()` → `ara`/`ask`
+  aynı id listesinden indekslenir; `lubot corpus` servis-dışı sayısını basar.
+- Kanarya kapısı `unserved-records-never-cited` damganın kendisinin
+  dışladığını ispatlar: damgalı kanarya ASLA alıntılanamaz; aynı kanarya
+  damgasız bulunur (kör taramayı yeşil gösteremez). Kapı sayısı 68.
+- Ölçüm: 2777 kayıttan 30'u damgalı; aynı spec sorusu artık
+  `crates/egitim`'den alıntılı cevap veriyor (lubot-a1-derin-dar, d_model 64,
+  8 katman, 2 başlık, 924.288 parametre).
+- Geri dönüş: politika girdisini kaldır + korpus kurulumunu yenile —
+  tek satırlık veri değişikliği, kalıcı out-of-band itiraz kalmaz.
+- Eşlik eden bulgu ve düzeltme: damga sonrası Türkçe soru kelimeleri
+  (`hangi`, `neden`...) içerik terimi sayılıp kapsama tabanını düşürüyor
+  ve sorgu çoğulları tekil geçişleri kaçırıyordu
+  (`parametreler`/`parametre`). Stoplist genişledi ve paylaşılan-kök
+  eşleşmesi eklendi (yanlış-pozitif duvarı testli:
+  `sistematik`/`sistemimiz` eşleşmez).
+- Kapsam notu: TUR5'teki kabataslak `model egit/oku` denemesi eğitim-kosu +
+  çikarim yüzeyi (LUBOTCKPT v1, resume kimliği, cache kanıtlı) karşısında
+  GERİDE kaldığı için dahil edilmedi — üstün uygulama korundu.
+
 ## Süreç notları
 
 - [ ] **`lubot ratchet --set` yedi anahtarın dördünü yazıyor (bulgu, bu turda

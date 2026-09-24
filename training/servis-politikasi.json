@@ -1,0 +1,14 @@
+{
+  "politika_surumu": 1,
+  "karar": {
+    "tarih": "2026-09-24",
+    "kaynak": "operator direktifi: cihaz cevabi, is kuyrugu belgesinin (YAPILACAKLAR.md) pasajlarini cevap gibi alintiliyordu",
+    "ilke": "Plan ve surec belgeleri korpusta ARSIV olarak durur ama cevap yuzeyine CIKMAZ. Kayit silinmez (provenance ve ratchet gerilemesin), damgalanir: served: false. Damgali kayit ne okuma indeksine girer ne alintilanabilir; geri donus tek satirlik politika degisikligiyle yapilir ve kapida kanitlanir."
+  },
+  "servis_disi": [
+    {
+      "path": "YAPILACAKLAR.md",
+      "gerekce": "Is kuyrugu ve plan belgesi: kendini anlatan surec notlari bilgi korpusu degildir. Cevabin kaynagi muhendislik eserleridir — README, TRAINING, docs/ ve kaynak kod. Bu dosyanin satirlari bir sorunun cevabi olamaz, olsa olsa is kaydinin konusu olur."
+    }
+  ]
+}

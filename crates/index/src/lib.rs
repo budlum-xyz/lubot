@@ -234,10 +234,15 @@ impl Index {
 
 /// Neutral word list, closed on purpose: `what is a view grant` is really
 /// two terms, not six. Everything else stays a term.
-const STOPWORDS: [&str; 24] = [
+const STOPWORDS: [&str; 35] = [
     "the", "are", "was", "were", "and", "for", "with", "this", "that", "what", "which", "how",
     "why", "does", "can", "you", "about", "there", "nedir", "nasil", "nasıl", "gibi", "icin",
     "için",
+    // Turkish question words (stored in their normalised form; `terms_of`
+    // normalises before filtering). Repro decoder: "ilk eğitim spec'i nedir,
+    // hangi parametreler?" carried `hangi` as a content term and drowned the
+    // real answer below the coverage floor.
+    "hangi", "kac", "kaci", "kim", "kime", "neden", "nicin", "nerede", "neresi", "midir", "degil",
 ];
 
 /// NFD, combining marks stripped, lowercased: `İSTANBUL` and `istanbul` are
@@ -264,15 +269,22 @@ fn terms_of(question: &str) -> Vec<String> {
         .collect()
 }
 
-/// Does the normalised passage contain the term, exactly or one edit away?
-/// The fuzzy branch runs only over unique words of similar length, so the
-/// cost is bounded by the number of distinct words in the passage.
+/// Does the normalised passage contain the term, exactly, by shared stem,
+/// or one edit away? The stem branch answers the measured failure where a
+/// plural/cased query term (`parametreler`) missed the passage's singular
+/// word (`parametre`): a shared prefix of at least six characters that is
+/// also most of the shorter word. The fuzzy branch runs only over unique
+/// words of similar length, so the cost is bounded by the number of distinct
+/// words in the passage.
 fn norm_contains(norm: &str, term: &str) -> bool {
     if norm.contains(term) {
         return true;
     }
     if term.chars().count() < 5 {
         return false;
+    }
+    if stem_match(norm, term) {
+        return true;
     }
     let min_len = term.chars().count().saturating_sub(1);
     let max_len = term.chars().count() + 1;
@@ -281,6 +293,23 @@ fn norm_contains(norm: &str, term: &str) -> bool {
             && word.chars().count() <= max_len
             && word != term
             && within_one(term, word)
+    })
+}
+
+/// Shared stem: a query-side plural/cased form matches a passage-side word
+/// when the common prefix is at least six characters and reaches within
+/// three characters of the shorter word. The second clause is the
+/// false-positive wall: `sistematik`/`sistemimiz` share `sistem` but the
+/// stem is not most of either word, so they stay distinct.
+fn stem_match(norm: &str, term: &str) -> bool {
+    const MIN_STEM: usize = 6;
+    norm.split_whitespace().any(|word| {
+        let common = term
+            .chars()
+            .zip(word.chars())
+            .take_while(|(a, b)| a == b)
+            .count();
+        common >= MIN_STEM && common + 3 >= term.chars().count().min(word.chars().count())
     })
 }
 
@@ -440,6 +469,42 @@ mod tests {
         let mut index = Index::new();
         index.add(&item("a", "the modality ceiling is four"), 4);
         assert_eq!(index.search("modaliti", &["a".to_string()], 5).len(), 1);
+    }
+
+    #[test]
+    fn a_plural_query_term_matches_the_singular_passage_word() {
+        // Measured repro: "ilk eğitim spec'i nedir, hangi parametreler?"
+        // missed the TRAINING.md passage because `parametreler` never
+        // contains `parametre` in the query-to-passage direction.
+        let mut index = Index::new();
+        index.add(
+            &item(
+                "a",
+                "İlk spec lubot-a1-derin-dar: d_model 64, 8 katman, 2 başlık, 924.288 parametre.",
+            ),
+            4,
+        );
+        assert_eq!(
+            index
+                .search("spec parametreler katman", &["a".to_string()], 5)
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn suffix_lookalikes_do_not_match() {
+        let mut index = Index::new();
+        index.add(&item("a", "sistematik ayrim burada belgeli"), 4);
+        assert!(index.search("sistemimiz", &["a".to_string()], 5).is_empty());
+    }
+
+    #[test]
+    fn turkish_question_words_are_not_content_terms() {
+        let mut index = Index::new();
+        index.add(&item("a", "ilk spec lubot-a1-derin-dar olarak yazili"), 4);
+        // `hangi` would have failed coverage as a content term.
+        assert_eq!(index.search("spec hangi", &["a".to_string()], 5).len(), 1);
     }
 
     #[test]

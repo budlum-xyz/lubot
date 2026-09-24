@@ -344,6 +344,39 @@ def collect(root: Path, source: str, root_only: bool):
     yield from gate_records(root)
 
 
+POLITIKA_YOLU = Path(__file__).resolve().parent / "servis-politikasi.json"
+
+
+def politika_yukle() -> list[str]:
+    """Cevap yuzeyine cikmayacak kayit yollari (operator karari, fail-closed).
+
+    Politika dosyasi yoksa, bozuksa ya da bir girdisi hicbir kayda
+    dokunmuyorsa korpus KURULMAZ: bayat bir kapsam disi listesi yutmak,
+    dislamanin hic calismadigi bir korpusu sessizce yayinlamak demektir.
+    Donus: servis disi yol listesi.
+    """
+    if not POLITIKA_YOLU.is_file():
+        raise SystemExit(f"servis politikasi yok: {POLITIKA_YOLU} (damgasiz kurulum yapilamaz)")
+    try:
+        veri = json.loads(POLITIKA_YOLU.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"servis politikasi bozuk ({e}): bos sayilmaz, reddedilir") from e
+    girisler = veri.get("servis_disi")
+    if not isinstance(girisler, list) or not girisler:
+        raise SystemExit("servis politikasi bos ya da bicim bozuk: en az bir servis_disi girdisi gerekir")
+    yollar: list[str] = []
+    for girdi in girisler:
+        if not isinstance(girdi, dict) or not str(girdi.get("path", "")).strip() \
+                or not str(girdi.get("gerekce", "")).strip():
+            raise SystemExit("servis politikasi girdisi eksik alan tasiyor: path ve gerekce zorunlu")
+        yollar.append(str(girdi["path"]))
+    return yollar
+
+
+def servis_disi_mi(rel_yol: str, yollar: list[str]) -> bool:
+    return any(rel_yol == y or rel_yol.endswith("/" + y) for y in yollar)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", default=None,
@@ -397,6 +430,9 @@ def main() -> int:
         })
     spec_by_name = {s["source"]: s for s in per_source}
 
+    politika_yollari = politika_yukle()
+    dokunulan: set[str] = set()
+
     seen: set[str] = set()
     unique = []
     for record in records:
@@ -411,7 +447,34 @@ def main() -> int:
         record["content_id"] = key
         record["asset_id"] = spec["asset_id"]
         record["asset_id_pending"] = True
+        rel = str(record.get("path", ""))
+        if servis_disi_mi(rel, politika_yollari):
+            record["served"] = False
+            for y in politika_yollari:
+                if rel == y or rel.endswith("/" + y):
+                    dokunulan.add(y)
         unique.append(record)
+
+    # Iki bozukluk birden reddedilir: girdi VAR OLAN bir dosyaya ait ama hicbir
+    # kayga dokunmuyorsa politika bayattir (yol degisti ya karar kaldirildi).
+    # Diger ağacı kuran kapi fiksturunde o dosya HIC YOKSA girdi uygulanamaz
+    # demektir - orada yoluna sessizlik degil, sayilan bir "yok" sayaci islenir.
+    kokler = [Path(s["path"]).resolve() for s in sources]
+    bayat, yok_sayilan = [], 0
+    for y in politika_yollari:
+        if y in dokunulan:
+            continue
+        if any((kok / y).exists() for kok in kokler):
+            bayat.append(y)
+        else:
+            yok_sayilan += 1
+    if bayat:
+        raise SystemExit(
+            "servis politikasi bayat: su girdiler var olan yollara ait ama hicbir "
+            "kayda dokunmuyor: "
+            + ", ".join(bayat)
+            + " (ya yol degisti ya karar kaldirildi; ikisi de burada duzeltilir)"
+        )
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -426,12 +489,16 @@ def main() -> int:
     by_kind: dict[str, int] = {}
     by_source_final: dict[str, int] = {}
     characters = 0
+    damgali = 0
     for record in unique:
         by_kind[record["kind"]] = by_kind.get(record["kind"], 0) + 1
         by_source_final[record["source"]] = by_source_final.get(record["source"], 0) + 1
         characters += len(record["text"])
+        if record.get("served") is False:
+            damgali += 1
     print(json.dumps({
         "records": len(unique),
+        "not_served": damgali,
         "by_kind": by_kind,
         "characters": characters,
         "approx_tokens": characters // 4,

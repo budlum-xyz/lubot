@@ -3853,6 +3853,141 @@ def selftest_architecture_doc_tracks_layer_rule() -> None:
             belge.write_text(icerik, encoding="utf-8")
 
 
+def gate_unserved_records_never_cited() -> str:
+    """Operator decision (2026-09-24): process documents never answer a question.
+
+    The device replied to a spec question by dumping work-queue passages. The
+    decision: the archive keeps every record (provenance and the ratchet do
+    not regress), but a record the serving policy stamps `served: false` can
+    neither be searched nor cited. Checked three ways: the policy file is
+    well-formed and non-stale (the builder refuses a policy entry that touches
+    nothing), the stamp count in a fresh build agrees with the file, and a
+    canary corpus proves the stamp itself is what excludes a record - stamped
+    canary is never cited; the same canary unstamped is found again, so the
+    gate cannot pass on a blind reader.
+    """
+    import hashlib
+
+    politika = ROOT / "training" / "servis-politikasi.json"
+    if not politika.is_file():
+        raise SystemExit("training/servis-politikasi.json is missing")
+    veri = json.loads(politika.read_text(encoding="utf-8"))
+    girisler = veri.get("servis_disi")
+    if not isinstance(girisler, list) or not girisler:
+        raise SystemExit("the serving policy carries no servis_disi entries")
+    yollar = [g.get("path") for g in girisler if isinstance(g, dict)]
+    if any(not isinstance(y, str) or not y for y in yollar):
+        raise SystemExit("a serving-policy entry has no path")
+    if "YAPILACAKLAR.md" not in yollar:
+        raise SystemExit("the work-queue document fell out of the serving policy")
+
+    ikili = ROOT / "target" / "debug" / "lubot"
+    if not ikili.is_file():
+        ikili = ROOT / "target" / "release" / "lubot"
+    if not ikili.is_file():
+        raise SystemExit("no lubot binary: the canary ask cannot run")
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        gecici = Path(td)
+        korpus_yolu = gecici / "k.jsonl"
+        b = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "training" / "build_corpus.py"),
+                "--repo", str(ROOT),
+                "--out", str(korpus_yolu),
+            ],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if b.returncode != 0:
+            raise SystemExit(
+                f"the corpus does not build with the serving policy: {b.stderr[-200:]}"
+            )
+        damgali = 0
+        for satir in korpus_yolu.read_text(encoding="utf-8").splitlines():
+            if satir.strip() and json.loads(satir).get("served") is False:
+                damgali += 1
+        if damgali == 0:
+            raise SystemExit(
+                "no record is stamped served:false, though the policy names entries"
+            )
+
+        GIZ = "g13li-kanarya-2026"
+        def _kayit(yol: str, served: bool) -> dict:
+            metin = f"The work queue says the {GIZ} token stays internal."
+            return {
+                "kind": "markdown",
+                "text": metin,
+                "path": yol,
+                "source": "kapi",
+                "digest": hashlib.sha256(metin.encode()).hexdigest(),
+                "licence": "MIT",
+                "attribution": "kapi",
+                "content_id": hashlib.sha256((yol + str(served)).encode()).hexdigest(),
+                "asset_id": "a" * 64,
+                "served": served,
+            }
+
+        for served in (False, True):
+            deneme = gecici / f"kanarya-{served}.jsonl"
+            deneme.write_text(
+                json.dumps(_kayit("PLAN.md", served), ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            kosu = subprocess.run(
+                [
+                    str(ikili), "ask", "--corpus", str(deneme),
+                    "--reader", "kapi", "--effort", "1x",
+                    "work queue token stalk",
+                ],
+                cwd=ROOT, capture_output=True, text=True, check=False,
+            )
+            sizdi = GIZ in kosu.stdout or "PLAN.md" in kosu.stdout
+            if not served and sizdi:
+                raise SystemExit(
+                    "a stamped record was cited: the serving exclusion does not hold"
+                )
+            if served and not sizdi:
+                raise SystemExit(
+                    "an unstamped canary was not found: this gate is blind, not green"
+                )
+    return (
+        f"{damgali} archived records are stamped never-served; the canary proves "
+        "the stamp is what excludes a record (control run finds it)"
+    )
+
+
+def selftest_unserved_records_never_cited() -> None:
+    """Canaries: a missing policy file and a policy that lost the work-queue
+    document must each be refused. The binary-level canaries live in the gate
+    itself (the control run would refuse a blind exclusion)."""
+    politika = ROOT / "training" / "servis-politikasi.json"
+    icerik = politika.read_text(encoding="utf-8") if politika.is_file() else None
+    try:
+        if politika.is_file():
+            politika.unlink()
+        try:
+            gate_unserved_records_never_cited()
+            raise AssertionError("a missing serving policy was accepted")
+        except SystemExit:
+            pass
+        assert icerik is not None, "canary needs the real policy"
+        veri = json.loads(icerik)
+        veri["servis_disi"] = [
+            g for g in veri["servis_disi"] if g.get("path") != "YAPILACAKLAR.md"
+        ]
+        politika.write_text(json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            gate_unserved_records_never_cited()
+            raise AssertionError("a policy that lost the work-queue document was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if icerik is not None:
+            politika.write_text(icerik, encoding="utf-8")
+
+
 def _geri_besleme_ihlalleri(sayilar: set[str], yollar: set[str]) -> list[str]:
     """Which corpus-visible files restate a corpus-derived number."""
     import re as _re
@@ -5012,6 +5147,10 @@ GATES = {
     "no-panic-path": (gate_no_panic_path, selftest_no_panic_path),
     "readme-is-measured": (gate_readme_is_measured, selftest_readme_is_measured),
     **GATES_EXTRA,
+    "unserved-records-never-cited": (
+        gate_unserved_records_never_cited,
+        selftest_unserved_records_never_cited,
+    ),
 }
 
 
