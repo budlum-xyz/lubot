@@ -1118,6 +1118,79 @@ def selftest_danisma_layer_is_closed() -> None:
     ), "S2'siz dongu gecti"
 
 
+# --------------------------------------------------------------------------
+# kapi: belirsiz girdi bataryasi (madde 22 / fuzzing)
+# --------------------------------------------------------------------------
+def _belirsiz_girdi_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Batarya kaydi taze olcumle ayni mi ve panik sayisi sifir mi.
+
+    Iki ayri iddia denetlenir, ikisi de kanaryali:
+    * kayit tazeligi: tohum ve vaka sayisi ayni olmali - kaydi elle degistirmek
+      ya da bataryayi tohum degistirerek kaydirmak kapida gorunur;
+    * olcut: taze olcumde panik/asilma sifir olmali. Bir panik fail-closed
+      degil fail-silent'tir: surec duser, ret raporlanmaz.
+    """
+    for alan in ("tohum", "vaka_sayisi", "kosu_sayisi"):
+        if alan not in kayit or alan not in taze:
+            return f"batarya kaydinda {alan} yok"
+    if kayit["tohum"] != taze["tohum"]:
+        return f"kayit bayat: tohum kayitta {kayit['tohum']}, olcumde {taze['tohum']}"
+    if kayit["vaka_sayisi"] != taze["vaka_sayisi"]:
+        return (f"kayit bayat: vaka sayisi kayitta {kayit['vaka_sayisi']}, "
+                f"olcumde {taze['vaka_sayisi']} - kaydi yeniden uret")
+    if taze["panik"] or taze["asildi"]:
+        return f"belirsiz girdi panikletti: panik {taze['panik']}, asildi {taze['asildi']}"
+    if kayit.get("panik") or kayit.get("asildi"):
+        return (f"kayittaki olcum panik bildiriyor: panik {kayit.get('panik')}, "
+                f"asildi {kayit.get('asildi')}")
+    return None
+
+
+def gate_undefined_input_is_fuzzed() -> str:
+    """Ayristiricilar tohumlu dusmanca girdiyle sinanir; panik ve asilma sifirdir.
+
+    Madde 22: yeni bagimlilik yok, batarya standart kutuphane ile uretilir.
+    Hedefler `lubot` ikilisinin uc ayristirici yolu: korpus yukleyici, kimlik
+    tarayicisi (bayt duzeyi) ve sihirli-bayt yonlendiricisi.
+    """
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "belirsiz-girdi-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("belirsiz girdi kaydi yok: bedava guven beyani kabul edilmez")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "belirsiz_girdi.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=600,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"batarya kosmadi: {(kosu.stderr or kosu.stdout)[-200:]}")
+    try:
+        taze = json.loads(kosu.stdout[kosu.stdout.index("{"):])
+    except (ValueError, json.JSONDecodeError) as err:
+        raise SystemExit(f"batarya cikti vermedi: {err}") from err
+    bulgu = _belirsiz_girdi_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    return (f"{taze['kosu_sayisi']} kosu ({taze['vaka_sayisi']} vaka x 3 ayristirici), "
+            f"panik 0, asildi 0, ret {taze['ret']}, kabul {taze['kabul']}, tohum {taze['tohum']}")
+
+
+def selftest_undefined_input_is_fuzzed() -> None:
+    """Kanarya: bayat kayit, degismis tohum ve panikli olcum reddedilir."""
+    taze = {"tohum": 1, "vaka_sayisi": 10, "kosu_sayisi": 30, "panik": 0, "asildi": 0}
+    assert _belirsiz_girdi_bulgu(dict(taze), dict(taze)) is None, "gecerli kayit reddedildi"
+    assert "tohum" in (_belirsiz_girdi_bulgu(dict(taze, tohum=2), taze) or ""), "farkli tohum gecti"
+    assert "vaka sayisi" in (_belirsiz_girdi_bulgu(dict(taze, vaka_sayisi=9), taze) or ""), (
+        "bayat vaka sayisi gecti"
+    )
+    assert "panikletti" in (_belirsiz_girdi_bulgu(dict(taze), dict(taze, panik=1)) or ""), (
+        "olcumde panik gecti"
+    )
+    assert "kayittaki olcum" in (_belirsiz_girdi_bulgu(dict(taze, panik=1), taze) or ""), (
+        "kayitta panik beyani gecti"
+    )
+    assert "yok" in (_belirsiz_girdi_bulgu({"tohum": 1}, taze) or ""), "eksik alan gecti"
+
+
 
 # --------------------------------------------------------------------------
 # gate: rustfmt agrees with the tree (ci.py / olc.py power)
@@ -5920,6 +5993,7 @@ GATES_EXTRA = {
     "mutation-surface-is-closed": (gate_mutation_surface_is_closed, selftest_mutation_surface_is_closed),
     "injection-refusals-are-measured": (gate_injection_refusals_are_measured, selftest_injection_refusals_are_measured),
     "danisma-layer-is-closed": (gate_danisma_layer_is_closed, selftest_danisma_layer_is_closed),
+    "undefined-input-is-fuzzed": (gate_undefined_input_is_fuzzed, selftest_undefined_input_is_fuzzed),
     "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
     "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
     "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),
