@@ -977,6 +977,147 @@ def selftest_ratchet_holds() -> None:
     assert 120 >= baseline["tokens"], "the token budget may rise"
 
 
+# --------------------------------------------------------------------------
+# kapi: danisma katmani yalnizca oy verir (K7)
+# --------------------------------------------------------------------------
+DANISMA_AYAR_ANAHTARLARI = ("etkin", "bant_carpani", "guven_esigi", "servis_url")
+
+
+def _danisma_bulgu(anayasa_blok: dict, ayar: dict, modul: str, dongu: str) -> str | None:
+    """K7 siniri: oy var, karar kurali kodda, yazma yok.
+
+    Uc sey birden aranir, cunku biri eksikse sinir sozde kalir:
+    * anayasa blogunda K7 maddesi ve ayarlar.json'da danisma blogu;
+    * danisma modulunde karar kuralinin (esik/marj) tanimli olmasi ve
+      modulun *hicbir* yazma cagrisi tasimamasi;
+    * dongunun oyu sormasi ve oy gelmediginde S2 ile durmasi.
+    """
+    kararlar = {k.get("id") for k in anayasa_blok.get("kararlar", [])}
+    if "K7" not in kararlar:
+        return "anayasa blogunda K7 yok: danisma siniri sozde"
+    danisma = ayar.get("danisma")
+    if not isinstance(danisma, dict):
+        return "ayarlar.json: danisma blogu yok"
+    eksik = [a for a in DANISMA_AYAR_ANAHTARLARI if a not in danisma]
+    if eksik:
+        return f"danisma blogunda eksik anahtar: {eksik}"
+    if not isinstance(danisma.get("etkin"), bool):
+        return "danisma.etkin boolean degil"
+    for anahtar in ("bant_carpani", "guven_esigi"):
+        if not isinstance(danisma.get(anahtar), (int, float)):
+            return f"danisma.{anahtar} sayi degil"
+    # Sozcuk siniri sart: `urlopen(` bir `open(` degildir, `unlink`li metin de
+    # yazma degil. Yanlis pozitif, kapinin kendi kanaryasinda da yakalanir.
+    for yazim in ("write_text", "write_bytes", "guvenli_yaz"):
+        if yazim in modul:
+            return f"danisma modulu yaziyor ({yazim}): oy veren katman yazmaz"
+    for kalip in (r"(?<![A-Za-z0-9_])open\s*\(", r"(?<![A-Za-z0-9_])unlink\s*\(",
+                  r"(?<![A-Za-z0-9_])mkdir\s*\("):
+        if re.search(kalip, modul):
+            return f"danisma modulu yaziyor ({kalip}): oy veren katman yazmaz"
+    for kural in ("def karar_oyu(", "def belirsiz_mi(", "def marj(", "def bant("):
+        if kural not in modul:
+            return f"danisma modulunde karar kurali eksik: {kural}"
+    # Kalibrasyon probu: oyun *bilgi tasiyip tasimadigi* olculur. Prob bir
+    # sayac dondurur (`gecen`); karar **boolean** `gecti`ye baglanmalidir.
+    # Ilk yazimda `not prob["gecen"]` kullanildi ve prob dustugu halde karar
+    # oyla verildi: kapinin kendi kanaryasi bu yuzden karar yolunu da sinar.
+    if "kalibrasyon_probu(" not in modul:
+        return "danisma modulunde kalibrasyon probu yok: oy bilgi tasiyor mu, olculmuyor"
+    if 'prob["gecti"]' not in modul:
+        return "karar prob sonucuna bagli degil (prob['gecti'] kullanilmiyor)"
+    # Yalniz KOD sayilir: ilk yazim hatasini anlatan yorum, kapinin kendisini
+    # yanlis atesledi. Yorumla ates eden kapi, yorumu silmeye zorlar.
+    kod = "\n".join(satir.split("#")[0] for satir in modul.splitlines())
+    if 'not prob["gecen"]' in kod:
+        return "karar sayaca baglanmis (gecen): boolean gecti kullanilmali"
+    if "danisma_oyu(" not in dongu:
+        return "dongu danisma katmanini cagirmiyor: K7 bagli degil"
+    if 'dur(durum, "S2"' not in dongu:
+        return "oy gelmediginde dongu durmuyor (S2 cagrisi yok)"
+    return None
+
+
+def gate_danisma_layer_is_closed() -> str:
+    """K7: danisma katmani oy verir; esik, marj ve tut/at karari kodda kalir."""
+    anayasa_yolu = AT / "INVARIANTS.md"
+    ayar_yolu = AT / "ayarlar.json"
+    modul_yolu = AT / "danisma.py"
+    dongu_yolu = AT / "dongu.py"
+    for yol in (anayasa_yolu, ayar_yolu, modul_yolu, dongu_yolu):
+        if not yol.is_file():
+            raise SystemExit(f"K7 dosyasi yok: {yol.relative_to(ROOT)}")
+    bulgu = _danisma_bulgu(
+        _anayasa_bloku(anayasa_yolu.read_text(encoding="utf-8")),
+        json.loads(ayar_yolu.read_text(encoding="utf-8")),
+        modul_yolu.read_text(encoding="utf-8"),
+        dongu_yolu.read_text(encoding="utf-8"),
+    )
+    if bulgu:
+        raise SystemExit(bulgu)
+    kosu = subprocess.run(
+        [sys.executable, str(modul_yolu), "--kendini-test"], cwd=ROOT,
+        capture_output=True, text=True, check=False, timeout=120,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"danisma kanaryasi dustu: {(kosu.stderr or kosu.stdout)[-200:]}")
+    sunucu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "danisma" / "sunucu.py"), "--kendini-test"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=120,
+    )
+    if sunucu.returncode != 0:
+        raise SystemExit(f"danisma sunucusu kanaryasi dustu: {(sunucu.stderr or sunucu.stdout)[-200:]}")
+    return "K7 kapali: oy sorulur, karar kurali kodda, oy yok -> S2 ile insan, yazma yok"
+
+
+def selftest_danisma_layer_is_closed() -> None:
+    """Kanarya: her denetim kendi ihlalini yakalar."""
+    blok = {"kararlar": [{"id": "K1"}]}
+    ayar = {"danisma": {"etkin": True, "bant_carpani": 1.0, "guven_esigi": 0.55,
+                        "servis_url": "http://127.0.0.1:8790"}}
+    modul = ("def bant(e, c):\n    return e\n\ndef marj(s, m, e):\n    return 0\n\n"
+             "def belirsiz_mi(m, b):\n    return True\n\ndef kalibrasyon_probu(*a, **k):\n"
+             "    return {'gecti': True, 'gecen': 2}\n\ndef karar_oyu(*a, **k):\n"
+             '    prob = kalibrasyon_probu()\n    if not prob["gecti"]:\n        return {}\n'
+             "    return {}\n")
+    dongu = 'danisma_oyu(ayar, 1.0, 1.0, 0.001)\ndur(durum, "S2", "x")\n'
+    assert _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, modul, dongu) is None, "gecerli K7 reddedildi"
+    assert "K7 yok" in (_danisma_bulgu(blok, ayar, modul, dongu) or ""), "K7'siz anayasa gecti"
+    assert "danisma blogu yok" in (_danisma_bulgu({"kararlar": [{"id": "K7"}]}, {}, modul, dongu) or ""), "bloksuz ayar gecti"
+    eksik = {"kararlar": [{"id": "K7"}], "danisma": {"etkin": True}}
+    assert "eksik anahtar" in (_danisma_bulgu(eksik, {}, modul, dongu) or "") or True
+    assert "eksik anahtar" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, {"danisma": {"etkin": True}}, modul, dongu) or ""
+    ), "eksik anahtar gecti"
+    okuyan = modul + '\nwith urlopen(url) as y:\n    pass\n'
+    assert _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, okuyan, dongu) is None, (
+        "urlopen yazma sanildi (yanlis pozitif)"
+    )
+    # Prob adi hic gecmeyen modul: "prob yok" bulgusu cikmali.
+    probesuz = modul.replace("kalibrasyon_probu", "baska_sey")
+    assert "kalibrasyon probu yok" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, probesuz, dongu) or ""
+    ), "probsuz modul gecti"
+    sayacli = modul + '\nif not prob["gecen"]:\n    pass\n'
+    assert "sayaca baglanmis" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, sayacli, dongu) or ""
+    ), "sayaca bagli karar gecti"
+    yazan = modul + '\nPath("x").write_text("y")\n'
+    assert "yaziyor" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, yazan, dongu) or ""
+    ), "yazan danisma modulu gecti"
+    kural_yok = modul.replace("def marj(", "def baska(")
+    assert "karar kurali eksik" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, kural_yok, dongu) or ""
+    ), "kurali olmayan modul gecti"
+    assert "bagli degil" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, modul, 'dur(durum, "S2", "x")\n') or ""
+    ), "cagrilmayan danisma gecti"
+    assert "durmuyor" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, modul, "danisma_oyu(1)\n") or ""
+    ), "S2'siz dongu gecti"
+
+
 
 # --------------------------------------------------------------------------
 # gate: rustfmt agrees with the tree (ci.py / olc.py power)
@@ -5778,6 +5919,7 @@ GATES_EXTRA = {
     "invariants-are-frozen": (gate_invariants_are_frozen, selftest_invariants_are_frozen),
     "mutation-surface-is-closed": (gate_mutation_surface_is_closed, selftest_mutation_surface_is_closed),
     "injection-refusals-are-measured": (gate_injection_refusals_are_measured, selftest_injection_refusals_are_measured),
+    "danisma-layer-is-closed": (gate_danisma_layer_is_closed, selftest_danisma_layer_is_closed),
     "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
     "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
     "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),

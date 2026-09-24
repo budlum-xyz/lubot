@@ -42,6 +42,8 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 AT = Path(__file__).resolve().parent
 KOK = AT.parent
 KOSUM = AT / "kosum"
@@ -628,6 +630,22 @@ def kendini_gelistir(durum: dict, ayar: dict) -> dict | None:
 
 
 # --- tek deney -------------------------------------------------------------
+def danisma_oyu(ayar: dict, skor: float, mevcut: float | None, esik: float) -> dict:
+    """K7: belirsizlik bandindaki karar icin oy ister; karar kuralini degistirmez.
+
+    Danisma modulu yoksa ya da kapaliysa "danisilmadi" doner ve karar eskisi
+    gibi koda kalir: danisma katmani dongunun on kosulu degildir.
+    """
+    try:
+        import danisma as D
+    except ImportError:
+        return {"danisildi": False, "gerekce": "danisma modulu yok", "oy": None}
+    ayar_danisma = (ayar or {}).get("danisma", {})
+    if not ayar_danisma.get("etkin", False):
+        return {"danisildi": False, "gerekce": "danisma kapali", "oy": None}
+    return D.karar_oyu(ayar_danisma, skor, mevcut, esik, kart="tut_at")
+
+
 def tek_deney(durum: dict, ayar: dict, mutasyon: dict, adim: int, kaynak: str) -> dict:
     oneri = oneri_uret(durum, ayar, politika_oku(), mutasyon)
     if oneri["dugme"] is None:
@@ -660,6 +678,30 @@ def tek_deney(durum: dict, ayar: dict, mutasyon: dict, adim: int, kaynak: str) -
     mevcut = durum["en_iyi_skor"]
     esik = ayar["olcut"]["asgari_iyilesme"]
     iyilesti = mevcut is None or olcum["skor"] < mevcut - esik
+    # K7: karar *belirsiz* ise danisma katmani yalnizca OY verir. Marj, kabul
+    # esiginin bandi icindeyse oy sorulur; oy gelmez, gecersiz olur ya da guven
+    # esigin altinda kalirsa karar insana gider ve dongu durur (S2).
+    danisma = danisma_oyu(ayar, olcum["skor"], mevcut, esik)
+    if danisma["danisildi"]:
+        hafiza_yaz("experimentation.jsonl", {
+            "tur": "danisma", "deney": durum["deney"], "tarih": time.strftime("%Y-%m-%d"),
+            "skor": olcum["skor"], "mevcut_skor": mevcut, "esik": esik, **danisma,
+        })
+        gunluk_yaz(
+            f"- DANISMA: marj {danisma['marj']} bant {danisma['bant']} | oy {danisma['oy']} "
+            f"(guven {danisma.get('guven')}) | {danisma['gerekce']}"
+        )
+        if danisma["insan_gerekli"]:
+            dur(durum, "S2", f"danisma oyu karar vermedi: {danisma['gerekce']}")
+        # Oy ile kod karari celisirse karar KODDA kalir; celiski kayda gecer.
+        oy_tut = danisma["oy"] == "tut"
+        if oy_tut != iyilesti:
+            hafiza_yaz("experimentation.jsonl", {
+                "tur": "celiski", "deney": durum["deney"], "tarih": time.strftime("%Y-%m-%d"),
+                "oy": danisma["oy"], "kod_karari": "tut" if iyilesti else "at",
+                "gerekce": "karar kurali kodda; oy yalnizca kayda gecer",
+            })
+            gunluk_yaz(f"- CELISKI: oy {danisma['oy']}, kod {'tut' if iyilesti else 'at'} dedi")
     if not iyilesti:
         durum["atilan"] += 1
         hafiza_yaz("ideation.jsonl", {
@@ -962,6 +1004,26 @@ def kendini_test(uzun: bool = False) -> int:
         else:
             raise AssertionError("politikaya izinsiz anahtar yazildi")
         bulgular.append("S2 politika siniri")
+
+        # K7: danisma oyu yoksa karar insana gider; kapaliysa karar koda kalir.
+        # Kanarya kapali bir portu hedefler: oy gelmez, insan gerekir - gercek
+        # servisin acik olup olmamasi kanaryayi degistirmez.
+        ayar_d = json.loads(AYARLAR.read_text(encoding="utf-8"))
+        ayar_d["danisma"] = {"etkin": True, "bant_carpani": 1.0, "guven_esigi": 0.55,
+                             "servis_url": "http://127.0.0.1:9", "zaman_asimi_saniye": 1}
+        oy = danisma_oyu(ayar_d, 6.6717405, 6.671741, 0.001)
+        assert oy["danisildi"], "bant ici kararda oy sorulmadi"
+        assert oy["insan_gerekli"], "oy yokken karar insana gitmedi"
+        bulgular.append("K7 oy yok -> insan")
+        ayar_d["danisma"]["bant_carpani"] = 0.0
+        oy = danisma_oyu(ayar_d, 6.5, 6.671741, 0.001)
+        assert not oy["danisildi"], "bant disinda oy soruldu"
+        bulgular.append("K7 bant disi sorulmaz")
+        ayar_kapali = json.loads(AYARLAR.read_text(encoding="utf-8"))
+        ayar_kapali["danisma"] = {"etkin": False}
+        oy = danisma_oyu(ayar_kapali, 6.6717405, 6.671741, 0.001)
+        assert not oy["danisildi"], "kapali danisma soru sordu"
+        bulgular.append("K7 kapali -> karar koda kalir")
 
     (KOSUM, DURUM, DURUS, GUNLUK, HAFIZA, POLITIKA) = gercek
     if uzun:

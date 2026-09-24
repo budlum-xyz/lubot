@@ -1,0 +1,21 @@
+{
+  "surum": 1,
+  "not": "Danisma katmani kartlari. Karar kurali, esik ve sonuc KODDADIR (autonomous-training/danisma.py, dongu.py). Bu dosya yalnizca modele sorulacak soruyu tanimlar; model oy verir, karar vermez.",
+  "kartlar": {
+    "tut_at": {
+      "sorular": ["kabul"],
+      "secenekler": ["tut", "at"],
+      "aciklama": "Belirsizlik bandindaki bir deneyin tutulup atilmasina dair oy."
+    },
+    "sonraki_madde": {
+      "sorular": ["secim"],
+      "secenekler": [],
+      "aciklama": "Acik is listesinden sonraki madde; secenekler cagri aninda verilir."
+    },
+    "bulgu_kapi_degeri": {
+      "sorular": ["karar"],
+      "secenekler": ["kapi-yaz", "rapor-notu", "ertele"],
+      "aciklama": "Bir bulgunun kapı mi, rapor notu mu hak ettigi."
+    }
+  }
+}
