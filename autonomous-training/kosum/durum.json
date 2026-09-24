@@ -2,12 +2,11 @@
   "atilan": 2,
   "burakim": {},
   "butce_gozlemi": {
-    "adim": 265,
+    "adim": 140,
     "butce": 300,
-    "kaynak": "tekrar-2: ayni adim butcesinde en uzun gercek kosu",
-    "oran": 1.331,
-    "sure": 399.309,
-    "tarih": "2026-09-24T15:06:07"
+    "oran": 0.674,
+    "sure": 202.07,
+    "tarih": "2026-09-24T15:29:19"
   },
   "deney": 2,
   "durus": {
@@ -17,7 +16,7 @@
     "onay": null,
     "tarih": "2026-09-24T14:27:42"
   },
-  "en_iyi_skor": 4.980211,
+  "en_iyi_skor": 6.671741,
   "kanit": {},
   "kendini_gelistirme": {
     "pencere": [
@@ -43,21 +42,40 @@
       "tavan_parametre": 97565184
     },
     "kalibrasyon": {
-      "adim_basina_saniye": 0.874,
-      "adim_butcesi": 265,
-      "formul": "(sure_butcesi - yuk) / adim_basina_saniye * guvenlik_payi",
-      "kalibrasyon_kosusu_saniye": 27.48,
+      "adim_basina_saniye": 1.5068,
+      "adim_butcesi": 140,
+      "formul": "(sure_butcesi - yuk) / egim * guvenlik_payi, kadansa hizali",
+      "gozlem": {
+        "adim": 265,
+        "butce": 300,
+        "kaynak": "tekrar-2: ayni adim butcesinde en uzun gercek kosu",
+        "oran": 1.331,
+        "sure": 399.309,
+        "tarih": "2026-09-24T15:06:07"
+      },
+      "gozlem_egimi": 1.5068,
+      "kalibrasyon_kosusu_saniye": 28.55,
       "olculdu": true,
+      "problar": {
+        "kisa": {
+          "adim": 20,
+          "saniye": 28.55
+        },
+        "uzun": {
+          "adim": 100,
+          "saniye": 145.38
+        }
+      },
       "sure_butcesi_saniye": 300,
-      "yuk_saniye_varsayimi": 10.0
+      "yuk_saniye": 0.0
     }
   },
   "son_checkpoint": 0,
   "surum": 1,
   "taban": {
-    "adim": 265,
-    "skor": 4.980211,
-    "tarih": "2026-09-24T15:06:07",
+    "adim": 140,
+    "skor": 6.671741,
+    "tarih": "2026-09-24T15:29:19",
     "tekrarlanabilir": true
   },
   "tekrarlanabilir": true,
