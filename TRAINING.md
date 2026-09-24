@@ -325,6 +325,19 @@ Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar)
   gibi açıkça belirtilir: Tier -1 attestation-only "verifier böyle diyor"
   temelidir, matematiksel ispat değildir.
 
+## Risk kaydı (OO): her riskin bekçi kapısı
+
+Uygulama promptunun OO bölümündeki riskler yazılı uyarı olarak değil koşan
+kapı olarak durur:
+
+| risk | bekçi |
+| --- | --- |
+| Yanlış kıyas sınıfı (7B–9B sanmak) | `comparison-class-is-declared` (924.288 param; eşleşme iddiası yalnız görev ekseninde) |
+| Donanım büyürken hiperparametre kaybı | `mup-measurement-reproduced` (init ve θ₁ oranları her koşuda ölçülür) |
+| Derleyici-hakemli verinin tekdüzeliği | `gate-pairs-carry-referee` + `data-mix-is-declared` (karışım oranı beyanlı) |
+| Konsensüs maliyetinin fark edilmemesi | `decision-latency-is-recorded`, `first-answer-latency-is-recorded` (maliyet ekseni ölçülü) |
+| Mühendislik iskeleti/veri ayrımının bulanıklaşması | `training-runner-engineering-vs-data` (kapı 68) |
+
 ## Still open
 
 - Chain-side `TrainingDataGrant` issuance: NOT part of Lubot's design. The
