@@ -1,0 +1,2 @@
+{"gerekce": "S3 kanaryasi: parametre okuma yolu duzeltildi (spec.params.toplam + parca toplami denetimi)", "kosul": "S3", "tarih": "2026-09-24", "tur": "insan-onayi"}
+{"deney": 1, "dugme": "--ogrenme-orani", "eski": 0.01, "imza": "95053fd34c29", "karar": "atildi", "neden": "tam dogrulamada 3 kirmizi", "skor": 4.65311, "tarih": "2026-09-24", "tur": "deneme", "yeni": 0.016125}

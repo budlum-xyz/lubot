@@ -1,0 +1,9 @@
+{
+  "adim_basina_saniye": 0.874,
+  "adim_butcesi": 265,
+  "formul": "(sure_butcesi - yuk) / adim_basina_saniye * guvenlik_payi",
+  "kalibrasyon_kosusu_saniye": 27.48,
+  "olculdu": true,
+  "sure_butcesi_saniye": 300,
+  "yuk_saniye_varsayimi": 10.0
+}

@@ -1,0 +1,11 @@
+{
+  "script_version": 2,
+  "host": "e2b.local",
+  "python": "3.13.14",
+  "cpu_cores": 2,
+  "ram_bytes": 2081390592,
+  "ram_gib": 1.94,
+  "disk_free_bytes": 18826932224,
+  "disk_free_gib": 17.53,
+  "with_gpu": false
+}
