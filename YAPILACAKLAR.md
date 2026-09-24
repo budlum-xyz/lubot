@@ -545,6 +545,16 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
 
 ## Süreç notları
 
+- **Doğrulama CI'ın sabitlediği toolchain ile yapılır, en yenisiyle değil
+  (ölçüldü: bu turda CI koşusu 50 bu yüzden düştü).** CI `rustup default
+  1.88.0` kuruyor; yerelde 1.98.1 ile koşunca clippy temiz görünüyordu, ama
+  1.88'in clippy'si `crates/egitim`'deki bir test mesajında
+  `uninlined_format_args` istiyordu ve "Lints are errors" adımı düştü —
+  ardından test, kapı ve korpus adımları hiç koşmadı. Kural: doğrulamadan
+  önce `rustc --version`'ı `.github/workflows/ci.yml`'deki sürümle
+  karşılaştır; gate'ler de `cargo`'yu çağırdığı için `rustup default`
+  sabitlenen sürüme çekilmeli, yalnız `cargo +sürüm` yetmiyor.
+
 - **Ortam toolchain'i periyodik siliyor (ölçüldü, bu turda iki kez).**
   `~/.cargo` ve `~/.rustup` oturum ortasında kayboldu; `.cargo/registry/src`
   yarım kalınca hata "jetonlayıcılar uyuşmuyor" gibi değil,

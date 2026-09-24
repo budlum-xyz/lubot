@@ -1254,8 +1254,7 @@ mod tests {
             for (kimlik, kaynak) in pencere.kimlikler.iter().zip(&pencere.kaynak) {
                 assert!(
                     kayitlar[*kaynak as usize].contains(kimlik),
-                    "jeton {kimlik} kaynak {} icinde yok",
-                    kaynak
+                    "jeton {kimlik} kaynak {kaynak} icinde yok"
                 );
             }
         }
