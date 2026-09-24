@@ -24,8 +24,7 @@
 //!    whole. Without [`KosuAyari::planlanan_adim`] the second half would see a
 //!    schedule that never reached its floor.
 
-use crate::veri::{Bolum, Kayit};
-use crate::{ileri_ve_geri_paket, paketle, Adamw, Parametreler, Spec};
+use crate::{ileri_ve_geri_paket, Adamw, Parametreler, Spec};
 
 /// The schedule, the budget and where the run is picking up.
 #[derive(Debug, Clone, PartialEq)]
@@ -506,40 +505,11 @@ fn dogrula(
     }
 }
 
-/// Split records and cut windows in one step.
-///
-/// The CLI holds the corpus as records with token ids and the run wants windows;
-/// the two steps are one sentence in every caller, and putting them together
-/// here means the split rule is applied once.
-///
-/// # Errors
-/// A string naming which step refused, with the reason.
-pub fn bolumden_pencereler(
-    kayitlar: Vec<Kayit>,
-    dogrulama_payi: f64,
-    uzunluk: usize,
-) -> Result<(Bolum, Vec<crate::PaketPencere>, Vec<crate::PaketPencere>), String> {
-    let bolum = crate::veri::bolumle(kayitlar, dogrulama_payi)
-        .map_err(|h| format!("bolumleme reddedildi: {h:?}"))?;
-    let (egitim, dogrulama) = crate::veri::pencereler(&bolum, uzunluk)?;
-    Ok((bolum, egitim, dogrulama))
-}
-
-/// Pack a list of token sequences without a split; the measurement path uses it.
-///
-/// # Errors
-/// [`PaketHatasi`] on a zero window or no records.
-pub fn pencereleri_paketle(
-    diziler: &[Vec<u32>],
-    uzunluk: usize,
-) -> Result<(Vec<crate::PaketPencere>, crate::PaketRaporu), crate::PaketHatasi> {
-    paketle(diziler, uzunluk)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BLOK_ADLARI, INIT_STD_EMBEDDING};
+    use crate::veri::Kayit;
+    use crate::{paketle, BLOK_ADLARI, INIT_STD_EMBEDDING};
 
     fn kucuk_spec() -> Spec {
         Spec {
@@ -824,19 +794,19 @@ mod tests {
                 jetonlar: (0..40).map(|j| ((i + j) % 29) as u32).collect(),
             })
             .collect();
-        let (bolum, egitim, dogrulama) = bolumden_pencereler(kayitlar, 0.25, 8).expect("split");
+        let bolum = crate::veri::bolumle(kayitlar, 0.25).expect("split");
+        let (egitim, dogrulama) = crate::veri::pencereler(&bolum, 8).expect("windows");
         assert_eq!(bolum.egitim.len() + bolum.dogrulama.len(), 12);
         assert!(!egitim.is_empty() && !dogrulama.is_empty());
-        assert!(bolumden_pencereler(Vec::new(), 0.25, 8).is_err());
-        assert!(bolumden_pencereler(
+        assert!(crate::veri::bolumle(Vec::new(), 0.25).is_err());
+        let tek = crate::veri::bolumle(
             vec![Kayit {
                 kimlik: "a".into(),
-                jetonlar: (0..40).map(|i| i as u32).collect()
+                jetonlar: (0..40).map(|i| i as u32).collect(),
             }],
             0.25,
-            8
-        )
-        .is_err());
+        );
+        assert!(tek.is_err(), "tek kayit iki tarafa bolunemez");
     }
 
     #[test]

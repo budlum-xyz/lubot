@@ -74,7 +74,6 @@ tools:ceilings_request
 tools:compute_bond_ok
 tools:effort_hash
 tools:effort_tag_ok
-tools:eval
 tools:is_allowed_method
 tools:jsonrpc_request
 tools:parse_ceilings

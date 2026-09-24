@@ -17,7 +17,7 @@ use crate::{paketle, pencere_olcu, PaketHatasi, PaketPencere, Spec};
 /// Denominator of the split ratio. Ten thousand is enough resolution for a
 /// validation share - and it is a rational, so the same share gives the same
 /// split on every machine, which a float comparison would not.
-pub const PAYDA: u64 = 10_000;
+pub(crate) const PAYDA: u64 = 10_000;
 
 /// One corpus record, tokenised and identified.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +55,7 @@ pub enum BolumHatasi {
 /// on how many records came before it. Not a cryptographic hash: nothing here
 /// is defending against an adversary who picks record ids.
 #[must_use]
-pub fn tohum_karmasi(kimlik: &str, tohum: u64) -> u64 {
+pub(crate) fn tohum_karmasi(kimlik: &str, tohum: u64) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in kimlik.as_bytes() {
         h ^= u64::from(*b);
