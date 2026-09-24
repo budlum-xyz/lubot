@@ -495,6 +495,95 @@ mod tests {
         ));
     }
 
+    // --- Yanlis inanislar (Awesome Falsehood): kodlama ----------------
+    //
+    // Bu uc test, "boyle bilinir ama yanlistir" sinifindan uc iddiayi
+    // jetonlayicinin uzerinde olcer. Hicbiri davranis degisikligi degil:
+    // hepsi bugunku davranisi *kanitla* sabitliyor.
+
+    #[test]
+    fn case_folding_is_not_locale_independent() {
+        // Yanlis inanis: "to_lowercase() metni kucultur, gerisi ayrinti."
+        // Turkce: 'I' kucultulunce 'i' degil 'i' (noktasiz) olur ve 'İ'
+        // kucultulunce TEK karakter degil iki karakter cikar (i + birlestirici
+        // nokta). Bu yuzden jetonlayici hic kucultme yapmaz: ayni harfin dort
+        // bicimi dort ayri jeton yoludur.
+        assert_eq!(
+            "İ".to_lowercase().chars().count(),
+            2,
+            "İ tek karaktere kuculmez"
+        );
+        assert_eq!("I".to_ascii_lowercase(), "i");
+        let s = Sozluk::metinden(&oyuncak()).unwrap();
+        let dort = ["I", "ı", "İ", "i"].map(|h| s.kodla(h));
+        for (i, a) in dort.iter().enumerate() {
+            for (j, b) in dort.iter().enumerate() {
+                if i != j {
+                    assert_ne!(
+                        a, b,
+                        "farkli harf bicimleri ayni jetonlara indi: {i} vs {j}"
+                    );
+                }
+            }
+        }
+        for harf in ["I", "ı", "İ", "i"] {
+            assert_eq!(s.coz(&s.kodla(harf)).unwrap(), harf, "round trip: {harf}");
+        }
+    }
+
+    #[test]
+    fn unicode_normalization_forms_are_not_merged() {
+        // Yanlis inanis: "ayni metin, ayni jetonlar." NFC 'é' (U+00E9) ile NFD
+        // 'e' + U+0301 ayni *karakteri* gosterir ama ayni *baytlari* degil.
+        // Jetonlayici bayt duzeyindedir ve normalizasyon YAPMAZ: normalizasyon
+        // sessiz bir donusum olurdu ve okunan seyi degistirirdi.
+        let nfc = "é";
+        let nfd = "e\u{301}";
+        assert_ne!(
+            nfc.as_bytes(),
+            nfd.as_bytes(),
+            "iki bicim ayni baytlar degil"
+        );
+        assert_eq!(nfd.chars().count(), 2, "NFD iki karakterdir");
+        let s = Sozluk::metinden(&oyuncak()).unwrap();
+        assert_ne!(
+            s.kodla(nfc),
+            s.kodla(nfd),
+            "iki normalizasyon bicimi ayni jetonlara indi"
+        );
+        assert_eq!(
+            s.coz(&s.kodla(nfd)).unwrap(),
+            nfd,
+            "NFD bicimi bayt bayt donmeli"
+        );
+        // Olculen isirik: NFC tek on-token, NFD **iki** on-token. Birlestirici
+        // isaret (U+0301) ne `\w` ne `\d` ne `\s` sinifina girer; kesme
+        // isareti sinifina duser ve taban harften ayrilir. Yani ayni kelime,
+        // iki farkli jeton dizisi: "normalizasyon onemsiz" iddiasi burada
+        // yanlistir ve yanlisligi test edilmis haldedir.
+        assert_eq!(on_tokenler(nfc), ["é"], "NFC tek on-token");
+        assert_eq!(
+            on_tokenler(nfd),
+            ["e", "\u{301}"],
+            "NFD taban + isaret: iki on-token"
+        );
+        assert_ne!(on_tokenler(nfc).len(), on_tokenler(nfd).len());
+    }
+
+    #[test]
+    fn a_grapheme_is_not_a_user_perceived_character() {
+        // Yanlis inanis: "bir karakter bir kullanici karakteridir." Bayrak,
+        // aile ve ten rengi emojileri tek *kullanici* karakteridir ama birden
+        // cok kod noktasidir; "uzunluk" sayan bir sinir bu yuzden yanlis
+        // yerden keser. Jetonlayici karakter saymaz, bayt okur; sinira
+        // cagiran taraf (`read` tavanlari) bayt cinsindendir.
+        let bayrak = "🇹🇷";
+        assert_eq!(bayrak.chars().count(), 2, "bayrak iki bolgesel gosterge");
+        assert_eq!(bayrak.len(), 8, "bayrak sekiz bayt");
+        let s = Sozluk::metinden(&oyuncak()).unwrap();
+        assert_eq!(s.coz(&s.kodla(bayrak)).unwrap(), bayrak);
+    }
+
     #[test]
     fn an_id_outside_the_vocab_cannot_be_decoded() {
         let s = Sozluk::metinden(&oyuncak()).unwrap();
