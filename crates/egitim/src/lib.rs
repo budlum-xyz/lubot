@@ -98,7 +98,7 @@ impl Spec {
         if self.vocab == 0 || self.d_model == 0 || self.n_layers == 0 || self.d_ff == 0 {
             return Err(SpecHatasi::BosBoyut);
         }
-        if self.n_heads == 0 || self.d_model % self.n_heads != 0 {
+        if self.n_heads == 0 || !self.d_model.is_multiple_of(self.n_heads) {
             return Err(SpecHatasi::BasSayisiBolmuyor);
         }
         Ok(())
@@ -240,6 +240,34 @@ pub fn ileri_ve_geri(
     girdi: &[usize],
     hedef: &[usize],
 ) -> (f64, Parametreler) {
+    // Tek kayit: her konum ayni parcadan, yani sinir maskesi hicbir seyi
+    // elemiyor. Paketli pencere icin `ileri_ve_geri_paket` kullanilir.
+    let kaynak = vec![0u32; girdi.len()];
+    ileri_ve_geri_paket(spec, p, girdi, hedef, &kaynak)
+}
+
+/// Forward and backward over a packed window, where each position carries the
+/// record it came from.
+///
+/// Attention does not cross a record boundary, in the forward pass or in the
+/// backward pass. That is what makes packing usable at all: without it a window
+/// that joins two records would let a passage be predicted from a source it
+/// cannot be attributed to.
+///
+/// # Panics
+/// If `kaynak` is not the same length as `girdi`, or either is empty.
+pub fn ileri_ve_geri_paket(
+    spec: Spec,
+    p: &Parametreler,
+    girdi: &[usize],
+    hedef: &[usize],
+    kaynak: &[u32],
+) -> (f64, Parametreler) {
+    assert_eq!(
+        kaynak.len(),
+        girdi.len(),
+        "kaynak vektoru girdiyle ayni uzunlukta olmali"
+    );
     let d = spec.d_model;
     let t = girdi.len();
     let mut grad = p.sifir_gradyan();
@@ -252,7 +280,7 @@ pub fn ileri_ve_geri(
 
     let mut caches: Vec<KatmanBellek> = Vec::with_capacity(spec.n_layers);
     for l in 0..spec.n_layers {
-        let (y, bellek) = katman_ileri(spec, p, l, &x);
+        let (y, bellek) = katman_ileri(spec, p, l, &x, kaynak);
         x = y;
         caches.push(bellek);
     }
@@ -313,7 +341,7 @@ pub fn ileri_ve_geri(
     let mut dx_akis = dx;
 
     for l in (0..spec.n_layers).rev() {
-        dx_akis = katman_geri(spec, p, &mut grad, l, &caches[l], &dx_akis);
+        dx_akis = katman_geri(spec, p, &mut grad, l, &caches[l], &dx_akis, kaynak);
     }
 
     // Input embedding gradient: the tied matrix also feeds the readout.
@@ -345,7 +373,13 @@ struct KatmanBellek {
 }
 
 #[allow(clippy::too_many_lines)]
-fn katman_ileri(spec: Spec, p: &Parametreler, l: usize, x: &[f64]) -> (Vec<f64>, KatmanBellek) {
+fn katman_ileri(
+    spec: Spec,
+    p: &Parametreler,
+    l: usize,
+    x: &[f64],
+    kaynak: &[u32],
+) -> (Vec<f64>, KatmanBellek) {
     let d = spec.d_model;
     let t = x.len() / d;
     let (ln1, o1, r1) = layer_norm_ileri(
@@ -379,7 +413,7 @@ fn katman_ileri(spec: Spec, p: &Parametreler, l: usize, x: &[f64]) -> (Vec<f64>,
         d,
         t,
     );
-    let (attn, agirlik) = dikkat_ileri(spec, &q, &k, &v, t);
+    let (attn, agirlik) = dikkat_ileri(spec, &q, &k, &v, t, kaynak);
     let cikti = matmul(
         &attn,
         &p.wo[l * d * d..(l + 1) * d * d],
@@ -448,6 +482,7 @@ fn katman_geri(
     l: usize,
     c: &KatmanBellek,
     dy: &[f64],
+    kaynak: &[u32],
 ) -> Vec<f64> {
     let d = spec.d_model;
     let t = dy.len() / d;
@@ -520,7 +555,7 @@ fn katman_geri(
             }
         }
     }
-    let (dq, dk, dv) = dikkat_geri(spec, &dattn, c, t);
+    let (dq, dk, dv) = dikkat_geri(spec, &dattn, c, t, kaynak);
 
     // Q/K/V projections.
     let dln1 = matmul_t(&dq, &p.wq[l * d * d..(l + 1) * d * d], d, d, t);
@@ -676,7 +711,14 @@ fn layer_norm_geri(
 
 /// Causal multi-head attention forward; returns the concatenated heads and the
 /// per-head weights, because backward needs them.
-fn dikkat_ileri(spec: Spec, q: &[f64], k: &[f64], v: &[f64], t: usize) -> (Vec<f64>, Vec<f64>) {
+fn dikkat_ileri(
+    spec: Spec,
+    q: &[f64],
+    k: &[f64],
+    v: &[f64],
+    t: usize,
+    kaynak: &[u32],
+) -> (Vec<f64>, Vec<f64>) {
     let d = spec.d_model;
     let h = spec.n_heads;
     let dk = spec.d_k();
@@ -687,6 +729,12 @@ fn dikkat_ileri(spec: Spec, q: &[f64], k: &[f64], v: &[f64], t: usize) -> (Vec<f
         for i in 0..t {
             let mut skor = vec![f64::NEG_INFINITY; t];
             for j in 0..=i {
+                // Paketli pencerede kayit siniri asilmaz: baska bir kaydin
+                // jetonuna bakmak, modelin alinti yapamayacagi bir baglam
+                // kurmasi demektir.
+                if kaynak[j] != kaynak[i] {
+                    continue;
+                }
                 let mut toplam = 0.0;
                 for m in 0..dk {
                     toplam += q[i * d + head * dk + m] * k[j * d + head * dk + m];
@@ -714,6 +762,7 @@ fn dikkat_geri(
     dattn: &[f64],
     c: &KatmanBellek,
     t: usize,
+    kaynak: &[u32],
 ) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let d = spec.d_model;
     let h = spec.n_heads;
@@ -729,12 +778,18 @@ fn dikkat_geri(
             for m in 0..dk {
                 let g = dattn[i * d + head * dk + m];
                 for (j, dw_deger) in dw.iter_mut().enumerate().take(i + 1) {
+                    if kaynak[j] != kaynak[i] {
+                        continue;
+                    }
                     *dw_deger += g * c.v[j * d + head * dk + m];
                 }
             }
             for m in 0..dk {
                 let g = dattn[i * d + head * dk + m];
                 for j in 0..=i {
+                    if kaynak[j] != kaynak[i] {
+                        continue;
+                    }
                     let w = c.agirlik[head * t * t + i * t + j];
                     dv[j * d + head * dk + m] += g * w;
                 }
@@ -747,10 +802,16 @@ fn dikkat_geri(
                 dot += w * dw_deger;
             }
             for ((j, ds_deger), dw_deger) in ds.iter_mut().enumerate().take(i + 1).zip(dw.iter()) {
+                if kaynak[j] != kaynak[i] {
+                    continue;
+                }
                 let w = c.agirlik[head * t * t + i * t + j];
                 *ds_deger = w * (*dw_deger - dot);
             }
             for j in 0..=i {
+                if kaynak[j] != kaynak[i] {
+                    continue;
+                }
                 for m in 0..dk {
                     dq[i * d + head * dk + m] += ds[j] * olcek * c.k[j * d + head * dk + m];
                     dkd[j * d + head * dk + m] += ds[j] * olcek * c.q[i * d + head * dk + m];
@@ -1008,8 +1069,222 @@ pub fn pencere_olcu(
     })
 }
 
+/// One packed window: token ids plus where each one came from.
+///
+/// Packing is what makes the corpus usable - record-by-record windowing throws
+/// away 81% of the tokens here - but a window that spans two records joins two
+/// sources, and a citation is worthless if the passage it points at cannot be
+/// attributed. So the provenance travels with the tokens instead of being
+/// inferred later: `kaynak[i]` is the index of the record `kimlikler[i]` came
+/// from, and the two arrays are the same length by construction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaketPencere {
+    /// Token ids, in stream order.
+    pub kimlikler: Vec<u32>,
+    /// Source record index per position; same length as `kimlikler`.
+    pub kaynak: Vec<u32>,
+}
+
+/// What packing did to the corpus, measured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaketRaporu {
+    /// Full windows produced.
+    pub pencere: usize,
+    /// Tokens that made it into a window.
+    pub kapsanan_jeton: usize,
+    /// Tokens left in the tail.
+    pub artan_jeton: usize,
+    /// Windows whose tokens all come from one record.
+    pub tek_kaynakli: usize,
+    /// Windows that join two or more records.
+    pub cok_kaynakli: usize,
+    /// The most records any single window joins.
+    pub en_cok_kaynak: usize,
+}
+
+/// Why packing was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaketHatasi {
+    /// A zero-length window carries no signal.
+    SifirUzunluk,
+    /// No records to pack.
+    BosKorpus,
+}
+
+/// Pack records into one stream and cut fixed windows, keeping provenance.
+///
+/// # Errors
+/// [`PaketHatasi::SifirUzunluk`] on a zero window,
+/// [`PaketHatasi::BosKorpus`] on no records.
+pub fn paketle(
+    kayitlar: &[Vec<u32>],
+    uzunluk: usize,
+) -> Result<(Vec<PaketPencere>, PaketRaporu), PaketHatasi> {
+    if uzunluk == 0 {
+        return Err(PaketHatasi::SifirUzunluk);
+    }
+    if kayitlar.is_empty() {
+        return Err(PaketHatasi::BosKorpus);
+    }
+    let toplam: usize = kayitlar.iter().map(Vec::len).sum();
+    let mut akis_kimlik: Vec<u32> = Vec::with_capacity(toplam);
+    let mut akis_kaynak: Vec<u32> = Vec::with_capacity(toplam);
+    for (indeks, kayit) in kayitlar.iter().enumerate() {
+        akis_kimlik.extend(kayit.iter().copied());
+        akis_kaynak.extend(std::iter::repeat_n(indeks as u32, kayit.len()));
+    }
+    let tam = toplam / uzunluk;
+    let mut pencereler = Vec::with_capacity(tam);
+    let (mut tek, mut cok, mut en_cok) = (0usize, 0usize, 0usize);
+    for w in 0..tam {
+        let bas = w * uzunluk;
+        let kaynak = akis_kaynak[bas..bas + uzunluk].to_vec();
+        let mut ayrik: Vec<u32> = kaynak.clone();
+        ayrik.sort_unstable();
+        ayrik.dedup();
+        if ayrik.len() > 1 {
+            cok += 1;
+        } else {
+            tek += 1;
+        }
+        en_cok = en_cok.max(ayrik.len());
+        pencereler.push(PaketPencere {
+            kimlikler: akis_kimlik[bas..bas + uzunluk].to_vec(),
+            kaynak,
+        });
+    }
+    Ok((
+        pencereler,
+        PaketRaporu {
+            pencere: tam,
+            kapsanan_jeton: tam * uzunluk,
+            artan_jeton: toplam - tam * uzunluk,
+            tek_kaynakli: tek,
+            cok_kaynakli: cok,
+            en_cok_kaynak: en_cok,
+        },
+    ))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_packed_window_behaves_as_its_records_run_alone() {
+        // Karar verici olcum: maske varsa, paketli kosunun kaybi parcalarin
+        // tek basina kosularinin uzunlukla agirliklandirilmis ortalamasina
+        // ESIT olur. Maske olmasa ikinci parca birincinin baglamini gorur ve
+        // bu esitlik bozulur - yani test maskenin varligini olcuyor.
+        let spec = kucuk_spec();
+        let p = Parametreler::belirgin_doldur(spec, 23);
+        let a_girdi = vec![0usize, 3, 1];
+        let a_hedef = vec![3usize, 1, 6];
+        let b_girdi = vec![6usize, 2, 5, 0];
+        let b_hedef = vec![2usize, 5, 0, 4];
+
+        let (kayip_a, _) = ileri_ve_geri(spec, &p, &a_girdi, &a_hedef);
+        let (kayip_b, _) = ileri_ve_geri(spec, &p, &b_girdi, &b_hedef);
+
+        let mut girdi = a_girdi.clone();
+        girdi.extend_from_slice(&b_girdi);
+        let mut hedef = a_hedef.clone();
+        hedef.extend_from_slice(&b_hedef);
+        let mut kaynak = vec![0u32; a_girdi.len()];
+        kaynak.extend(std::iter::repeat_n(1u32, b_girdi.len()));
+
+        let (kayip_paket, _) = ileri_ve_geri_paket(spec, &p, &girdi, &hedef, &kaynak);
+        let beklenen =
+            (kayip_a * a_girdi.len() as f64 + kayip_b * b_girdi.len() as f64) / girdi.len() as f64;
+        assert!(
+            (kayip_paket - beklenen).abs() < 1e-12,
+            "paketli kayip {kayip_paket:.12} ama parcalar {beklenen:.12} diyor: \
+             sinir maskesi calismiyor"
+        );
+
+        // Gradyan da ayni sekilde toplanir: paketli kosunun embedding gradyani,
+        // iki tekil kosunun gradyanlarinin ortalamasi olmali.
+        let (_, grad_a) = ileri_ve_geri(spec, &p, &a_girdi, &a_hedef);
+        let (_, grad_b) = ileri_ve_geri(spec, &p, &b_girdi, &b_hedef);
+        let (_, grad_paket) = ileri_ve_geri_paket(spec, &p, &girdi, &hedef, &kaynak);
+        let na = a_girdi.len() as f64;
+        let nb = b_girdi.len() as f64;
+        for i in 0..grad_paket.embedding.len() {
+            let beklenen_g = (grad_a.embedding[i] * na + grad_b.embedding[i] * nb) / (na + nb);
+            assert!(
+                (grad_paket.embedding[i] - beklenen_g).abs() < 1e-12,
+                "embedding gradyani [{i}] sinir maskesiyle uyusmuyor"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mismatched_provenance_vector_is_refused() {
+        let spec = kucuk_spec();
+        let p = Parametreler::belirgin_doldur(spec, 5);
+        let sonuc = std::panic::catch_unwind(|| {
+            ileri_ve_geri_paket(spec, &p, &[0, 1, 2], &[1, 2, 3], &[0, 0])
+        });
+        assert!(
+            sonuc.is_err(),
+            "kaynak vektoru girdiden kisaydi kabul edildi"
+        );
+    }
+
+    #[test]
+    fn packing_keeps_provenance_next_to_every_token() {
+        let kayitlar = vec![vec![10u32, 11, 12], vec![20, 21], vec![30]];
+        let (pencereler, rapor) = paketle(&kayitlar, 4).unwrap();
+        assert_eq!(rapor.pencere, 1);
+        assert_eq!(rapor.kapsanan_jeton, 4);
+        assert_eq!(rapor.artan_jeton, 2);
+        assert_eq!(rapor.cok_kaynakli, 1);
+        assert_eq!(rapor.en_cok_kaynak, 2);
+        let p = &pencereler[0];
+        assert_eq!(p.kimlikler, vec![10, 11, 12, 20]);
+        assert_eq!(p.kaynak, vec![0, 0, 0, 1]);
+        assert_eq!(p.kimlikler.len(), p.kaynak.len());
+    }
+
+    #[test]
+    fn every_token_in_a_window_is_the_token_its_source_says() {
+        // Provenance is the whole point of carrying it, so it is checked
+        // against the records rather than trusted.
+        let kayitlar = vec![vec![1u32, 2, 3, 4, 5], vec![6, 7, 8], vec![9]];
+        let (pencereler, _) = paketle(&kayitlar, 3).unwrap();
+        for pencere in &pencereler {
+            for (kimlik, kaynak) in pencere.kimlikler.iter().zip(&pencere.kaynak) {
+                assert!(
+                    kayitlar[*kaynak as usize].contains(kimlik),
+                    "jeton {kimlik} kaynak {} icinde yok",
+                    kaynak
+                );
+            }
+        }
+        // Ve sira korunuyor: pencereyi kaynaklara gore bolunce kayitlarin
+        // kendisi cikmali.
+        let birlesik: Vec<u32> = pencereler
+            .iter()
+            .flat_map(|p| p.kimlikler.clone())
+            .collect();
+        assert_eq!(birlesik, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn a_single_record_longer_than_the_window_is_not_counted_as_mixed() {
+        let kayitlar = vec![vec![1u32, 2, 3, 4, 5, 6]];
+        let (pencereler, rapor) = paketle(&kayitlar, 3).unwrap();
+        assert_eq!(rapor.pencere, 2);
+        assert_eq!(rapor.tek_kaynakli, 2);
+        assert_eq!(rapor.cok_kaynakli, 0);
+        assert_eq!(rapor.en_cok_kaynak, 1);
+        assert_eq!(pencereler.len(), 2);
+    }
+
+    #[test]
+    fn a_zero_window_and_an_empty_corpus_are_refused_by_packing() {
+        assert_eq!(paketle(&[vec![1]], 0), Err(PaketHatasi::SifirUzunluk));
+        assert_eq!(paketle(&[], 4), Err(PaketHatasi::BosKorpus));
+    }
+
     #[test]
     fn windows_cover_only_whole_multiples_and_report_the_rest() {
         let rapor = pencere_olcu(&[10, 7, 25, 3], 8).unwrap();

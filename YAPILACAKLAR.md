@@ -8,6 +8,30 @@ depoların hiçbirisinden kod, veri veya ağırlık alınmaz; alınan şey, bir 
 nasıl bölündüğü ve nasıl ölçüldüğüdür. Lisans PolyForm Shield 1.0.0, eser
 Lubot'un kendisi.
 
+**Bu dosya tek kaynaktır.** Dört havuz burada birleşiyor: eğitim stratejisi
+fikir havuzu (A–FF), genişletme promptu (GG–RR), awesome eşleştirme kataloğu ve
+dış repo kaydı (kullanıcı repoları + Shizuku + Stagehand + budlum-xyz ailesi).
+Her madde bitirilecek bir iştir; katalog linkleri olduğu gibi taşınmadı, lubot'a
+düşenler somut işe çevrildi, düşmeyenler gerekçesiyle kayıt defterinde duruyor.
+Başka bir yerde plan listesi tutulmuyor: bir iş buraya yazılmadıysa yoktur.
+
+İşaretler: `[x]` bitti (kanıt dosya ya da kapı adıyla maddede), `[~]` kısmen
+(neyin eksik olduğu maddede yazılı), `[ ]` açık. **KAPSAM DIŞI** yazan maddeler
+yapılmayacak değil, kararı verilmiş ve gerekçesi K1–K6'ya bağlı olanlardır.
+Ölçülmeyen hiçbir sayı ölçülmüş gibi yazılmaz.
+
+**Ölçülen kod hacmi** (bu ağaçta, `target/` ve `.git/` hariç): Rust **23.592**
+satır / 45 dosya, Python **9.403** satır / 19 dosya — kod toplamı **32.995**
+satır; belge ve veri dosyalarıyla birlikte 80.344. Crate bazında döküm ve
+test sayıları `docs/CRATES.md`'de duruyor ve oradaki rakamları
+`crates-doc-is-measured` kapısı kaynağa karşı doğruluyor — buradaki sayı
+yalnızca büyüklük sırası için, yetkili kaynak o tablo. Operatörün koyduğu hedef yüz
+binlerce satır. Bu sayı bir kalite ölçütü değil ve şişirmek için satır
+üretilmeyecek: büyüme, sıfırdan yazılması gereken gerçek bileşenlerden gelecek —
+eğitim döngüsünün tamamı (optimizer, scheduler, checkpoint, resume), veri hattı,
+ölçme çatısı, çıkarım/servis yolu, karar başlığının çağrı sahipleri, retrieval
+indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda yazılı.
+
 ## NN §8 iskeleti
 
 - [x] **Adım 1 — Ölçüm.** `training/bench_hardware.py`, K6 donanım tavanı.
@@ -50,22 +74,33 @@ Lubot'un kendisi.
       rakamı) içeri alırdı, Nd kategorisi kullanıldı. Kalan: bu jetonlayıcıyı
       eğitim çekirdeğine bağlayıp korpus üzerinde gerçek bir tur koşmak.
 - [x] **Veri yolu ölçümü** — `lubot egitim-veri` + `pencere_olcu` +
-      `bulgu_veri_yolu`. Ölçülen: **1806 kayıt, 105444 jeton**; kayıt uzunluğu
-      p50 **31**, p95 **168**, p99 **546**, en uzun **2116** jeton. Sonuç iki
-      ayrı hüküm verdi: (1) spec'in `max_seq_len` = 256 beyanı bu korpusta
-      **DURUYOR** (p95 168 ≤ 256) — ama o beyan yüzey korpusundan alınmıştı,
-      şimdi eğitilecek korpusta doğrulandı; (2) asıl kısıt pencere uzunluğu
-      değil **pencereleme stratejisi**: kayıt başına pencereleme **78 pencere
-      (%18.94 kapsama, 85476 jeton atılıyor)**, kayıtlar arası paketleme **411
-      pencere (%99.78, 228 jeton)**. Yani paketleme kurulmazsa eğitim korpusun
-      ~%19'uyla koşar. Yüzdelik yöntemi adı ile yazıldı (en yakın-rank), çünkü
-      "p95" yöntem söylenmeden tek bir sayı değil.
-- [ ] **Kayıtlar arası paketleme.** Ölçüm yukarıda; kodu yazılmadı (bulgu
-      kaydı bunu açıkça söylüyor). Paketleme kurulurken dikkat: kayıt
-      sınırlarını aşan pencere, iki ayrı kaynağın metnini birleştirir — bu
-      alıntı disiplinini (L/Z/AA) etkileyebilir, o yüzden paketleme ya
-      kayıt-başına `content_id` izi taşımalı ya da sınav seti paketleme
-      kurulduktan sonra yeniden damgalanmalı.
+      `bulgu_veri_yolu`. Bu madde korpus türevi sayı taşımaz, çünkü korpus bu
+      dosyayı da okuyor ve sayı buraya yazılırsa ölçüm kendi girdisini
+      değiştirir (kapı `measurements-do-not-feed-back` bunu buldu, öngörmedi).
+      Güncel rakamlar `lubot egitim-veri` çıktısında ve
+      `training/eval/sonuclar/egitim-butcesi-*.json`'da. Sabit kalan hükümler:
+      (1) spec'in `max_seq_len` = 256 beyanı ölçülerek doğrulanıyor ve p95 onu
+      aşarsa "beyan YANLIS, spec yeniden dogrulanmali" satırı basılıyor;
+      (2) asıl kısıt pencere uzunluğu değil **pencereleme stratejisi** — kayıt
+      başına pencereleme jetonların büyük kısmını kuyruklarda atıyor, o yüzden
+      rapor iki kapsamayı yan yana yazıyor ve fark 1 puanı aşınca bulgu
+      satırı düşürülüyor. Yüzdelik yöntemi adı ile yazıldı (en yakın-rank),
+      çünkü "p95" yöntem söylenmeden tek bir sayı değil.
+- [x] **Kayıtlar arası paketleme** — `paketle` + `ileri_ve_geri_paket`.
+      Pencere ve kapsama sayıları korpus türevi, bu yüzden burada değil
+      `lubot egitim-veri` çıktısında duruyor; rapor her koşuda tek kaynaklı /
+      çok kaynaklı pencere ayrımını ve bir pencerede birleşen en çok kayıt
+      sayısını yazıyor. Kalıcı olan iki önlem: (1) her pencere **konum başına
+      kaynak izi** taşıyor (`kaynak[i]`, `kimlikler[i]` ile aynı uzunlukta) —
+      alıntı hangi kayda ait olduğunu kaybetmiyor, yani sınav setini yeniden
+      damgalamaya gerek kalmadı; (2) **dikkat kayıt sınırını aşmıyor**, ileri
+      ve geri geçişte. İkincisi savunulmuyor, ölçülüyor: paketli koşunun kaybı
+      parçaların tek başına koşularına **eşit** olmalı (1.942361282232); maske
+      kaldırıldığında aynı test **1.945561023341** okuyor ve düşüyor — yani
+      test maskenin varlığını ölçüyor, yokluğunu değil. Bu iki sayı korpusa
+      değil crate içindeki sabit dizilere ait, o yüzden burada durabilir.
+      CLI artık paketli adımı gerçek korpus verisiyle koşuyor ve maskenin kaç
+      konumda devreye girdiğini raporluyor.
 - [ ] **Eğitim çekirdeğinin korpusla ilk gerçek turu.** Jetonlayıcı ve veri yolu
       ölçümü hazır; eksik olan paketlenmiş pencerelerle koşan tur ve K6
       donanımında ölçülecek ilk kayıp eğrisi. Sınav skoru hâlâ ölçülemez:
@@ -102,7 +137,27 @@ Lubot'un kendisi.
 - [ ] **Adım 8c — İlk kapışma ölçümü.** Görev ekseninde, taban olarak raporla —
       zafer ilanı değil. Eğitilmiş kontrol noktası yokken (K6) ölçülemez.
 
-## Dış repolardan derlenen yöntemler
+## Dış repo kaydı
+
+Bu bölüm tek dosyanın **kayıt defteri**. Kural: adı geçen her depo burada ya
+lubot'a iş üretir (iş maddesi adıyla bağlı) ya da kapsam dışıdır ve gerekçesi
+yazılıdır. Yani burası link yığını değil, karar listesidir. **K1:** aşağıdaki
+depoların hiçbirisinden kod, veri veya ağırlık alınmaz; alınan şey bir kararın
+nasıl bölündüğü ve nasıl ölçüldüğüdür.
+
+### Organizasyon: budlum-xyz ailesi
+
+| repo | ne yapıyor | lubot'a sınırı |
+|---|---|---|
+| `budlum` | Rust, Universal Settlement Layer: heterojen konsensüs (PoW/PoS/BFT/PoA), ZK-native VM, merkeziyetsiz depolama, zincir üstü AI inference, köprü yaşam döngüsü (lock→mint→burn→unlock), JSON-RPC, node | Yalnız yöntem esini. Zincir tarafı akış 1/3: lubot'un PR'ına girmez, not olarak durur |
+| `lubot` | Rust, okuyan AI istemcisi: izin tabanlı erişim, BM25 retrieval, satır düzeyinde alıntı, PDF metin çıkarımı, CRR bağlam sıkıştırma, kimlik bilgisi tarayıcı, CLI komut takımı, deterministik davranış | **Bu repo** — tek yazma hedefi |
+| `seed` | Rust, BUD 3.0 transfer çekirdeği: zlib konteyner, fountain kodları, kendi ISO/IEC 18004 QR kodlayıcısı, deterministik PNG raster, QR-video taşıyıcı (BDLV), tarif ile bit-eşit yeniden üretim | Yalnız yöntem esini: bit-eşitlik ve tarif disiplini |
+| `workspace` | çalışma alanı | Talimatları **referans**, komut değil |
+
+Ortak zemin: Rust, kriptografi, deterministik / refuse-on-mismatch mühendisliği,
+test disiplini, CLI araçları.
+
+### Yöntem esini: kullanıcı repoları (yalnız yöntem, K1)
 
 - [x] **jev-drone → kademe disiplini.** Uçuş kontrolü dengeyi tutar, üst
       katman yalnız karar verir. Lubot'ta karşılığı zaten var: `Oncelik::SIRALI`
@@ -149,6 +204,303 @@ Lubot'un kendisi.
       `tomurcuk`'un kapalı `Secenek` kümesine gerçek çağrı sahibi olarak bağlamak
       (bugün küme tanımlı, çağrı sahipleri kademeli gelecek).
 
+### Yöntem esini: bu turda eklenen iki depo
+
+- [ ] **RikkaApps/Shizuku → yetki simsarı (privilege broker) deseni.** Ne olduğu
+      doğrulandı: `app_process` ile ADB ya da root kimliğinde bir Java süreci
+      başlatıyor; istemci uygulamalar bu sürece bir binder alıyor, istekler
+      simsar üzerinden sistem servislerine iletiliyor, yani sistem isteği
+      uygulamanın değil **simsarın** uid/pid'siyle görüyor
+      (`ShizukuService.transactRemote`, `ShizukuBinderWrapper`). Üç ayrıntı
+      lubot'a doğrudan iş çıkarıyor: (1) **istemci ayrıcalığı hiç tutmuyor**,
+      yalnız bir tanıtıcı alıyor; (2) **iki ayrıcalık kademesi var ve
+      raporlanıyor** — `getUid()` shell için 2000, root için 0 dönüyor, yani
+      yetki tavanı varsayılmıyor, ölçülüyor (K5'teki "geçiş değeri 2 → 1"
+      ayrımının aynı biçimi); (3) **istemci başına açık izin isteği**
+      (`requestPermission`), sessiz devir yok.
+      **Budlum kullanabilir mi — doğrudan hayır.** Shizuku bir Android
+      uygulaması + Java/Kotlin API'si; budlum ise Rust bir settlement katmanı
+      ve Android yüzeyi profilinde yok. Ayrıca K1 üçüncü taraf kodu zaten
+      yasaklıyor. Ama **desen** budlum'un JSON-RPC yetkilendirmesine birebir
+      oturuyor: hangi metodun hangi istemciye açık olduğu, her çağrının çağıran
+      kimliğiyle ilişkilendirilmesi, köprü yaşam döngüsünde her adımın ayrı
+      yetki denetimi taşıması.
+      Lubot'ta iş: `crates/grant` defterini ve `it`'in kısıtlı push'unu bu
+      desenle denetlemek — sır tek yerde mi duruyor, çağıran kimliği her
+      iletmede korunuyor mu, yetki tavanı beyan ediliyor mu. Ölçülen çıktı bir
+      `docs/GRANT-KIYAS.md` kaydı.
+      **Kırmızı takım girdisi:** Shizuku'nun kendi kötüye kullanım literatürü,
+      tek seferlik bir ADB onayının yeniden başlatma sonrası kendini doğuran
+      bir cihaz-içi yetki simsarına dönüştüğünü belgeliyor. Yani simsar
+      deseninin üç zorunluluğu var: geri alma, süreç yeniden başlatmaya
+      dayanıklı çağıran doğrulaması, taze onay olmadan kendini doğurmama.
+      Bu üçü `kirmizi-senaryolar` bataryasına madde olarak girecek (Y).
+- [ ] **browserbase/stagehand → gözle, doğrula, önbellekle, tekrar oynat.** Ne
+      olduğu doğrulandı: Playwright'ı üç LLM-destekli ilkel ile genişleten
+      TypeScript SDK — `act()` doğal dilde eylem, `extract()` Zod şemasıyla
+      doğrulanmış yapısal çıkarım, `observe()` eylemi **yapmadan** aday eylem
+      listesi (seçici + metod + argümanlar). Altında DOM'a betik enjekte edip
+      aday öğeleri (yaprak ya da etkileşimli) topluyor, görünmeyenleri eliyor
+      ve modele ham DOM yerine **numaralı öğe listesi** veriyor. Dört somut iş:
+      (1) **gözle→doğrula→önbellekle→tekrar oynat.** Model bir kez keşfeder,
+      doğrulanan eylem deterministik artefakta dönüşür, sonraki koşular modeli
+      çağırmaz. Bu, W maddesinin (karar/cevap önbellekleme) ve önyükleme
+      döngüsünün (G) tam karşılığı: kapıdan geçen çıktı bir sonraki turun
+      deterministik girdisi oluyor. İş: `observe` benzeri bir önizleme yüzeyi,
+      doğrulanmış kararın önbelleğe yazılması, tekrarlı soruda marjinal
+      maliyetin ölçülmesi.
+      (2) **Önbellek kaçırınca kendini onarma.** Önbellekli seçici tutmazsa
+      modele dönülüyor, önbellek yenileniyor ve bu **bildiriliyor**. Lubot'ta
+      karşılığı: önbellekli kararın dayanağı (korpus özeti) değiştiğinde kararı
+      yeniden türet ve yenilendiğini kayda yaz. Ölçülebilir olan: bayat
+      önbellek yakalama oranı.
+      (3) **Şemayla doğrulanmış çıkarım.** Tiplenmiş çıktı ya da red — lubot'un
+      `ai-output-schema-enforced` ve "en yakın biçime düşme yok" kuralıyla
+      aynı çizgi. İş: şemanın kapsanmayan durumlarını saymak.
+      (4) **Modelden önce yüzeyi küçült.** Ham DOM değil aday listesi.
+      Karşılığı `sikistir` (CCR) ve JJ maddesindeki AST-farkında parçalama:
+      modele giden bağlamın ne kadarının elendiği ölçülecek.
+      **K1 notu:** Stagehand dış LLM sağlayıcılarına bağımlı; lubot dışarıdan
+      model çağırmıyor (`reads-not-generates`, `no-generation-variant`).
+      Alınan şey desendir, bağımlılık değil.
+
+### Awesome katalog kaydı (213 benzersiz depo, 6 grup)
+
+Katalog `uploads/budlum-awesome-eslestirme.md`. Sayılar dosyadan ölçüldü,
+tahmin değil. Her grubun lubot kararı tek satır; grubun içinde lubot'a iş
+üreten depolar "Awesome listesinden lubot'a düşenler" bölümünde tek tek
+maddeye çevrildi.
+
+| katalog grubu | benzersiz depo | lubot kararı |
+|---|---|---|
+| 1. Doğrudan isabet — çekirdek teknolojiler | 74 | Kısmen: Rust / IR / QA / XAI / enjeksiyon / NLG / fuzzing / güvenlik lubot'a iş üretiyor. Konsensüs, ZK, post-kuantum, merkeziyetsiz depolama, P2P **budlum**; QR/video/codec **seed** |
+| 2. Güçlü destek — mimari, teori, kalite | 37 | Kısmen: yazılım mimarisi, test, statik analiz, ampirik yazılım mühendisliği lubot'a iş üretiyor. Dağıtık sistemler ve NoSQL/veri depolama **budlum** |
+| 3. Geliştirme ortamı, CLI ve iş akışı | 32 | Kısmen: CLI, kabuk, git kancaları, CI/CD saldırıları, düzenli ifadeler lubot'a iş üretiyor. k8s/ansible/terraform/SRE operatör altyapısı, kapsam dışı |
+| 4. Dokümantasyon, açık kaynak yönetimi, ürünleşme | 30 | Kısmen: README, Markdown, lisans/kamu malı kaynaklar, adlandırma, çeviri lubot'a iş üretiyor. Ürünleşme/pazarlama maddeleri kapsam dışı |
+| 5. Öğrenme ve topluluk | 12 | Yalnız bağlam: `mufredat`'ın insan versiyonu olarak not edildi, kod işi üretmiyor |
+| 6. Kıyıda ama gerekirse | 27 | Kapsam dışı: web sitesi, PWA, istemci çatıları, çevre araçlar — lubot CLI ve akış 2 kapsamında |
+
+Kapsam dışı bırakılanların ortak gerekçesi: ya başka bir reponun alanı
+(budlum/seed), ya operatör altyapısı, ya da akış 1/3. Hiçbiri "bakılmadı"
+değil, "karar verildi ve gerekçesi yazıldı".
+
+## Fikir havuzu A–FF (lubot-egitim-stratejisi-fikir-havuzu.md)
+
+Kaynak dosya `uploads/`ta; buradaki her madde o bölümden çıkarılan **bitirilecek
+iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değil.
+
+- [~] **A — Veri kaynağı: tek repo yerine tüm budlum yüzeyi.** `build_corpus.py`
+      self korpusunu deterministik kuruyor (`corpus-build-is-deterministic`),
+      sözlük ise yüzey korpusundan (`budlum-yuzeyi.jsonl.gz`) kesilmiş.
+      **Açık olan:** hangi korpusun eğitileceği — bu bir operatör kararı ve
+      `bulgu_veri_butcesi` olarak kayıtlı: yüzey korpusu self korpusunun yaklaşık
+      18 katı; iki korpusun rakamları `docs/spec.md`'de ölçülmüş hâliyle duruyor.
+- [x] **B — Zincir-kaynaklı canlı veri akışları. KAPSAM DIŞI.** Karar: zincir
+      tarafı `TrainingDataGrant` dışa aktarımı kapalı konu; yalnız akış 2
+      kapsamında çalışılıyor. `crates/grant::training` epoch defterini
+      doğruluyor, zincire yazmıyor.
+- [x] **C — Sentetik veri. KARAR: 0.** `veri_karisimi.py` sentetik katmanı
+      ölçüyor ve **0** beyan ediyor (`data-mix-is-declared`); dışarıdan öğretmen
+      yok, çoğalma kendinden-damıtmayla yapılıyor (G).
+- [x] **D — Küratörlük ve kalite kapıları.** 61 kapı + `findings-are-disciplined`
+      + `claims-carry-their-evidence` (her bulgu ölçülen sayı + hüküm +
+      dokunulmayanları taşır). `onyukleme.py` geçenleri sayıyor, geçmeyenleri
+      **nedeniyle** negatif havuza yazıyor.
+- [x] **E — Müfredat mühendisliği.** `training/curriculum/*.jsonl` (ajan,
+      behaviour, bulgular…), SFT'ye 88 satır olarak giriyor; kapı müfredat
+      satırlarının sayısını ratchet'te tutuyor.
+- [x] **F — Küçük-veri rejimine uygun mimari.** `model_spec.json`: derin-dar,
+      924.288 parametre, 8 katman, d_model 64; `model-spec-is-consistent` ve
+      `crates/egitim`'deki `parametre_sayisi()` testi beyanı birbirine bağlıyor.
+- [x] **G — Kendinden-damıtma / önyükleme döngüsü.** `onyukleme.py`, tur 1:
+      88/88 satır geçti, 0 negatif, yeterlilik farkı karşılaştırılabilir değil
+      (ilk tur taban). **Tur 2 eğitilmiş kontrol noktası istiyor (K6).**
+- [x] **H — Gate'leri ödül sinyaline dönüştürmek.** Mekanizma kurulu: geçen
+      çıktılar 2. tura müfredat satırı, geçmeyenler neden etiketiyle negatif
+      havuza. **Ölçülmeyen:** gerçek bir koşuda ödül şekillendirmenin etkisi.
+- [ ] **I — Retrieval'ın kendisini güçlendirmek.** `crates/index` BM25 + satır
+      düzeyinde alıntı var, ama **getirme kalitesi ölçülmüyor**. İş: sınav seti
+      üzerinde getirme@k ölçen `training/getirme_olcumu.py` + kapı; BM25
+      parametreleri ölçülmeden değiştirilmeyecek.
+- [x] **J — Donanım ve verimlilik.** `bench_hardware.py` + `recommend_model_size.py`;
+      kalıcı tavan owner donanımında (K6). Sandbox tavanının 105 kat altında
+      kalındığı spec'te kayıtlı.
+- [x] **K — Dağıtık / işbirlikçi eğitim. KAPSAM DIŞI (şimdilik).** K5/K6:
+      geçiş değeri zkVM içerik kanıtı canlıya çıkana dek 2; hesaplama owner
+      donanımı. Operatör havuzu bu turun kapsamı dışında.
+- [x] **L — "Küçük modellerle kapışma" ölçütü.** `kiyas_sinifi.py` + kapı 56:
+      parametre 924.288, sınır SmolLM2-135M'nin altında, ikinci akran
+      Qwen3-0.6B; kapışma iddiası **yalnız görev ekseninde**, parametre
+      ekseninde iddia kaydı kapı reddediyor.
+- [x] **M — Kırmızı takım ve kapsam disiplini.** `kirmizi-senaryolar` kapısı +
+      kapsam reddi; genişletmesi Y maddesinde.
+- [ ] **N — Çok dillilik: TR/EN kombinasyonu.** Ölçülmüyor. İş: korpus üzerinde
+      TR ve EN metinler için **jeton/karakter** oranını ölçmek (sözlük Türkçe
+      ağırlıklı kesildi); fark büyükse EN ağırlıklı kayıtların bütçe maliyeti
+      beyan edilmeli.
+- [~] **O — Sürümleme, provenance, zincir kaydı.** Provenance ve digest
+      zorunlu (`corpus-records-carry-provenance`, `provenance-fails-closed`),
+      `asset_id` hesaplanıyor ama **`asset_id_pending` her kayıtta dolu** —
+      zincir çıpası akış 1/3'te, kapsam dışı.
+- [x] **P — Topluluk / pollen kaynaklı veri büyümesi. KAPSAM DIŞI.** K3: büyüme
+      yalnız reponun kendi geliştirmesi + `doc` ile kabul edilmiş kapalı
+      lisanslı belgeler, provenance kaydıyla. Aday listesi Awesome bölümünde.
+- [x] **R — Ölçüm ve izleme sistematiği.** `training/ratchet.json` 7 anahtar,
+      `ratchet-holds` kapısı, `findings.py`, `lubot olc`/`lubot durum`.
+- [ ] **S — Uzun ufuk / spekülatif yönler.** Bilerek açık: bu turun işi değil.
+- [x] **T — Karar modeli doktrini.** `crates/tomurcuk`: üç kapalı çıktı şekli,
+      üretim yüzeyi yok (kapı 54), sabit kademe sırası, k-of-n; `lubot karar`.
+- [~] **U — Hız ve birim maliyet.** Gecikme ölçüldü (kapı 59: 50 koşu, medyan
+      2.237 ms, süreç başlatma dahil ve kayıtta öyle yazıyor). **Ölçülmeyen:**
+      karar başına enerji ve tekrarlı soruda marjinal maliyet (donanım düzeneği
+      yok).
+- [ ] **V — Yerel-first çıkarım yığınını derinleştirmek.** İş: ağ olmadan çalışan
+      çıkarım yolunun ölçülmesi (soğuk başlatma + ilk cevap süresi) ve bunun
+      kapıya bağlanması.
+- [ ] **W — Karar ve cevap önbelleklemesi.** İş: aynı sorunun 2. kez sorulduğunda
+      marjinal maliyetin ölçülmesi; U maddesinin "tekrarlı soruda maliyet → 0"
+      iddiası ancak bununla ölçülebilir.
+- [x] **X — Dış veri bağlayıcıları. KAPSAM DIŞI.** K2: korpus yalnız budlum
+      yüzeyi; dışarıdan veri yok. Giriş kapısı deseni `doc` kabulüyle sınırlı.
+- [ ] **Y — Kırmızı takım çalışmalarını genişletmek.** İş: enjeksiyon bataryası
+      (aşağıda Awesome Prompt Injection maddesiyle aynı iş) + ölçülen red oranı.
+- [x] **Z — Adı konmuş değerlendirme bataryaları.** `training/soru-bataryasi.json`
+      + `soru-bataryasi-gecerli` + held-out sınav seti (12 soru, kapı 57).
+- [x] **AA — Rakip küçük modellerle kapışma protokolü.** L ile aynı mekanizma;
+      **ölçüm 8c'de**, eğitilmiş kontrol noktası yokken yapılamaz.
+- [x] **BB — Eğitim aşamalarını adımlara bölmek.** Bu dosya + NN §8 iskeleti.
+- [x] **CC — Sonsuz döngü tasarımı.** Süreç notlarında: bitiş çizgisi yok,
+      ratchet yalnız yükselir, her tur bir ölçüm bırakır.
+- [x] **DD — Zincir entegrasyonu ve model kaydı. KAPSAM DIŞI.** Akış 2 dışındaki
+      akışlar bu repoda yalnız not olarak durur, PR'a girmez.
+- [~] **EE — Öngörülebilir tuzaklar ve karşı önlemler.** Birçoğu kapıya dönüştü
+      (`corpus-build-is-deterministic`, `tokenizer-vocab-is-frozen`,
+      `mup-measurement-reproduced`, `measurements-do-not-feed-back`). OO
+      ek riskleri aşağıda.
+- [ ] **FF — Taze fikirler.** Somutlaştırılacak üç tanesi: (1) cevap
+      okunabilirlik/tutarlılık skoru düşükse reddeden mekanik kural;
+      (2) zaman damgalı müfredat satırları — Budlum terminolojisi yeniden
+      adlandırıldığı için "bu karar hangi tarihte hangi isimle geçerliydi";
+      (3) "bulunamadı" yerine **hangi veri eksik** bilgisini döndüren cevap
+      biçimi. Kalanlar (NFT oranı izleme, topluluk oylaması) akış 1/3 ve K3
+      kapsamında, bu turun dışında.
+
+## Genişletme promptu GG–RR (lubot-egitim-genisletme-promptu.md)
+
+- [x] **GG — Gerçekçi ölçek sınıfı kalibrasyonu.** `kiyas_sinifi.py` + kapı 56;
+      iki eksen ayrıldı: parametre-eşleneği (ham dil) ve **görev-eşleneği**
+      (Budlum-alanı alıntı doğruluğu + red disiplini). Kapışma iddiası yalnız
+      ikincisinde.
+- [ ] **HH — Veri-sınırlı ön-eğitim bilimi.** İş: düzenlileştirme
+      ablasyonları (weight_decay, dropout) — **eğitim koşusu gerektiriyor**,
+      o yüzden `olculmeyen` listesinde duruyor.
+- [~] **II — μP / hiperparametre transferi.** `mup_olcum.py` + kapı
+      `mup-measurement-reproduced`: dikkat ölçeği oranı **0.497** (beklenen
+      0.500), bağlı readout sapması **0.0124** (bant 0.10). **Ölçülmeyen:**
+      akışı RMS 1.231→5.440 (4.418×), `theta_1_bandinda=false`.
+- [ ] **JJ — Rust'ın kendi sözdizim ağacını korpus inşasında kullanmak.** Ölçüm
+      bunu gerekli kılıyor: kayıt uzunluğu p99 **546**, en uzun **2581** jeton;
+      spec bu kayıtların AST-farkında parçalamaya kalacağını söylüyor. İş:
+      parçalayıcı + parçaların `content_id` izini koruması.
+- [x] **KK — Derleyiciyi ve test takımını hakem olarak kullanmak.** Veri
+      karışımında `derleyici-hakem` katmanı **433 satır**; `epoch_ledger`
+      fail-closed.
+- [x] **LL — Çoklu-konsensüs metaforunu modelin doğrulama katmanına taşımak.**
+      `crates/tomurcuk` k-of-n (bağımsız başlatılmış başlıklar); zincirin
+      operatör eşiğiyle bilerek karıştırılmıyor.
+- [~] **MM — Mühendislik iskeleti ile veri arasındaki ayrım.** `bulgu_mufredat_isareti`
+      kayıtlı: `make_sft.py` `kind="curriculum"` yazıyor, `format.jsonl`'deki
+      `kind:"negative"` işareti aşağı akışta kayboluyor (sızıntı değil, operatör
+      kararı).
+- [x] **NN — İlk sıfırdan koşu için başlangıç defteri.** Bu dosyanın NN §8
+      bölümü; 8 adım, ölçümleriyle.
+- [ ] **OO — EE'ye ek riskler.** İş: her risk için ya bir kapı ya bir
+      `olculmeyen` kaydı. Şu an kısmen kapılarda, kısmen dağınık.
+- [x] **PP — Değerlendirme setinin sızmasını fiziksel olarak imkânsız kılmak.**
+      Üç duvar: sınav seti damgalıyor (`sinav.py`, kapı 57), üretici eliyor
+      (`make_sft.py` `dropped_eval_only`), okuyucu reddediyor (`eval_sft`,
+      `eval-set-never-trained`). Ölçülen: 1701 grounded satır, damgalı 0.
+- [ ] **QQ — Görsel/diyagram okuma (girdi, üretim değil).** Durum ölçüldü:
+      korpus kayıtlarının tamamı `kind: markdown`, görsel kayıt yok. İş: görsel
+      varlıkların korpusa hangi şemayla gireceğine karar vermek + PDF dışı
+      görsel metin çıkarımı. Üretim tarafı kapsam dışı (`reads-not-generates`).
+- [ ] **RR — "Ölçülmedi" yanıtlarını bilgi-boşluğu haritasına çevirmek.**
+      `olculmeyen` alanları kayıtlarda duruyor ama **tek bir haritada
+      toplanmıyor**. İş: tüm `olculmeyen` girdilerini toplayıp tek dosyaya
+      yazan betik + kapı.
+
+## Awesome listesinden lubot'a düşenler (budlum-awesome-eslestirme.md)
+
+Kaynak bir eşleştirme listesi; burada yalnız **lubot'a değen** maddeler var ve
+her biri somut bir işe çevrildi. K1 gereği bunlar **yöntem ilhamı**: hiçbir
+liste, crate ya da veri içe alınmayacak. budlum/seed'e ait bölümler (konsensüs,
+QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
+
+- [ ] **Bilgi getirimi (Awesome Information Retrieval).** Kendi arama motorunu
+      geliştirme literatürü; lubot'un BM25 + alıntı hattının tam karşılığı. İş:
+      I maddesindeki getirme@k ölçümü.
+- [ ] **Soru-cevap (Awesome QA).** `ask`/`batch` akışının literatürü. İş: sınav
+      bataryasını soru tipi bazında genişletmek ve her tipin skorunu ayrı
+      raporlamak (tek ortalama skoru tip bazlı gerilemeyi gizler).
+- [ ] **Açıklanabilirlik (Awesome XAI).** "Her cümlenin kaynağını göster"
+      ilkesinin ölçülebilir hali. İş: üretilen cevapta **alıntısız cümle
+      oranını** ölçen betik + eşik aşımında red.
+- [ ] **İstem enjeksiyonu (Awesome Prompt Injection).** Fail-closed/kapsam reddi
+      tasarımı için tehdit kataloğu. İş: enjeksiyon bataryası + ölçülen red
+      oranı; `kirmizi-senaryolar` kapısının genişletilmiş hali (Y maddesi).
+- [ ] **Belirsiz girdi / fuzzing (Awesome Fuzzing).** Yeni bağımlılık eklemek
+      yok: ayrıştırıcılar (`lubot-jeton` sözlük yükleyici, `lubot-read` korpus
+      yükleyici, çıktı şema doğrulayıcı) için **tekrarlanabilir tohumlu**
+      düşmanca girdi bataryası. Ölçülen: panik/refus sayısı; `no-panic-path`
+      kapısıyla aynı çizgide.
+- [ ] **Kimlik bilgisi biçimleri (Awesome Password Cracking).** Saldırgan
+      tarafı: `no-secret-material` kapısının tarayıcısının bilinen biçimlere
+      karşı **yakalama oranı** ölçülecek (şu an oran ölçülmüyor).
+- [ ] **IAM / OpenID Connect kıyası (Awesome IAM).** `crates/grant` grant
+      defterinin standart IAM desenleriyle karşılaştırması. İş: `docs/GRANT-KIYAS.md`
+      — kod değil, karar kaydı.
+- [ ] **Düzenli ifadeler (Awesome Regex).** Kimlik bilgisi tarayıcısının ve lint
+      kurallarının desen denetimi; yanlış-pozitif/negatif ölçümü.
+- [ ] **CI/CD saldırıları (Awesome CI/CD Attacks).** `it` komutunun kısıtlı
+      push tasarımı tedarik zinciri kaygısıyla aynı yere bakıyor. İş: tehdit
+      notu + gerekiyorsa kapı.
+- [ ] **SECURITY.md yazmak (Awesome AppSec / Security).** Ölçüldü: repoda
+      **SECURITY.md yok**. İş: ölçülen tehdit yüzeyiyle (kimlik bilgisi
+      tarayıcı, kapsam reddi, enjeksiyon, `it` kısıtı) bir güvenlik belgesi.
+- [ ] **ARCHITECTURE.md yazmak (Awesome Software Architecture).** Ölçüldü:
+      repoda **docs/ARCHITECTURE.md yok**; oysa `crates/mimari` katman kuralını
+      kodda zorluyor. İş: zorlanan kuralı anlatan belge — belge kuraldan
+      saparsa kapı düşmeli.
+- [ ] **README turu (Awesome README / Translations).** Ölçüldü: kaynak listede
+      "README.tr.md zaten var" deniyor ama bu repoda **README.tr.md yok**. İş:
+      ya yazmak ya da listeyi düzeltmek; ikisi de karar gerektiriyor.
+- [ ] **Markdown şeması (Awesome Markdown / NLG).** `ai-output-schema-enforced`
+      var; iş şemanın kurallarını tek tek sayıp **kapsanmayan durum** kalıp
+      kalmadığını ölçmek.
+- [ ] **Lisansı temiz kaynak adayları (Awesome Uncopyright / Public Datasets).**
+      K3 kapsamında: kamu malı/lisansı temiz kaynakların **aday listesi**,
+      provenance ve lisans alanlarıyla. Karar operatörün; bu madde yalnız
+      listeyi ve alanları hazırlar.
+- [ ] **Yanlış inanışlar denetimi (Awesome Falsehood).** Zaman, isim, para ve
+      kodlama hakkında. İş: lubot'ta ısıranlara test — Türkçe büyük/küçük harf
+      dönüşümü ve Unicode normalizasyonu jetonlayıcıyı doğrudan etkiliyor
+      (`crates/jeton`'daki sınıf ayrımı).
+- [ ] **Kanıta dayalı mühendislik (Awesome Empirical Software Engineering).**
+      Ratchet felsefesinin yöntem notu: ölçülen taban yalnız yükselir, iddia
+      ölçümle taşınır. İş: kısa bir yöntem belgesi + mevcut kapılarla eşleme.
+- [x] **Statik analiz (Awesome Static Analysis). KARAR: clippy çizgisi.**
+      `-D warnings` + `-W pedantic` ratchet'te 0'da; yeni lint eklemek serbest,
+      `#[allow]` ile gevşetmek yasak. Ek araç eklemek CI'yi zayıflatma riski
+      taşıdığı için alınmadı.
+- [x] **Üretken AI / sohbet listeleri (Awesome Generative AI, Conversational AI,
+      ChatGPT, AGI). YALNIZ BAĞLAM.** Lubot bilerek üretmiyor; çizgi
+      `reads-not-generates` ve `no-generation-variant` kapılarıyla çizilmiş
+      durumda. Bu listeler rakip/emsal taramasıdır, iş üretmez.
+- [x] **Ses ve görüntü listeleri (Awesome Whisper, VLM, Computer Vision).
+      KISMEN KAPSAM DIŞI.** Lubot bir okuma istemcisi: PDF metin çıkarımı var
+      (`doc-pdf-feeds-corpus`), ses girdisi kapsam dışı. Görsel **girdi** QQ
+      maddesinde ayrıca duruyor.
+
 ## Operatör kararı bekleyen bulgular (kod değiştirilmedi)
 
 - [ ] **`bulgu_veri_butcesi`.** Spec'in 1.94 token/param beyanı **yüzey**
@@ -161,6 +513,16 @@ Lubot'un kendisi.
       kararı.
 
 ## Süreç notları
+
+- **Ortam toolchain'i periyodik siliyor (ölçüldü, bu turda iki kez).**
+  `~/.cargo` ve `~/.rustup` oturum ortasında kayboldu; `.cargo/registry/src`
+  yarım kalınca hata "jetonlayıcılar uyuşmuyor" gibi değil,
+  `couldn't read .../rustversion-1.0.23/build/build.rs` olarak görünüyor.
+  Kural: doğrulamadan önce `cargo --version` çalıştır, çalışmıyorsa kurulumu
+  ve tüm doğrulamayı **tek çağrıda** yap; registry yarım silindiyse
+  `rm -rf ~/.cargo/registry/src` yeterli, ağ varsa cargo yeniden açıyor.
+  Bir kapının `could not run: FileNotFoundError: 'cargo'` demesi kapının
+  kırık olduğu anlamına gelmez — araç eksiktir.
 
 - [x] **CI sırasını yerelde birebir koşmak.** `Gate self-tests` korpus
       kurulmadan **önce** koşar; korpus isteyen bir self-test yerelde geçer,

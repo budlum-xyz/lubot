@@ -153,6 +153,21 @@ def butce_olc() -> dict:
         sira = math.ceil(p_oran * len(sirali))
         return sirali[max(0, min(len(sirali) - 1, sira - 1))]
 
+    # Paketleme bilesimi: kac pencere birden cok kaydi birlestiriyor? Alinti
+    # riskini belirleyen sayi bu - ve sinir maskesinin neden zorunlu oldugu.
+    akis_kaynak: list[int] = []
+    for _i, _adet in enumerate(uzunluklar):
+        akis_kaynak.extend([_i] * _adet)
+    paket_pencere_sayisi = jeton // pencere_uzunlugu
+    paket_tek = paket_cok = paket_en_cok = 0
+    for _w in range(paket_pencere_sayisi):
+        _bas = _w * pencere_uzunlugu
+        _ayrik = len(set(akis_kaynak[_bas:_bas + pencere_uzunlugu]))
+        if _ayrik > 1:
+            paket_cok += 1
+        else:
+            paket_tek += 1
+        paket_en_cok = max(paket_en_cok, _ayrik)
     kayit_pencere = sum(n // pencere_uzunlugu for n in uzunluklar)
     paket_pencere = jeton // pencere_uzunlugu
     kayit_kapsama = 100.0 * kayit_pencere * pencere_uzunlugu / jeton if jeton else 0.0
@@ -219,7 +234,10 @@ def butce_olc() -> dict:
                 f"en uzun {sirali[-1] if sirali else 0} jeton. Pencere "
                 f"{pencere_uzunlugu}: kayit basina pencereleme {kayit_pencere} "
                 f"pencere ({round(kayit_kapsama, 4)}% kapsama), kayitlar arasi "
-                f"paketleme {paket_pencere} pencere ({round(paket_kapsama, 4)}%)."
+                f"paketleme {paket_pencere} pencere ({round(paket_kapsama, 4)}%). "
+                f"Paketlenen pencerelerin {paket_cok} tanesi birden cok kaydi "
+                f"birlestiriyor (bir pencerede en cok {paket_en_cok} kayit), "
+                f"{paket_tek} tanesi tek kaynakli."
             ),
             "hukum": (
                 f"spec'in max_seq_len beyani ({pencere_uzunlugu}) bu korpusta "
@@ -241,6 +259,9 @@ def butce_olc() -> dict:
             "olculen_paket_pencere": paket_pencere,
             "olculen_kayit_kapsama_yuzde": round(kayit_kapsama, 4),
             "olculen_paket_kapsama_yuzde": round(paket_kapsama, 4),
+            "olculen_paket_cok_kaynakli": paket_cok,
+            "olculen_paket_tek_kaynakli": paket_tek,
+            "olculen_paket_en_cok_kayit": paket_en_cok,
         },
         "ihlaller": ihlaller,
         "olculmeyen": [
