@@ -4633,7 +4633,77 @@ def selftest_doc_diagram_feeds_corpus() -> None:
         assert kosu.returncode != 0, "lisanssiz agac kabul edildi"
 
 
+# --- KK: hakem ciftleri -----------------------------------------------------
+
+
+def _gp_eksikler(kok: pathlib.Path) -> list[str]:
+    """Repodaki her kapinin bir kanaryasi ve kanaryada bir reddi var mi?"""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        cikti = pathlib.Path(td) / "k.jsonl.gz"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(kok), "--out", str(cikti)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            return [f"korpus kurulamadi: {(kosu.stderr or kosu.stdout)[-200:]}"]
+        ciftler: dict[str, str] = {}
+        with gzip.open(cikti, "rt", encoding="utf-8") as fh:
+            for satir in fh:
+                if not satir.strip():
+                    continue
+                kayit = json.loads(satir)
+                if kayit.get("kind") == "gate-pair":
+                    ciftler[kayit["text"]] = kayit["text"]
+    liste = subprocess.run(
+        [sys.executable, str(ROOT / "gates" / "check.py"), "--list"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    kapilar = [s.strip() for s in liste.stdout.splitlines() if s.strip()]
+    sorunlar: list[str] = []
+    if len(ciftler) != len(kapilar):
+        sorunlar.append(f"kapi {len(kapilar)}, hakem cifti {len(ciftler)}: eslesmiyor")
+    for metin in ciftler:
+        if "kanaryada red yok" in metin:
+            sorunlar.append(f"kanaryasiz iddia: {metin[:80]}")
+    return sorunlar
+
+
+def gate_gate_pairs_carry_referee() -> str:
+    """KK: her kapi iddiasi kendi kanaryasiyla eslesir ve kanarya bir seyi
+    reddeder.
+
+    Derleyici ve test takimi bu repoda bedava hakemdir: bir kural ancak onu
+    curen bir kanarya kosuyorsa kuraldir. Kapi, korpustaki `gate-pair`
+    kayitlarinin sayisini kapilarla karsilastirir ve "kanaryada red yok"
+    diyen bir iddiayi kabul etmez."""
+    sorunlar = _gp_eksikler(ROOT)
+    if sorunlar:
+        raise SystemExit("hakem ciftleri eksik:\n" + "".join(f"  {s}\n" for s in sorunlar[:6]))
+    return "her kapinin kanaryasi var ve kanarya reddediyor"
+
+
+def selftest_gate_pairs_carry_referee() -> None:
+    """Kanarya: reddi olmayan selftest ve eksik kayit yakalanmali."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "LICENSE.md").write_text("MIT License\n", encoding="utf-8")
+        (kok / "gates").mkdir()
+        (kok / "gates" / "check.py").write_text(
+            'def gate_bir() -> str:\n    """Bir sey."""\n    return "x"\n\n'
+            "def selftest_bir() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+        sorunlar = _gp_eksikler(kok)
+        assert sorunlar, "reddi olmayan selftest kabul edildi"
+
+
 GATES_EXTRA = {
+    "gate-pairs-carry-referee": (gate_gate_pairs_carry_referee, selftest_gate_pairs_carry_referee),
     "doc-diagram-feeds-corpus": (gate_doc_diagram_feeds_corpus, selftest_doc_diagram_feeds_corpus),
     "gap-report-is-measured": (gate_gap_report_is_measured, selftest_gap_report_is_measured),
     "corpus-carries-structure": (gate_corpus_carries_structure, selftest_corpus_carries_structure),
