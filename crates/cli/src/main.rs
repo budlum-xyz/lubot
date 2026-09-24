@@ -1321,6 +1321,7 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
         Box::new(std::io::BufReader::new(dosya))
     };
     let mut sayilar: Vec<usize> = Vec::new();
+    let mut diziler: Vec<Vec<u32>> = Vec::new();
     for (sira, satir) in std::io::BufRead::lines(okuyucu).enumerate() {
         let satir = satir.map_err(|e| format!("korpus okunamadi ({sira}): {e}"))?;
         let satir = satir.trim();
@@ -1332,7 +1333,9 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
         let metin = deger["text"]
             .as_str()
             .ok_or_else(|| format!("korpus kaydi {sira}: `text` alani yok"))?;
-        sayilar.push(sozluk.kodla(metin).len());
+        let kimlikler = sozluk.kodla(metin);
+        sayilar.push(kimlikler.len());
+        diziler.push(kimlikler);
     }
     let rapor: lubot_egitim::PencereRaporu = lubot_egitim::pencere_olcu(&sayilar, uzunluk)
         .map_err(|e| {
@@ -1345,6 +1348,18 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
             )
         })?;
 
+    let (paketler, paket_raporu): (Vec<lubot_egitim::PaketPencere>, lubot_egitim::PaketRaporu) =
+        lubot_egitim::paketle(&diziler, uzunluk).map_err(|e| {
+            // Reddin sebebi adıyla söylenir; `{e:?}` reddi bir hata
+            // ayıklama dizesine çevirir, sebebi söylemez.
+            format!(
+                "paketleme reddedildi: {}",
+                match e {
+                    lubot_egitim::PaketHatasi::SifirUzunluk => "pencere uzunlugu sifir",
+                    lubot_egitim::PaketHatasi::BosKorpus => "paketlenecek kayit yok",
+                }
+            )
+        })?;
     let mut md = String::from("# Egitim veri yolu\n\n| olcu | deger |\n|---|---|\n");
     md.push_str(&format!(
         "| korpus | {} kayit, {} jeton |\n",
@@ -1387,6 +1402,68 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
         )
     };
     md.push_str(&format!("| hukum | {hukum} |\n"));
+    md.push_str(&format!(
+        "| paketleme | {} pencere: {} tek kaynakli, {} birden cok kaydi birlestiriyor (bir pencerede en cok {} kayit) |\n",
+        paket_raporu.pencere,
+        paket_raporu.tek_kaynakli,
+        paket_raporu.cok_kaynakli,
+        paket_raporu.en_cok_kaynak
+    ));
+    md.push_str(&format!(
+        "| provenans | her pencere konum basina kaynak izi tasiyor ({} pencere, kimlik ve kaynak dizileri esit uzunlukta); alinti hangi kayda ait oldugunu kaybetmiyor |\n",
+        paketler.len()
+    ));
+    // Paketli adim gerçek korpus verisiyle koşulur: pencere içindeki kayıt
+    // sınırlarında dikkat kesiliyor mu, burada ölçülür. Tek adımın kaybı bir
+    // korpus ölçümü değildir ve öyle raporlanmaz; raporlanan şey, maskenin
+    // kaç konumda devreye girdiği ve adımın sonlu bir kayıp verdiği.
+    let paket_spec = lubot_egitim::Spec {
+        vocab: sozluk.boyut(),
+        d_model: 16,
+        n_layers: 2,
+        n_heads: 2,
+        d_ff: 32,
+        max_seq_len: uzunluk,
+    };
+    paket_spec.dogrula().map_err(|e| {
+        format!(
+            "paketli adim spec reddedildi: {}",
+            match e {
+                lubot_egitim::SpecHatasi::BosBoyut => "sifir boyutlu bir eksen",
+                lubot_egitim::SpecHatasi::BasSayisiBolmuyor => "bas sayisi genisligi bolmuyor",
+            }
+        )
+    })?;
+    let paket_param = lubot_egitim::Parametreler::belirgin_doldur(paket_spec, 20_260_923);
+    let pencere = paketler
+        .first()
+        .ok_or_else(|| "paketleme pencere uretmedi".to_string())?;
+    let girdi: Vec<usize> = pencere.kimlikler.iter().map(|k| *k as usize).collect();
+    let hedef: Vec<usize> = (1..pencere.kimlikler.len())
+        .map(|i| pencere.kimlikler[i] as usize)
+        .chain(std::iter::once(pencere.kimlikler[0] as usize))
+        .collect();
+    let (paket_kayip, _) = lubot_egitim::ileri_ve_geri_paket(
+        paket_spec,
+        &paket_param,
+        &girdi,
+        &hedef,
+        &pencere.kaynak,
+    );
+    if !paket_kayip.is_finite() {
+        return Err(format!("paketli adim sonlu kayip vermedi: {paket_kayip}"));
+    }
+    let sinir = pencere
+        .kaynak
+        .windows(2)
+        .filter(|cift| cift[0] != cift[1])
+        .count();
+    md.push_str(&format!(
+        "| paketli adim | ilk pencere: {} jeton, {} kayit siniri maskelendi, kayip {:.6} (tek adim, korpus olcumu degil) |\n",
+        pencere.kimlikler.len(),
+        sinir,
+        paket_kayip
+    ));
     md.push_str(
         "| yontem | yuzdelikler en yakin-rank (rank = ceil(p*n)); spec beyani dosyadan okundu ve Rust sabitiyle karsilastirildi |\n",
     );
