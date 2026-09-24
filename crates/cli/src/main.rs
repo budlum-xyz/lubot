@@ -1065,10 +1065,18 @@ fn cmd_ratchet(args: &[String]) -> Result<(), String> {
         ));
     }
     if set {
-        lubot::ratchet::save(&baseline_path, &measured.as_baseline())?;
+        let kept = lubot::ratchet::save_measured_keys(&baseline_path, &measured.as_baseline())?;
         md.push_str(&format!(
-            "\nBaseline rewritten to the measurement ({}).\n",
-            baseline_path.display()
+            "\nBaseline rewritten to the measurement ({}){}.\n",
+            baseline_path.display(),
+            if kept.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; keys this program does not measure kept: {}",
+                    kept.join(", ")
+                )
+            }
         ));
     } else if regressed.is_empty() {
         md.push_str("\nNo regression: every measured number holds its baseline.\n");

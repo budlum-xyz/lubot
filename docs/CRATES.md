@@ -79,8 +79,7 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 9087 | 114 | The runnable binary, and the only crate that reaches everything else. |
-| `cli` | 9087 | 114 | The runnable binary, and the only crate that reaches everything else. |
+| `cli` | 9171 | 116 | The runnable binary, and the only crate that reaches everything else. |
 
 Four modules carry the wiring:
 

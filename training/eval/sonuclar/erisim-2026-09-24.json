@@ -11,6 +11,82 @@
         "soru": "sinav-02"
       }
     ],
+    "ikinci_olcum": {
+      "bulunamayan": [
+        {
+          "neden": "ilk n icinde yok",
+          "soru": "sinav-07"
+        }
+      ],
+      "ilk_n_icinde": 11,
+      "ilk_sirada": 5,
+      "n": 3,
+      "olcut": "isabet = content_id'nin (path, satir)'i ilk n alintidan birine duser",
+      "sirali": [
+        {
+          "kaynak_dosya": "crates/cli/src/activation.rs",
+          "sira": 1,
+          "soru_kimligi": "sinav-01"
+        },
+        {
+          "kaynak_dosya": "crates/read/src/lib.rs",
+          "sira": 1,
+          "soru_kimligi": "sinav-02"
+        },
+        {
+          "kaynak_dosya": "crates/tomurcuk/src/lib.rs",
+          "sira": 2,
+          "soru_kimligi": "sinav-03"
+        },
+        {
+          "kaynak_dosya": "crates/cli/src/main.rs",
+          "sira": 1,
+          "soru_kimligi": "sinav-04"
+        },
+        {
+          "kaynak_dosya": "crates/grant/src/training.rs",
+          "sira": 2,
+          "soru_kimligi": "sinav-05"
+        },
+        {
+          "kaynak_dosya": "crates/kanit/src/lib.rs",
+          "sira": 2,
+          "soru_kimligi": "sinav-06"
+        },
+        {
+          "kaynak_dosya": "crates/izolasyon/src/lib.rs",
+          "sira": null,
+          "soru_kimligi": "sinav-07"
+        },
+        {
+          "kaynak_dosya": "crates/cli/src/kosum.rs",
+          "sira": 1,
+          "soru_kimligi": "sinav-08"
+        },
+        {
+          "kaynak_dosya": "crates/esik/src/lib.rs",
+          "sira": 1,
+          "soru_kimligi": "sinav-09"
+        },
+        {
+          "kaynak_dosya": "crates/read/src/perception.rs",
+          "sira": 2,
+          "soru_kimligi": "sinav-10"
+        },
+        {
+          "kaynak_dosya": "crates/answer/src/lib.rs",
+          "sira": 2,
+          "soru_kimligi": "sinav-11"
+        },
+        {
+          "kaynak_dosya": "crates/read/src/file_kind.rs",
+          "sira": 2,
+          "soru_kimligi": "sinav-12"
+        }
+      ],
+      "sorgu_alani": "alinti",
+      "soru": 12
+    },
     "ilk_n_icinde": 10,
     "ilk_sirada": 10,
     "n": 3,
@@ -78,90 +154,14 @@
       }
     ],
     "sorgu_alani": "tam",
-    "soru": 12,
-    "ikinci_olcum": {
-      "bulunamayan": [
-        {
-          "neden": "ilk n icinde yok",
-          "soru": "sinav-07"
-        }
-      ],
-      "ilk_n_icinde": 11,
-      "ilk_sirada": 6,
-      "n": 3,
-      "olcut": "isabet = content_id'nin (path, satir)'i ilk n alintidan birine duser",
-      "sirali": [
-        {
-          "kaynak_dosya": "crates/cli/src/activation.rs",
-          "sira": 1,
-          "soru_kimligi": "sinav-01"
-        },
-        {
-          "kaynak_dosya": "crates/read/src/lib.rs",
-          "sira": 1,
-          "soru_kimligi": "sinav-02"
-        },
-        {
-          "kaynak_dosya": "crates/tomurcuk/src/lib.rs",
-          "sira": 2,
-          "soru_kimligi": "sinav-03"
-        },
-        {
-          "kaynak_dosya": "crates/cli/src/main.rs",
-          "sira": 1,
-          "soru_kimligi": "sinav-04"
-        },
-        {
-          "kaynak_dosya": "crates/grant/src/training.rs",
-          "sira": 2,
-          "soru_kimligi": "sinav-05"
-        },
-        {
-          "kaynak_dosya": "crates/kanit/src/lib.rs",
-          "sira": 1,
-          "soru_kimligi": "sinav-06"
-        },
-        {
-          "kaynak_dosya": "crates/izolasyon/src/lib.rs",
-          "sira": null,
-          "soru_kimligi": "sinav-07"
-        },
-        {
-          "kaynak_dosya": "crates/cli/src/kosum.rs",
-          "sira": 1,
-          "soru_kimligi": "sinav-08"
-        },
-        {
-          "kaynak_dosya": "crates/esik/src/lib.rs",
-          "sira": 1,
-          "soru_kimligi": "sinav-09"
-        },
-        {
-          "kaynak_dosya": "crates/read/src/perception.rs",
-          "sira": 2,
-          "soru_kimligi": "sinav-10"
-        },
-        {
-          "kaynak_dosya": "crates/answer/src/lib.rs",
-          "sira": 2,
-          "soru_kimligi": "sinav-11"
-        },
-        {
-          "kaynak_dosya": "crates/read/src/file_kind.rs",
-          "sira": 2,
-          "soru_kimligi": "sinav-12"
-        }
-      ],
-      "sorgu_alani": "alinti",
-      "soru": 12
-    }
+    "soru": 12
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 4.57
+    "sure_saniye": 5.14
   },
   "kosucu": "ara",
   "olcut": {
