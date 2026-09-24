@@ -41,5 +41,14 @@
     "konsolidasyon_her_tutmada": 5,
     "ana_dala_push": false,
     "dal": "egitim-dongusu"
+  },
+  "danisma": {
+    "etkin": true,
+    "bant_carpani": 1.0,
+    "guven_esigi": 0.55,
+    "servis_url": "http://127.0.0.1:8790",
+    "zaman_asimi_saniye": 20,
+    "arka_uc": "otomatik",
+    "_not": "Danisma katmani OY verir; esik, marj ve tut/at karari dongu.py ile danisma.py'de yazilidir (K7)."
   }
 }

@@ -13,6 +13,7 @@ ikisi çelişirse **`ayarlar.json` bağlayıcıdır**.
 | 2 — kalıcı hafıza | ideation + experimentation kaydı, oturumlar arası taşınır | `hafiza/ideation.jsonl`, `hafiza/experimentation.jsonl` |
 | 3 — kendini geliştirme | yalnız **kendi arama politikasını** değiştirir; her değişiklik loglu ve geri alınabilir | `kendini-gelistirme.json` + `kendini_gelistir()` |
 | 4 — genişletilmiş keşif | veri işleme/biçim denemeleri; ikincil ve isteğe bağlı; K2 sabit | bu sürümde **kapalı** (aşağıda §7) |
+| **danışma (K7)** | belirsizlik bandındaki tut/at kararına **oy** verir; karar kuralı kodda kalır, oy yoksa insan | `danisma.py` + `training/danisma/` servisi |
 
 Yön (hangi soruyu kovaladığımız) insan yazımıdır: `program.md`. "Hangi yönü
 araştırayım" diye karar veren bir katman bilinçli olarak **yoktur** (AI Scientist
@@ -35,7 +36,7 @@ Kapılar: `invariants-are-frozen` (damga + makine bloğu + "beyan edilen her dur
 koşulu kodda `dur()` ile çağrılıyor mu" + dokunulmazlara yazma taraması + kanarya),
 `mutation-surface-is-closed` (mutasyon alanı ∩ dokunulmazlar = ∅; düğmeler ikilinin
 gerçekten kabul ettiği bayraklar) ve `credential-shapes-are-measured` (bu ağacın
-ölçüm betiği için; bkz. §12). Süit toplamı 82 kapı.
+ölçüm betiği için; bkz. §12). Süit toplamı 83 kapı.
 
 ## 2. Ölçüt (`olcut.md` bağlayıcıdır)
 
