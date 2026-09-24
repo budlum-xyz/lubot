@@ -1,7 +1,15 @@
 {
-  "atilan": 1,
+  "atilan": 2,
   "burakim": {},
-  "deney": 1,
+  "butce_gozlemi": {
+    "adim": 265,
+    "butce": 300,
+    "kaynak": "tekrar-2: ayni adim butcesinde en uzun gercek kosu",
+    "oran": 1.331,
+    "sure": 399.309,
+    "tarih": "2026-09-24T15:06:07"
+  },
+  "deney": 2,
   "durus": {
     "durdu": true,
     "kanit": "spec parametre sayisi okunamadi: donanim butcesi denetlenemez",
@@ -9,10 +17,11 @@
     "onay": null,
     "tarih": "2026-09-24T14:27:42"
   },
-  "en_iyi_skor": 8.450811,
+  "en_iyi_skor": 4.980211,
   "kanit": {},
   "kendini_gelistirme": {
     "pencere": [
+      "atildi",
       "atildi"
     ],
     "son_degisim_deneyi": 0,
@@ -45,6 +54,12 @@
   },
   "son_checkpoint": 0,
   "surum": 1,
+  "taban": {
+    "adim": 265,
+    "skor": 4.980211,
+    "tarih": "2026-09-24T15:06:07",
+    "tekrarlanabilir": true
+  },
   "tekrarlanabilir": true,
   "tutulan": 0,
   "ust_uste_kirmizi": 1

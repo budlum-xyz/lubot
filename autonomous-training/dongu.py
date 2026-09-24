@@ -283,42 +283,83 @@ def sozluk_ailesi() -> str:
 
 
 # --- kalibrasyon: adim butcesi olculur, yazilmaz ---------------------------
-def kalibrasyon(ayar: dict, zorla: bool = False) -> dict:
+def kalibrasyon(ayar: dict, durum: dict, zorla: bool = False) -> dict:
     """Adim hizini olcer ve sure butcesine sigan adim sayisini turetir.
 
-    Butce degistiginde kalibrasyon bayatlar: adim butcesi butceden turetilir,
-    eski olcum yeni butceyi anlatmaz."""
+    Iki noktali prob: kisa kosu sabit yuku (korpus yukleme, jetonlama) tasir,
+    bu yuzden tek noktadan turetilen "adim basina saniye" butceyi asar. Iki
+    uzunluk olculur, egim (marjinal adim maliyeti) ve sabit yuk ayristirilir.
+    Ayrica gecen oturumun gercek kosusu butceyi astiysa o gozlem de egime
+    katilir: kalibrasyon kapali cevrimlidir. Butce degistiginde kalibrasyon
+    bayatlar, cunku adim butcesi butceden turetilir."""
     kayit_yolu = KOSUM / "kalibrasyon.json"
     if kayit_yolu.is_file() and not zorla:
         kayitli = json.loads(kayit_yolu.read_text(encoding="utf-8"))
         if kayitli.get("sure_butcesi_saniye") == ayar["deney"]["sure_butcesi_saniye"]:
             return kayitli
     KOSUM.mkdir(parents=True, exist_ok=True)
-    cikti = KOSUM / "kalibrasyon-kosusu"
-    olcum = kosucu(ayar, {}, 20, cikti)
-    if not olcum["basarili"]:
-        raise SystemExit(f"kalibrasyon kosusu basarisiz: {olcum['neden']}")
-    yuk_saniye = 10.0  # korpus yukleme + jetonlama; rapordaki ilk adim oncesi olculur
-    adim_saniye = max(olcum["sure_saniye"] - yuk_saniye, 1e-6) / 20.0
-    kullanilabilir = ayar["deney"]["sure_butcesi_saniye"] - yuk_saniye
     # Alt sinir dogrulama duzeni: `--dogrulama-her` adimindan once duran bir kosu
     # dogrulama kaybi uretmez ve olculecek bir metrik kalmaz.
     alt = int(ayar["deney"]["dogrulama_her"])
-    adim = max(alt, int(kullanilabilir / adim_saniye * ayar["deney"]["adim_guvenlik_payi"]))
+    kisa, uzun = alt, 5 * alt
+    olcumler = []
+    for i, adim_prob in enumerate((kisa, uzun), start=1):
+        olcum = kosucu(ayar, {}, adim_prob, KOSUM / f"kalibrasyon-{i}")
+        if not olcum["basarili"]:
+            raise SystemExit(f"kalibrasyon kosusu basarisiz: {olcum['neden']}")
+        olcumler.append(olcum)
+    t_kisa, t_uzun = (o["sure_saniye"] for o in olcumler)
+    egim = (t_uzun - t_kisa) / (uzun - kisa)
+    if egim <= 0:
+        egim = t_uzun / uzun
+    yuk_saniye = max(0.0, t_kisa - egim * kisa)
+    # Gozlem: gecen oturumun gercek kosusu butceyi astiysa daha kotu egim gecerli.
+    gozlem = durum.get("butce_gozlemi") or {}
+    gozlem_egim = None
+    if gozlem.get("adim") and gozlem.get("sure"):
+        gozlem_egim = max(0.0, (gozlem["sure"] - yuk_saniye) / gozlem["adim"])
+        egim = max(egim, gozlem_egim)
+    kullanilabilir = ayar["deney"]["sure_butcesi_saniye"] - yuk_saniye
+    ham = int(kullanilabilir / egim * ayar["deney"]["adim_guvenlik_payi"])
+    # Butce dogrulama kadansina hizalanir: makine yuku oynasa da adim sayisi
+    # ayni kalir, taban skoru her oturumda yeniden olculmek zorunda kalmaz.
+    adim = max(alt, (ham // alt) * alt)
     sonuc = {
         "olculdu": True,
-        "kalibrasyon_kosusu_saniye": olcum["sure_saniye"],
-        "yuk_saniye_varsayimi": yuk_saniye,
-        "adim_basina_saniye": round(adim_saniye, 4),
+        "problar": {"kisa": {"adim": kisa, "saniye": t_kisa}, "uzun": {"adim": uzun, "saniye": t_uzun}},
+        "kalibrasyon_kosusu_saniye": olcumler[0]["sure_saniye"],
+        "adim_basina_saniye": round(egim, 4),
+        "yuk_saniye": round(yuk_saniye, 2),
+        "gozlem_egimi": None if gozlem_egim is None else round(gozlem_egim, 4),
+        "gozlem": gozlem or None,
         "sure_butcesi_saniye": ayar["deney"]["sure_butcesi_saniye"],
         "adim_butcesi": adim,
-        "formul": "(sure_butcesi - yuk) / adim_basina_saniye * guvenlik_payi",
+        "formul": "(sure_butcesi - yuk) / egim * guvenlik_payi, kadansa hizali",
     }
     guvenli_yaz(kayit_yolu, json.dumps(sonuc, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return sonuc
 
 
 # --- K6: donanim tavani olculur -------------------------------------------
+def butce_gozlemi_yaz(durum: dict, olcum: dict, ayar: dict) -> None:
+    """Kosunun gercek suresini kaydeder; butce asildiysa adiyla soyler.
+
+    Kalibrasyon bu gozlemi girdi olarak kullanir: olculen egim ile gerceklesen
+    sure ayrisirsa daha kotusu gecerli olur."""
+    if not olcum.get("basarili"):
+        return
+    butce = ayar["deney"]["sure_butcesi_saniye"]
+    oran = round(olcum["sure_saniye"] / butce, 3) if butce else None
+    durum["butce_gozlemi"] = {
+        "adim": olcum["adim"], "sure": olcum["sure_saniye"], "butce": butce, "oran": oran,
+        "tarih": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    if oran is not None and oran > 1.1:
+        gunluk_yaz(f"- BUTCE ASIMI: {olcum['adim']} adim {olcum['sure_saniye']} s "
+                   f"(butce {butce} s, oran {oran}) - sonraki kalibrasyon bu gozlemi kullanir")
+    return
+
+
 def k6_kontrol(ayar: dict, durum: dict, zorla: bool = False) -> dict:
     kayit_yolu = KOSUM / "k6.json"
     if kayit_yolu.is_file() and not zorla:
@@ -599,6 +640,7 @@ def tek_deney(durum: dict, ayar: dict, mutasyon: dict, adim: int, kaynak: str) -
         f"- adim butcesi: {adim}"
     )
     olcum = kosucu(ayar, oneri["burakim"], adim, cikti)
+    butce_gozlemi_yaz(durum, olcum, ayar)
     if not olcum["basarili"]:
         durum["atilan"] += 1
         hafiza_yaz("ideation.jsonl", {
@@ -688,7 +730,7 @@ def oturum_hazirla(ayar: dict, zorla: bool) -> tuple[dict, int]:
         )
     durum = durum_oku()
     k6 = k6_kontrol(ayar, durum, zorla)
-    kal = kalibrasyon(ayar, zorla)
+    kal = kalibrasyon(ayar, durum, zorla)
     durum.setdefault("profil", {})
     durum["profil"] = {
         "k6": k6,
@@ -713,6 +755,7 @@ def tekrarlanabilirlik_kapisi(durum: dict, ayar: dict, adim: int) -> dict:
         olcum = kosucu(ayar, durum["burakim"], adim, KOSUM / f"tekrar-{i}")
         if not olcum["basarili"]:
             dur(durum, "S1", f"tekrarlanabilirlik kosusu dustu: {olcum['neden']}")
+        butce_gozlemi_yaz(durum, olcum, ayar)
         skorlar.append(olcum["skor"])
     if skorlar[0] != skorlar[1]:
         dur(durum, "S1", f"olcum tekrarlanabilir degil: {skorlar[0]} != {skorlar[1]}")
@@ -925,7 +968,7 @@ def kendini_test(uzun: bool = False) -> int:
         ayar = json.loads(AYARLAR.read_text(encoding="utf-8"))
         ayar["deney"]["sure_butcesi_saniye"] = 60
         durum = bos_durum()
-        kal = kalibrasyon(ayar, zorla=True)
+        kal = kalibrasyon(ayar, bos_durum(), zorla=True)
         olcum = kosucu(ayar, durum["burakim"], int(kal["adim_butcesi"]), KOSUM / "kanarya-uzun")
         assert olcum["basarili"], f"gercek kosu basarisiz: {olcum.get('neden')}"
         bulgular.append(f"gercek kosu (skor {olcum['skor']})")

@@ -59,14 +59,21 @@ kaçırmayacak kadar altında.
 Ölçülen hız: **≈0.80 adım/sn** (20 adım 11.2 s; 200 adım 249.7 s; 60 adım +
 `--dogrulama-her 20` 86.5 s — bu makinede, tek süreç, 2 çekirdek).
 
-- `sure_butcesi_saniye = 300` → `adim_butcesi = floor((300 - yük) / adım_saniye × 0.8)`
-  ≈ **258 adım**. Adım sayısı elle yazılmaz; `kalibrasyon()` her oturumda yeniden
-  ölçer ve `kosum/kalibrasyon.json`'a yazar. Bütçe değişirse kalibrasyon **bayatlar**
-  ve kendiliğinden yenilenir (adım bütçesi bütçeden türetilir).
+- Adım sayısı elle yazılmaz: `kalibrasyon()` **iki noktalı prob** koşar — `dogrulama_her`
+  adım ve onun beş katı — ve iki süreden hem sabit yükü (korpus yükleme + jetonlama)
+  hem **marjinal adım maliyetini** (eğim) ayırır:
+  `adim_butcesi = floor((sure_butcesi - yük) / eğim × 0.8)`, sonra `dogrulama_her`
+  katına aşağı yuvarlanır. Sonuç `kosum/kalibrasyon.json`'da durur.
+- Neden iki nokta? Ölçüldü: tek noktalı 20 adımlık prob 0.874 s/adım dedi, bütçe
+  265 adım çıktı, gerçek koşu **399 s** sürdü (300 s bütçeye karşı: 1.33× aşım).
+  Kısa koşu sabit yükle karışıyordu; iki nokta eğimiyle sabit yük ayrışır.
+- Kalibrasyon **kapalı çevrimlidir**: gerçek bir koşu bütçeyi %10'dan fazla aşarsa
+  `kosum/durum.json → butce_gozlemi`'ne yazılır ve sonraki oturumda eğim olarak
+  `max(prob eğimi, gözlem eğimi)` kullanılır.
 - Alt sınır `dogrulama_her`: doğrulama kadansından önce duran koşu hiç doğrulama
   kaybı üretmez, yani ölçülecek metrik kalmaz.
-- Güvenlik payı 0.8: gözlenen hız dalgalanması (≈0.80–0.93 adım/sn) ve doğrulama
-  adımlarının ek maliyeti için.
+- Güvenlik payı 0.8: gözlenen hız dalgalanması ve doğrulama adımlarının ek maliyeti
+  için. Bütçe değişirse kalibrasyon **bayatlar** (adım bütçesi bütçeden türetilir).
 - `gunluk_deney_ust_siniri = 40`: 300 s × 40 ≈ 3.3 saat/gün eğitim. Gerekçe: aynı
   makinede kapılar (fmt/clippy/test/`gates --all`) ve insan incelemesi için yer
   kalmalı; ayrıca bir gün içinde üretilebilecek en fazla commit/PR sayısı insan
@@ -214,6 +221,13 @@ Fikstür artık parçalardan kurulur (fikstür gerçek bir biçim, kaynak dosya 
 anahtar bloğu değil) ve `readme-is-measured` kapı sayısını güncelledi. O günün
 kaydı kırmızıları **adıyla** yazmıyordu; artık `kirmizilar` alanı ve oturum günlüğü
 hangi kapının/testin düştüğünü söylüyor — teshis edilemeyen bir ret, ölçüm değil.
+
+**Zaman bütçesi tutmuyordu (ölçüm kusuru).** İlk doğrulanmış turun tabanı iki kez
+ölçüldü (265 adım, skor 4.980211) ve öneri `--ogrenme-orani 0.01 → 0.003875` skor
+7.357786 verdi: aynı adım bütçesinde olduğu için bu kez **karşılaştırma geçerliydi**
+ve deney haklı olarak atıldı. Ama üç koşu da 393–399 s sürdü; bütçe 300 s.
+Sebep: tek noktalı prob. Onarım: iki noktalı eğim ölçümü (§3) + bütçe gözlemi.
+Aynı gün ölçülen `ckpt_yuku_silindi: true` ile koşu yükü temizliği de doğrulandı.
 
 Ders, kural olarak: bu otomasyonun tam doğrulaması (fmt + clippy + test + tüm
 kapılar) deney sırasında **eller serbest bırakılmaz**; ağaçta eşzamanlı düzenleme
