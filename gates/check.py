@@ -4702,7 +4702,145 @@ def selftest_gate_pairs_carry_referee() -> None:
         assert sorunlar, "reddi olmayan selftest kabul edildi"
 
 
+# --- korpus turleri: uretici ile okuyucu ayni dili konusur -------------------
+
+
+def gate_corpus_kinds_agree() -> str:
+    """Yazilan her tur okunabilmeli.
+
+    build_corpus.py'nin urettigi kayit turleri ile `lubot corpus`un kabul
+    ettigi turler ayni kume olmali; okuyucu bilinmeyen turu reddettigi icin
+    yeni bir tur eklemek iki tarafi birlikte degistirmeyi gerektirir. Bu
+    kapi, JJ/QQ/KK/RR turlarini eklerken tam olarak bu yuzden dogdu:
+    2755 kayitlik korpusun 617'si okuyucudan donuyordu."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        korpus = _mini_korpus(pathlib.Path(td))
+        turler: dict[str, int] = {}
+        with gzip.open(korpus, "rt", encoding="utf-8") as fh:
+            for satir in fh:
+                if satir.strip():
+                    tur = json.loads(satir)["kind"]
+                    turler[tur] = turler.get(tur, 0) + 1
+        kosu = _cli("corpus", str(korpus))
+        birlesik = (kosu.stdout or "") + (kosu.stderr or "")
+        if kosu.returncode != 0 or "refused" in birlesik:
+            raise SystemExit(f"okuyucu ureticinin turlerini reddetti: {birlesik[-300:]}")
+        return f"{len(turler)} kayit turu okuyucudan gecti: " + ", ".join(sorted(turler))
+
+
+def selftest_corpus_kinds_agree() -> None:
+    """Kanarya: uydurma bir tur okuyucudan gecemez."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        yol = pathlib.Path(td) / "uydurma.jsonl.gz"
+        with gzip.open(yol, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "kind": "uydurma-tur", "text": "kanarya",
+                "path": "x.md", "digest": "0" * 64,
+            }) + "\n")
+        kosu = _cli("corpus", str(yol))
+        assert kosu.returncode != 0, "uydurma tur kabul edildi"
+
+
+# --- I: alma (retrieval) yuzeyinin olcumu -----------------------------------
+
+
+def _er_kos(*ek: str) -> list[str]:
+    """Kucuk olcum kosusu: ikili + korpus + sinav seti + ek bayraklar."""
+    import shlex
+
+    ikili = shlex.join(_binary())
+    return [
+        sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
+        "--corpus", "corpus/knowledge-self.jsonl.gz",
+        "--sorular", "training/eval/sinav-seti.jsonl",
+        "--bin", ikili, *ek,
+    ]
+
+
+def _er_olc(*ek: str) -> dict:
+    kosu = subprocess.run(_er_kos(*ek), cwd=ROOT, capture_output=True, text=True, check=False)
+    if kosu.returncode != 0:
+        raise SystemExit(f"alma olcumu kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    return json.loads(kosu.stdout)
+
+
+def gate_retrieval_at_k_is_measured() -> str:
+    """I: alma katmani iddia degil olcumdur.
+
+    Sinav setindeki her soru damgalanmis bir pasaja dayanir; `ara` ayni
+    korpusu BM25 ile tarar ve damganin kacinci sirada ciktigi olculur.
+    Kapi olcumu yeniden kosar, sayilarin ic tutarliligini (ilk sirada <=
+    ilk n <= soru) ve kaydin agacla birlikte yasamasini denetler: kayittaki
+    sayi ile taze olcum uyusmuyorsa kayit yeniden uretilmelidir."""
+    import shlex
+
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "erisim-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("alma olcumu kaydi yok: training/eval/sonuclar/erisim-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    if "/" in shlex.split(_er_kos()[4])[0] and not (ROOT / "target" / "release" / "lubot").is_file():
+        subprocess.run(["cargo", "build", "--release", "-p", "lubot"], cwd=ROOT,
+                       capture_output=True, text=True, check=False)
+    taze = _er_olc()
+    if not (taze["ilk_sirada"] <= taze["ilk_n_icinde"] <= taze["soru"]):
+        raise SystemExit(f"olcum ic tutarsiz: {taze['ilk_sirada']}/{taze['ilk_n_icinde']}/{taze['soru']}")
+    if len(taze["sirali"]) != taze["soru"]:
+        raise SystemExit("her soru icin sira kaydi yok")
+    if taze["bulunamayan"] and len(taze["bulunamayan"]) > taze["soru"] - taze["ilk_n_icinde"]:
+        raise SystemExit("bulunamayan listesi isabetsizlikle uyusmuyor")
+    kanit = kayit["kanit"]
+    if (taze["ilk_sirada"], taze["ilk_n_icinde"]) != (kanit["ilk_sirada"], kanit["ilk_n_icinde"]):
+        raise SystemExit(
+            f"kayit bayat: kayitta {kanit['ilk_sirada']}/{kanit['ilk_n_icinde']}, "
+            f"olcum {taze['ilk_sirada']}/{taze['ilk_n_icinde']} - kaydi yeniden uret"
+        )
+    tekrar = _er_olc()
+    if tekrar["sirali"] != taze["sirali"]:
+        raise SystemExit("alma olcumu deterministik degil")
+    return (
+        f"alma olculdu: damga ilk sirada {taze['ilk_sirada']}/{taze['soru']}, "
+        f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}/{taze['soru']}"
+    )
+
+
+def selftest_retrieval_at_k_is_measured() -> None:
+    """Kanarya: korpusta olmayan damga 'bulunamayan' listesine duser ve
+    eksik girdiler kosuyu durdurur."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        sorular = kok / "sorular.jsonl"
+        sorular.write_text(json.dumps({
+            "soru_kimligi": "kanarya-01", "soru": "cevap nedir",
+            "content_id": "0" * 64, "kaynak_dosya": "yok.md",
+        }) + "\n", encoding="utf-8")
+        kosu = subprocess.run([
+            sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
+            "--corpus", str(kok / "yok.jsonl.gz"), "--sorular", str(sorular),
+            "--bin", str(kok / "yok-bin"),
+        ], cwd=ROOT, capture_output=True, text=True, check=False)
+        assert kosu.returncode != 0, "eksik korpus kabul edildi"
+        bos = kok / "bos.jsonl"
+        bos.write_text("\n", encoding="utf-8")
+        kosu2 = subprocess.run([
+            sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
+            "--corpus", "corpus/knowledge-self.jsonl.gz", "--sorular", str(bos),
+            "--bin", "target/release/lubot",
+        ], cwd=ROOT, capture_output=True, text=True, check=False)
+        assert kosu2.returncode != 0, "bos soru seti kabul edildi"
+
+
 GATES_EXTRA = {
+    "retrieval-at-k-is-measured": (gate_retrieval_at_k_is_measured, selftest_retrieval_at_k_is_measured),
+    "corpus-kinds-agree": (gate_corpus_kinds_agree, selftest_corpus_kinds_agree),
     "gate-pairs-carry-referee": (gate_gate_pairs_carry_referee, selftest_gate_pairs_carry_referee),
     "doc-diagram-feeds-corpus": (gate_doc_diagram_feeds_corpus, selftest_doc_diagram_feeds_corpus),
     "gap-report-is-measured": (gate_gap_report_is_measured, selftest_gap_report_is_measured),

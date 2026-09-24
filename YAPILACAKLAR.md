@@ -162,6 +162,17 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       Ölçülen: kapı 67 → **72**. LL (k-of-n karar konsensüsü) açık: en az
       iki eğitilmiş karar başlığı ister; maliyet ekseni zaten
       `decision-latency-is-recorded` ile ölçülüyor.
+- [x] **Adım 8e — Alma yüzeyinin ölçümü (I).**
+      `training/erisim_geri_cagirma.py` sınav setindeki her sorunun
+      damgalanmış pasajını `lubot ara` sıralamasında arar; isabet kuralı
+      dosya + pasaj metni üzerinden kurulur (alıntıdaki sayı pasaj sırası,
+      dosya satırı değil). Ölçülen (2026-09-24, korpus 2755 kayıt): tam
+      soru metniyle **10/12 ilk sırada, 10/12 ilk 3'te**; yalnız çekirdek
+      cümleyle 5/12 ilk sırada, **11/12 ilk 3'te**. Kayıt
+      `training/eval/sonuclar/erisim-2026-09-24.json`; kapı
+      `retrieval-at-k-is-measured` (74) kaydı taze ölçümle karşılaştırır.
+      Açık iş: tam metinde 2 soru ilk 3'te hiç çıkmıyor — sorgu
+      şekillendirme (soru yönergesi) bu turun konusu.
 - [ ] **Adım 8c — İlk kapışma ölçümü.** Görev ekseninde, taban olarak raporla —
       zafer ilanı değil. Eğitilmiş kontrol noktası yokken (K6) ölçülemez.
 

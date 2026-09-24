@@ -58,8 +58,25 @@ use std::collections::BTreeMap;
 pub const LINES_PER_PASSAGE: usize = 16;
 /// Best passages an answer may carry.
 pub const PASSAGES_PER_ANSWER: usize = 5;
-/// The four record kinds the corpus may hold. Anything else is refused.
-pub const KINDS: [&str; 4] = ["api", "behaviour", "doc", "markdown"];
+/// The record kinds the corpus may hold. Anything else is refused.
+///
+/// The list is closed on purpose: a kind the reader does not know is a
+/// record nobody can cite, so it fails at the door. JJ's structural kinds
+/// (`api-doc-pair`, `trait-impl`, `dependency-edge`), QQ's `diagram`, KK's
+/// `gate-pair` and RR's `gap-report` are here because the builder writes
+/// them and the reader must accept what the builder writes.
+pub const KINDS: [&str; 10] = [
+    "api",
+    "api-doc-pair",
+    "behaviour",
+    "dependency-edge",
+    "diagram",
+    "doc",
+    "gate-pair",
+    "gap-report",
+    "markdown",
+    "trait-impl",
+];
 
 /// One corpus record, as the builder wrote it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
