@@ -702,18 +702,39 @@ sayısı gerilemez), ama damgalı kayıt ne aranabilir ne alıntılanabilir.
 
 ## Süreç notları
 
-- [ ] **`lubot ratchet --set` yedi anahtarın dördünü yazıyor (bulgu, bu turda
-      yakalandı).** `crates/cli`'deki `ratchet::Measured` 4 alan ölçüyor
-      (tests/gates/pedantic/corpus) ve `as_baseline()` tablonun tamamıymış
-      gibi yazıyor; `gates/check.py` tarafının `RATCHET_KEYS`'i 7 anahtar
-      (tokens, bootstrap, exam Python tarafında yaşıyor). Sonuç: `--set`
-      koşusu `tokens`/`bootstrap`/`exam` satırlarını düşürüyor ve bir
-      sonraki `ratchet-holds` `ratchet baseline lost` ile düşüyor —
-      doğuştan kırmızı bir "tabanı yenile" yolu. Bu turda uydurma sayıyla
-      değil, sahiplerinin ölçümüyle (`egitim_butcesi.py --olc` + sonuç
-      dizini ve sınav seti sayımı) birleştirilerek onarıldı; iki tarafın
-      tek anahtar listesine bağlanması işi açık. Koruma yönü mevcut: kayıp
-      anahtar taban güncellemesi kapıda reddediliyor.
+- [x] **İki kolun birleşmesi (operatör b5f6104 + yerel iş).** Operatörün
+      "servis-yüzeyi damgası + okuma onarımları" commit'i ile bu turdaki yerel
+      `ratchet --set` işi tek ağaçta birleşti; çakışan üç dosyada kural şu
+      oldu: **ölçülen sayı operatörünkinden değil, birleşmiş ağaçtan gelir.**
+      Birleşme sonrası ölçüm: 537 test (535 + 2 yeni kanarya), 75 kapı;
+      korpusun türevi sayılar (kayıt, jeton) buraya yazılmaz — bu dosya
+      korpusun içinde olduğu için yazılan sayı ölçümü kendine bağlar, o
+      yüzden yalnız sahibi olan kayıtlarda dururlar (`training/ratchet.json`,
+      `training/eval/sonuclar/`). `alma` kaydı bu yüzden `--kayit` ile
+      yeniden üretildi (tam: 10/12 ilk sırada; çekirdek cümleyle ilk 3'te
+      11/12 — isabet sayıları sınav setine aittir, korpus sayımına değil).
+- [x] **`docs/CRATES.md`'de `cli` satırı iki kez duruyordu (operatör
+      commit'inden).** Tabloda aynı satır iki kere yazılıydı ve kapı ilk
+      eşleşmeyi okuduğu için görünmüyordu; satır tekilleştirildi ve birleşmiş
+      ağaçtan yeniden ölçüldü (9171 satır / 116 test). Kapı bir satırı
+      bulmakla yetindiği için "çift satır" sınıfı hâlâ kapısız: tabloda aynı
+      crate adı birden çok kez geçerse uyaran bir denetim eklenmeli.
+- [x] **`training/erisim_geri_cagirma.py --kayit`.** Ölçüm kaydı artık elle
+      değil, tek komutla üretiliyor: betik iki sorgu biçimini koşar (tam soru
+      metni ve yalnız çekirdek cümle) ve `SONUC_SEMASI.md` uyumlu kaydı yazar
+      (`olcut.sonuc` = ilk 3'te bulunan soruların oranı ≥ 0,8). Kayıt böylece
+      ağaçla birlikte yeniden üretilebilir; kapı onu taze ölçümle karşılaştırır.
+
+- [x] **`lubot ratchet --set` artık yalnız ölçtüğü dört anahtarı yazar; yabancı
+      anahtarlar dosyada kalır.** `ratchet::save_measured_keys()` yeniden
+      yazımı `serde_json::Map` üzerinden yapıyor: dosyadaki başka bir sahibin
+      sayısı (`tokens`, `bootstrap`, `exam`) serileştirilen yapının dışında
+      kaldığı için silinemiyor, ve `--set` çıktısı hangi anahtarları
+      koruduğunu adıyla söylüyor. İki kanarya: yabancı anahtarlı dosyada
+      yeniden yazım üç anahtarı koruyor ve yeni dosyada yalnız ölçülen
+      anahtarlar yazılıyor (`crates/cli/src/ratchet.rs` testleri).
+      Yerinde ölçüm: `lubot ratchet --set --baseline /tmp/rk.json` → yedi
+      anahtarın yedisi de dosyada, çıktı "kept: bootstrap, exam, tokens".
 
 - **Doğrulama CI'ın sabitlediği toolchain ile yapılır, en yenisiyle değil
   (ölçüldü: bu turda CI koşusu 50 bu yüzden düştü).** CI `rustup default

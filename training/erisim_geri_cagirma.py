@@ -17,7 +17,7 @@ ile "olculmedi" ayni sey degildir.
     python3 training/erisim_geri_cagirma.py \
         --corpus corpus/knowledge-self.jsonl.gz \
         --sorular training/eval/sinav-seti.jsonl \
-        --bin target/release/lubot --n 3 --out training/eval/sonuclar/erisim.json
+        --bin target/release/lubot --n 3 --kayit training/eval/sonuclar/erisim.json
 """
 
 from __future__ import annotations
@@ -138,6 +138,44 @@ def olc(binary: list[str], corpus: Path, sorular: list[dict], n: int, alan: str 
     }
 
 
+def kayit_uret(binary: list[str], corpus: Path, sorular: list[dict], n: int) -> dict:
+    """Iki sorgu bicimini kosup tek bir olcum kaydi dondurur.
+
+    Kayit semasi (`training/eval/SONUC_SEMASI.md`) tek mekanik olcut ister:
+    sorularin en az yuzde sekseni ilk n alintida damgali pasaji tasimali.
+    Iki alan ayri olculur cunku yonerge soruyu seyreltebilir; `kanit` tam
+    soru metnini, `kanit.ikinci_olcum` yalniz cekirdek cumleyi tasir ve kapi
+    ikisini de taze olcumle karsilastirir."""
+    import time
+
+    basla = time.monotonic()
+    tam = olc(binary, corpus, sorular, n, "tam")
+    alinti = olc(binary, corpus, sorular, n, "alinti")
+    sure = round(time.monotonic() - basla, 2)
+    oran = tam["ilk_n_icinde"] / tam["soru"] if tam["soru"] else 0.0
+    return {
+        "is": (
+            "Alma katmani sinav seti uzerinde olculdu: damgalanmis pasaj ilk "
+            f"{tam['n']} alinti icinde mi? Model cagrilmaz, bu yuzden jeton "
+            "alanlari sifir; olcum BM25 sirasidir."
+        ),
+        "kosucu": "ara",
+        "tarih": time.strftime("%Y-%m-%d"),
+        "olcut": {
+            "ad": "sorularin_yuzde_sekseninde_damga_ilk_uc_alintida",
+            "sonuc": bool(oran >= 0.8),
+        },
+        "kaynaklar": {
+            "sure_saniye": sure,
+            "girdi_jetonlari": 0,
+            "onbellekli_jetonlari": 0,
+            "cikti_jetonlari": 0,
+            "maliyet": 0.0,
+        },
+        "kanit": dict(tam, ikinci_olcum=alinti),
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", required=True)
@@ -146,6 +184,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--n", type=int, default=3)
     parser.add_argument("--out", default=None)
     parser.add_argument("--sorgu-alani", choices=("tam", "alinti"), default="tam")
+    parser.add_argument(
+        "--kayit",
+        default=None,
+        help="iki sorgu bicimini kosup sema uyumlu olcum kaydini bu yola yaz",
+    )
     args = parser.parse_args(argv)
 
     corpus = Path(args.corpus)
@@ -163,6 +206,22 @@ def main(argv: list[str]) -> int:
     ]
     if not sorular:
         raise SystemExit("soru seti bos: olcumsuz rapor yazilmaz")
+
+    if args.kayit:
+        kayit = kayit_uret(binary, corpus, sorular, args.n)
+        Path(args.kayit).write_text(
+            json.dumps(kayit, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        tam = kayit["kanit"]
+        alinti = tam["ikinci_olcum"]
+        sys.stdout.write(
+            f"kayit yazildi: {args.kayit} - tam {tam['ilk_sirada']}/{tam['soru']} ilk sirada, "
+            f"ilk {tam['n']} icinde {tam['ilk_n_icinde']}/{tam['soru']}; "
+            f"alinti ilk sirada {alinti['ilk_sirada']}/{alinti['soru']}, "
+            f"ilk {alinti['n']} icinde {alinti['ilk_n_icinde']}/{alinti['soru']}\n"
+        )
+        return 0
 
     rapor = olc(binary, corpus, sorular, args.n, args.sorgu_alani)
     metin = json.dumps(rapor, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
