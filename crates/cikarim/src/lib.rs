@@ -837,7 +837,9 @@ mod tests {
         let uzun: Vec<u32> = (0..spec.max_seq_len + 10)
             .map(|i| (i % 24) as u32)
             .collect();
-        let siralama = c.pasaj_sirala(&baglam, &[uzun.clone()]).expect("rank");
+        let siralama = c
+            .pasaj_sirala(&baglam, std::slice::from_ref(&uzun))
+            .expect("rank");
         let kirpilmis = c
             .puanla(
                 &baglam,

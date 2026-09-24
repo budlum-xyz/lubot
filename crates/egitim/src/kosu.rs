@@ -401,7 +401,7 @@ pub fn egitim_kosu(
             }
 
             let mut olcum: Option<DogrulamaKaydi> = None;
-            if adim % ayar.dogrulama_her == 0 {
+            if adim.is_multiple_of(ayar.dogrulama_her) {
                 let d = dogrula(ayar, dogrulama, parametreler, adim, mutlak);
                 en_iyi = Some(en_iyi.map_or(d.kayip, |e| e.min(d.kayip)));
                 if en_iyi_adim.is_none() || Some(d.kayip) == en_iyi {

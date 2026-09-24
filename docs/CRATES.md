@@ -52,7 +52,7 @@ No dependencies inside the workspace. Each one holds a single rule.
 | `denetim` | 672 | 16 | `muhur` | An append-only audit trail. There is **no update method and no delete method**; corrections are appended entries. The chain detects edits and names the first index, but **cannot detect truncation** - `head()` has to be anchored elsewhere, and `verify_against_anchor` is what catches it. |
 | `usl` | 710 | 14 | `muhur` | A read media verified by recomputation. `from_media` re-parses every line, verifies the seal, **and compares the rebuilt file byte for byte** - the check most implementations omit. Amounts are minor units; `1.5`, `007`, a swapped line order and a duplicate payout are all refused. |
 | `arayuz` | 367 | 4 | The Android bridge: the same `ask` path the CLI runs, reached over JNI. It carries no logic of its own - a thin carrier, and device-supplied documents stay in an isolated record with their own source and licence so a citation never loses its origin. |
-| `cikarim` | 924 | 14 | `egitim` | The inference surface of a trained checkpoint: score and rank, never generate. A token is scored from the hidden state of the position *before* it - scoring it from a state that already contains it is leakage that stays invisible, because the number is still a plausible log-probability - and a request with no context and one token is refused rather than answered with a vocabulary prior. The cached incremental path is measured against a full recomputation *and* against the training kernel's own loss (three opinions: two paths inside this crate could share one mistake), agreeing to 1e-15 with a 1e-9 tolerance chosen three orders above the noise floor. Candidates that score equally are reported as equal and tie-broken by the caller's index, because inventing an order between two equal numbers is inventing a difference. |
+| `cikarim` | 926 | 14 | `egitim` | The inference surface of a trained checkpoint: score and rank, never generate. A token is scored from the hidden state of the position *before* it - scoring it from a state that already contains it is leakage that stays invisible, because the number is still a plausible log-probability - and a request with no context and one token is refused rather than answered with a vocabulary prior. The cached incremental path is measured against a full recomputation *and* against the training kernel's own loss (three opinions: two paths inside this crate could share one mistake), agreeing to 1e-15 with a 1e-9 tolerance chosen three orders above the noise floor. Candidates that score equally are reported as equal and tie-broken by the caller's index, because inventing an order between two equal numbers is inventing a difference. |
 | `anlama` | 688 | 16 | `read` | Classification that can decline. Abstention distinguishes *no support* from *contradictory* from *below the floor*, because they need different responses. Ties are not resolved by category spelling. Calibration reports the gap between confidence claimed and accuracy observed, which is the number that says whether the confidence is usable. |
 
 | `tomurcuk` | 764 | 10 | `anlama` | The decision head: three closed output shapes and no text-producing surface, checked by a gate rather than by convention. A fixed tier order - deterministic code, then the head, then generation - and a route that skips a tier is refused. Confidence below the threshold escalates instead of deciding, and an empty ledger means the head may not decide alone, so moving a decision to the head stays a measured step. k-of-n agreement over independently initialised heads; deliberately not the chain's operator threshold. |
@@ -67,19 +67,20 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `read` | 848 | 28 | The three source channels, SHA-256 provenance, the corpus surface, magic-byte file kind with route refusals before reading. |
-| `index` | 552 | 18 | Passages with line ranges, secret masking on the write path, normalized BM25 with a coverage floor. |
+| `read` | 855 | 28 | The three source channels, SHA-256 provenance, the corpus surface, magic-byte file kind with route refusals before reading. |
+| `index` | 617 | 21 | Passages with line ranges, secret masking on the write path, normalized BM25 with a coverage floor. |
 | `grant` | 719 | 19 | View grants, revocation, expiry, the audit log. Permission is settled before the index is searched, so a refused item is never scored. |
 | `tools` | 1729 | 47 | The exact-rational calculator, the command router, deterministic command-risk shapes. |
 | `sikistir` | 672 | 11 | Context compression: typed routing, pins that survive byte for byte, a CCR store with digest re-verification, an append-only savings ledger. |
 | `doc` | 106 | 4 | Rich-document reading: PDF text extraction, paragraph-aware chunking. |
-| `answer` | 527 | 14 | The assembled reading loop with a schema-validated exit. |
+| `answer` | 590 | 15 | The assembled reading loop with a schema-validated exit. |
 
 ## The binary
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 9017 | 112 | The runnable binary, and the only crate that reaches everything else. |
+| `cli` | 9087 | 114 | The runnable binary, and the only crate that reaches everything else. |
+| `cli` | 9087 | 114 | The runnable binary, and the only crate that reaches everything else. |
 
 Four modules carry the wiring:
 
