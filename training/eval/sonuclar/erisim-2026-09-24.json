@@ -19,7 +19,7 @@
         }
       ],
       "ilk_n_icinde": 11,
-      "ilk_sirada": 5,
+      "ilk_sirada": 6,
       "n": 3,
       "olcut": "isabet = content_id'nin (path, satir)'i ilk n alintidan birine duser",
       "sirali": [
@@ -50,7 +50,7 @@
         },
         {
           "kaynak_dosya": "crates/kanit/src/lib.rs",
-          "sira": 2,
+          "sira": 1,
           "soru_kimligi": "sinav-06"
         },
         {
@@ -161,7 +161,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 5.45
+    "sure_saniye": 5.37
   },
   "kosucu": "ara",
   "olcut": {
