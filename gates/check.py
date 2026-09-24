@@ -4275,7 +4275,118 @@ def gate_reranker_is_measured() -> str:
     return "the ranking surface is ordered, counts its tokens, and keeps equal scores in the caller's order"
 
 
+# --- MM: muhendislik iskeleti ile veri ayrimi -------------------------------
+
+
+def _mm_import_adlari(yol: pathlib.Path) -> set[str]:
+    """Bir Python dosyasinin ust duzey import adlari; dosya calistirilmaz."""
+    import ast
+
+    agac = ast.parse(yol.read_text(encoding="utf-8"))
+    adlar: set[str] = set()
+    for dugum in ast.walk(agac):
+        if isinstance(dugum, ast.Import):
+            adlar.update(takma.name.split(".")[0] for takma in dugum.names)
+        elif isinstance(dugum, ast.ImportFrom) and dugum.level == 0 and dugum.module:
+            adlar.add(dugum.module.split(".")[0])
+    return adlar
+
+
+def _mm_muhendislik_ihlalleri(klasor: pathlib.Path) -> list[str]:
+    """training/*.py yalnizca stdlib ve kardes modul import eder (MM).
+
+    Iskelet deseni disaridan esinlenebilir, ama kosucu dis bir ML
+    cercevesine baglanirsa "sifirdan" iddiasi sessizce duser.
+    """
+    yerel = {p.stem for p in klasor.glob("*.py")}
+    stdlib = set(sys.stdlib_module_names)
+    ihlaller: list[str] = []
+    for p in sorted(klasor.glob("*.py")):
+        for ad in sorted(_mm_import_adlari(p)):
+            if ad in stdlib or ad in yerel:
+                continue
+            ihlaller.append(f"{p.relative_to(klasor.parent)} dis bagimlilik ister: {ad}")
+    return ihlaller
+
+
+def _mm_disi_url(metin: str) -> bool:
+    return "http://" in metin or "https://" in metin
+
+
+def _mm_veri_ihlalleri(kok: pathlib.Path) -> list[str]:
+    """corpus/ ve training/curriculum/ yalniz kendi agactan uretilmis veri tasir."""
+    ihlaller: list[str] = []
+    for p in sorted((kok / "training" / "curriculum").glob("*.jsonl")):
+        for no, satir in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            satir = satir.strip()
+            if not satir:
+                continue
+            kayit = json.loads(satir)
+            roller = [m.get("role") for m in kayit.get("messages", []) if isinstance(m, dict)]
+            if "user" not in roller or "assistant" not in roller:
+                ihlaller.append(f"{p.name}:{no} kullanici/asistan cifti yok")
+            if _mm_disi_url(satir):
+                ihlaller.append(f"{p.name}:{no} dis URL tasiyor")
+    for p in sorted((kok / "corpus").glob("knowledge-*.jsonl.gz")):
+        with gzip.open(p, "rt", encoding="utf-8") as f:
+            for no, satir in enumerate(f, 1):
+                satir = satir.strip()
+                if not satir:
+                    continue
+                kayit = json.loads(satir)
+                yol = str(kayit.get("path", ""))
+                if not yol or yol.startswith(("/", "..")) or not (kok / yol).is_file():
+                    ihlaller.append(f"{p.name}:{no} provenance agac disi: {yol!r}")
+                if _mm_disi_url(satir):
+                    ihlaller.append(f"{p.name}:{no} dis URL tasiyor")
+    return ihlaller
+
+
+def gate_training_runner_engineering_vs_data() -> str:
+    """Muhendislik iskeleti (MM) ile veri (K2) ayri eksenlerdir: kosucu
+    dosyalari desen esinlenmesi tasiyabilir ama dis bir cerceveye
+    baglanamaz; corpus/ ve training/curriculum/ ise yalnizca bu agactan
+    uretilmis kayitlari tasir - her kaydin provenance'i agac icinde
+    olmali ve hicbir kayit dis URL tasimamali. Ikisini ayri kapilarla
+    tutmak, K1'i korurken K2'yi yanlislikla ihlal etmeyi engeller."""
+    ihlaller = _mm_muhendislik_ihlalleri(ROOT / "training") + _mm_veri_ihlalleri(ROOT)
+    if ihlaller:
+        raise SystemExit(
+            "muhendislik/veri siniri ihlal edildi:\n" + "".join(f"  {s}\n" for s in ihlaller)
+        )
+    script = len(list((ROOT / "training").glob("*.py")))
+    return f"kosucu yalniz stdlib+kardes modul ({script} script), veri yalniz kendi agactan"
+
+
+def selftest_training_runner_engineering_vs_data() -> None:
+    """Kanarya: numpy import eden script ve dis URL tasiyan curriculum
+    satiri reddedilmeli; temiz es lenegi kabul edilmeli."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "training" / "curriculum").mkdir(parents=True)
+        (kok / "corpus").mkdir()
+        (kok / "training" / "temiz.py").write_text(
+            "import json\nfrom pathlib import Path\n", encoding="utf-8")
+        assert _mm_muhendislik_ihlalleri(kok / "training") == []
+        (kok / "training" / "kacak.py").write_text("import numpy\n", encoding="utf-8")
+        assert _mm_muhendislik_ihlalleri(kok / "training"), "dis bagimlilik kabul edildi"
+        (kok / "training" / "kacak.py").unlink()
+        iyi = {"messages": [{"role": "user", "content": "soru"},
+                            {"role": "assistant", "content": "cevap"}]}
+        (kok / "training" / "curriculum" / "a.jsonl").write_text(
+            json.dumps(iyi) + "\n", encoding="utf-8")
+        assert _mm_veri_ihlalleri(kok) == []
+        kotu = {"messages": [{"role": "user", "content": "bkz https://example.com"},
+                             {"role": "assistant", "content": "cevap"}]}
+        (kok / "training" / "curriculum" / "a.jsonl").write_text(
+            json.dumps(kotu) + "\n", encoding="utf-8")
+        assert _mm_veri_ihlalleri(kok), "dis URL kabul edildi"
+
+
 GATES_EXTRA = {
+    "training-runner-engineering-vs-data": (gate_training_runner_engineering_vs_data, selftest_training_runner_engineering_vs_data),
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
     "output-finalize-closed-loop": (gate_output_finalize_closed_loop, selftest_output_finalize_closed_loop),
