@@ -625,7 +625,15 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       adı yok) — reddi adıyla söylemek cevap yüzeyinde bir değişiklik ister,
       kayıt onu yapmaz, ölçer. Sayılar kayıtta:
       `training/eval/sonuclar/enjeksiyon-2026-09-24.json`.
-- [ ] **Belirsiz girdi / fuzzing (Awesome Fuzzing).** Yeni bağımlılık eklemek
+- [x] **Belirsiz girdi / fuzzing (Awesome Fuzzing). KAPANDI (madde 22).**
+      `training/belirsiz_girdi.py`: tohumlu (`20260924`) ve tekrarlanabilir vaka
+      kümesi, üç ayrıştırıcı yolu (korpus yükleyici, kimlik tarayıcısı, sihirli-bayt
+      yönlendiricisi). Ölçülen: **47 vaka x 3 hedef = 141 koşu, panik 0, asılma 0**,
+      ret 54, kabul 87; kayıt `training/eval/sonuclar/belirsiz-girdi-2026-09-24.json`,
+      kapı `undefined-input-is-fuzzed` (tazelik + panik ölçütü + kanarya:
+      sinyalle ölüm panik sayılır, temiz ret sayılmaz).
+      Eski not:
+      - [ ] **Belirsiz girdi / fuzzing (Awesome Fuzzing).** Yeni bağımlılık eklemek
       yok: ayrıştırıcılar (`lubot-jeton` sözlük yükleyici, `lubot-read` korpus
       yükleyici, çıktı şema doğrulayıcı) için **tekrarlanabilir tohumlu**
       düşmanca girdi bataryası. Ölçülen: panik/refus sayısı; `no-panic-path`
@@ -636,7 +644,13 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       **10/10 bilinen biçim yakalandı (oran 1,0), 12 temiz metinde 0 yanlış
       pozitif**; kayıt `training/eval/sonuclar/kimlik-bicimleri-2026-09-24.json`,
       kapı `credential-shapes-are-measured` (kayıt tazeliği + kanarya).
-- [ ] **IAM / OpenID Connect kıyası (Awesome IAM).** `crates/grant` grant
+- [x] **IAM / OpenID Connect kıyası (Awesome IAM). KAPANDI (madde 23).**
+      `docs/GRANT-KIYAS.md`: eşleşen desenler (capability, TTL, geri alma listesi,
+      denetim, fail-closed, least privilege) ve bilerek eşleşmeyenler (sessiz
+      yenileme yok, IdP yok, joker kapsam yok, rol devralma yok) gerekçeleriyle;
+      taşıyıcı asimetri `Revoked != NoGrant`.
+      Eski not:
+      - [ ] **IAM / OpenID Connect kıyası (Awesome IAM).** `crates/grant` grant
       defterinin standart IAM desenleriyle karşılaştırması. İş: `docs/GRANT-KIYAS.md`
       — kod değil, karar kaydı.
 - [x] **Düzenli ifadeler (Awesome Regex).** Ölçüldü (aynı batarya, aynı kapı):
@@ -644,7 +658,12 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       (35 karakterlik `ghp_`, 19 karakterlik `sk-`, `AKIA1234`, büyük harfli
       `GHP_`, `-----BEGIN PUBLIC KEY-----`) **alarm üretmedi**; yanlış-negatif
       tarafı bilinen 10 biçimin tamamının yakalanmasıyla ölçüldü.
-- [ ] **CI/CD saldırıları (Awesome CI/CD Attacks).** `it` komutunun kısıtlı
+- [x] **CI/CD saldırıları (Awesome CI/CD Attacks). KAPANDI (madde 24).**
+      `docs/CI-TEHDIT.md`: on bir tehdit, mevcut savunma ve durum; bağımlılık
+      denetimi, imzalı commit/SLSA ve dış repo taraması **kapsam dışı** olarak
+      gerekçesiyle kayda geçti.
+      Eski not:
+      - [ ] **CI/CD saldırıları (Awesome CI/CD Attacks).** `it` komutunun kısıtlı
       push tasarımı tedarik zinciri kaygısıyla aynı yere bakıyor. İş: tehdit
       notu + gerekiyorsa kapı.
 - [x] **SECURITY.md yazmak (Awesome AppSec / Security).** Yazıldı:
@@ -664,7 +683,12 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       katman kuralının kendi kelimelerini (`never above`, `topological`)
       taşımasını zorluyor; kanarya: belgeyi silmek ya da bir crate adını
       düşürmek kapıyı düşürüyor (self-test'te).
-- [ ] **README turu (Awesome README / Translations).** Ölçüldü: kaynak listede
+- [x] **README turu (Awesome README / Translations). KAPANDI (madde 25).**
+      `README.tr.md` yazıldı: `README.md`'nin Türkçe karşılığı, sayı taşımaz
+      (kendisi de korpusun parçası; geri-besleme kuralı), çatışmada `README.md`
+      bağlayıcı. Kaynak listedeki "README.tr.md zaten var" cümlesi artık doğru.
+      Eski not:
+      - [ ] **README turu (Awesome README / Translations).** Ölçüldü: kaynak listede
       "README.tr.md zaten var" deniyor ama bu repoda **README.tr.md yok**. İş:
       ya yazmak ya da listeyi düzeltmek; ikisi de karar gerektiriyor.
 - [ ] **Markdown şeması (Awesome Markdown / NLG).** `ai-output-schema-enforced`
@@ -674,11 +698,22 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       K3 kapsamında: kamu malı/lisansı temiz kaynakların **aday listesi**,
       provenance ve lisans alanlarıyla. Karar operatörün; bu madde yalnız
       listeyi ve alanları hazırlar.
-- [ ] **Yanlış inanışlar denetimi (Awesome Falsehood).** Zaman, isim, para ve
+- [x] **Yanlış inanışlar denetimi (Awesome Falsehood). KAPANDI (madde 28).**
+      `crates/jeton` içinde üç test (test 538 -> 541): harf katlama yerel değildir
+      (`İ` iki karaktere küçülür; `I`/`ı`/`İ`/`i` dört ayrı jeton yolu); iki Unicode
+      normalizasyon biçimi **birleştirilmez** (NFC tek ön-token, NFD iki: `e` +
+      U+0301) ve iki biçim de bayt bayt geri döner; bir grapheme kullanıcı
+      karakteri değildir (bayrak iki kod noktası, sekiz bayt).
+      Eski not:
+      - [ ] **Yanlış inanışlar denetimi (Awesome Falsehood).** Zaman, isim, para ve
       kodlama hakkında. İş: lubot'ta ısıranlara test — Türkçe büyük/küçük harf
       dönüşümü ve Unicode normalizasyonu jetonlayıcıyı doğrudan etkiliyor
       (`crates/jeton`'daki sınıf ayrımı).
-- [ ] **Kanıta dayalı mühendislik (Awesome Empirical Software Engineering).**
+- [x] **Kanıta dayalı mühendislik (Awesome Empirical SE). KAPANDI (madde 29).**
+      `docs/YONTEM-KANIT.md`: ratchet kuralı, ölçüm ile iddia ayrılığı, değişmezler
+      ve damga, redlerin de ölçülmesi, kapsam disiplini ve commit sırası.
+      Eski not:
+      - [ ] **Kanıta dayalı mühendislik (Awesome Empirical Software Engineering).**
       Ratchet felsefesinin yöntem notu: ölçülen taban yalnız yükselir, iddia
       ölçümle taşınır. İş: kısa bir yöntem belgesi + mevcut kapılarla eşleme.
 - [x] **Statik analiz (Awesome Static Analysis). KARAR: clippy çizgisi.**

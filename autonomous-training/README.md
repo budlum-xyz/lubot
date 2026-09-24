@@ -36,7 +36,7 @@ Kapılar: `invariants-are-frozen` (damga + makine bloğu + "beyan edilen her dur
 koşulu kodda `dur()` ile çağrılıyor mu" + dokunulmazlara yazma taraması + kanarya),
 `mutation-surface-is-closed` (mutasyon alanı ∩ dokunulmazlar = ∅; düğmeler ikilinin
 gerçekten kabul ettiği bayraklar) ve `credential-shapes-are-measured` (bu ağacın
-ölçüm betiği için; bkz. §12). Süit toplamı 83 kapı.
+ölçüm betiği için; bkz. §12). Süit toplamı 84 kapı.
 
 ## 2. Ölçüt (`olcut.md` bağlayıcıdır)
 
