@@ -121,6 +121,15 @@ def rust_records(path: Path, rel: str):
                     "path": rel,
                     "lines": [doc_start, i - 1],
                 }
+                # JJ: belge ile imza ayri kayitlar degil, bir cift olarak da girer:
+                # "ne cagrilir" ile "neden var" arasindaki bag burada kurulur.
+                if signature:
+                    yield {
+                        "kind": "api-doc-pair",
+                        "text": f"{rel}: `{stripped.rstrip(' {')}` - {text}",
+                        "path": rel,
+                        "lines": [doc_start, i],
+                    }
             doc_block = []
 
         if signature:
@@ -135,6 +144,20 @@ def rust_records(path: Path, rel: str):
             yield {
                 "kind": "behaviour",
                 "text": f"Proven in {rel}: {sentence}.",
+                "path": rel,
+                "lines": [i, i],
+            }
+
+        impl_match = re.match(
+            r"impl(?:<[^>]*>)?\s+([A-Za-z0-9_:]+)(?:<[^>]*>)?\s+for\s+([A-Za-z0-9_:]+)",
+            stripped,
+        )
+        if impl_match:
+            # JJ: "kim neyi uyguluyor" iliskisi; trait tanimi ile impl blogu
+            # arasindaki bagi ayri bir kayit turu yapar.
+            yield {
+                "kind": "trait-impl",
+                "text": f"{rel}: `{impl_match.group(2)}` implements `{impl_match.group(1)}`.",
                 "path": rel,
                 "lines": [i, i],
             }
@@ -177,6 +200,43 @@ def gate_records(root: Path):
         }
 
 
+def dependency_records(path: Path, rel: str):
+    """JJ: Cargo.toml bagimlilik grafigi ayri bir "modul iliski" korpus turu.
+
+    Derleyicinin kendi okudugu dosyadan turedigi icin %100 mekanik: "X crate'i
+    Y'ye mi bagimli" sorusunun cevabi bir yargi degil, manifestin kendisi.
+    """
+    import tomllib
+
+    metin = path.read_text(encoding="utf-8", errors="ignore")
+    satirlar = metin.splitlines()
+
+    def satir_no(ad: str) -> int:
+        for no, satir in enumerate(satirlar, 1):
+            s = satir.strip()
+            if s.startswith(f"{ad} =") or s.startswith(f'"{ad}"') or s.startswith(f"{ad}."):
+                return no
+        return 1
+
+    veri = tomllib.loads(metin)
+    paket = veri.get("package", {}).get("name") or rel
+    for bolum in ("dependencies", "dev-dependencies", "build-dependencies"):
+        for ad in sorted(veri.get(bolum, {}) or {}):
+            yield {
+                "kind": "dependency-edge",
+                "text": f"`{paket}` depends on `{ad}` ({bolum}).",
+                "path": rel,
+                "lines": [satir_no(ad), satir_no(ad)],
+            }
+    for uye in sorted(veri.get("workspace", {}).get("members", []) or []):
+        yield {
+            "kind": "dependency-edge",
+            "text": f"Workspace member declared in `{rel}`: `{uye}`.",
+            "path": rel,
+            "lines": [satir_no(uye), satir_no(uye)],
+        }
+
+
 def collect(root: Path, source: str, root_only: bool):
     """Tek kaynagin kayitlari; kaynak adi kayda islenir."""
     for path in walk(root, root_only=root_only):
@@ -185,6 +245,8 @@ def collect(root: Path, source: str, root_only: bool):
             yield from rust_records(path, rel)
         elif path.suffix == ".md":
             yield from markdown_records(path, rel)
+        elif path.name == "Cargo.toml":
+            yield from dependency_records(path, rel)
     yield from gate_records(root)
 
 

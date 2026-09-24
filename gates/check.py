@@ -4385,7 +4385,86 @@ def selftest_training_runner_engineering_vs_data() -> None:
         assert _mm_veri_ihlalleri(kok), "dis URL kabul edildi"
 
 
+# --- JJ: korpusun yapisal kayitlari -----------------------------------------
+
+
+def _ks_yapisal_denetim(korpus: pathlib.Path) -> tuple[dict[str, int], list[str]]:
+    """Korpus kayitlarinin turlerini ve provenance'ini denetler (dosya okur)."""
+    sayim: dict[str, int] = {}
+    hatalar: list[str] = []
+    with gzip.open(korpus, "rt", encoding="utf-8") as fh:
+        for no, satir in enumerate(fh, 1):
+            satir = satir.strip()
+            if not satir:
+                continue
+            kayit = json.loads(satir)
+            tur = str(kayit.get("kind", ""))
+            sayim[tur] = sayim.get(tur, 0) + 1
+            yol = kayit.get("path")
+            aralik = kayit.get("lines")
+            if not isinstance(yol, str) or not yol:
+                hatalar.append(f"kayit {no}: provenance yok")
+            elif (
+                not isinstance(aralik, list)
+                or len(aralik) != 2
+                or not all(isinstance(x, int) for x in aralik)
+            ):
+                hatalar.append(f"kayit {no}: satir araligi bozuk ({yol})")
+    for gerekli in ("api-doc-pair", "trait-impl", "dependency-edge"):
+        if sayim.get(gerekli, 0) == 0:
+            hatalar.append(f"yapisal kayit turu eksik: {gerekli}")
+    return sayim, hatalar
+
+
+def gate_corpus_carries_structure() -> str:
+    """JJ: korpus duz metin degil, yapi tasir.
+
+    Belge-imza ciftleri (ne cagrilir + neden var), "kim neyi uyguluyor"
+    iliskileri ve Cargo.toml bagimlilik kenarlari ayri kayit turleri olarak
+    bulunur. Bir tur sessizce kaybolursa kapi kirmizi olur; "yok" ile
+    "olculmedi" ayni sey degildir."""
+    korpus = ROOT / "corpus" / "knowledge-self.jsonl.gz"
+    if not korpus.is_file():
+        raise SystemExit(f"corpus is not built: {korpus.relative_to(ROOT)}")
+    sayim, hatalar = _ks_yapisal_denetim(korpus)
+    if hatalar:
+        raise SystemExit("JJ yapisal korpus denetimi:\n" + "".join(f"  {s}\n" for s in hatalar[:6]))
+    return (
+        f"yapisal kayitlar: api-doc-pair {sayim['api-doc-pair']}, "
+        f"trait-impl {sayim['trait-impl']}, dependency-edge {sayim['dependency-edge']}"
+    )
+
+
+def selftest_corpus_carries_structure() -> None:
+    """Kanarya: eksik tur ve provenance'siz kayit reddedilmeli, tam kayit kabul."""
+    import tempfile
+
+    def yaz(kok: pathlib.Path, kayitlar: list[dict]) -> pathlib.Path:
+        yol = kok / "k.jsonl.gz"
+        with gzip.open(yol, "wt", encoding="utf-8") as fh:
+            for kayit in kayitlar:
+                fh.write(json.dumps(kayit) + "\n")
+        return yol
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        tam = [
+            {"kind": "api-doc-pair", "text": "x", "path": "a.rs", "lines": [1, 2]},
+            {"kind": "trait-impl", "text": "x", "path": "a.rs", "lines": [3, 3]},
+            {"kind": "dependency-edge", "text": "x", "path": "Cargo.toml", "lines": [4, 4]},
+        ]
+        _, hatalar = _ks_yapisal_denetim(yaz(kok, tam))
+        assert hatalar == [], f"temiz korpus reddedildi: {hatalar}"
+        _, hatalar = _ks_yapisal_denetim(yaz(kok, tam[:2]))
+        assert hatalar, "eksik tur kabul edildi"
+        bozuk = [dict(kayit) for kayit in tam]
+        bozuk[0].pop("path")
+        _, hatalar = _ks_yapisal_denetim(yaz(kok, bozuk))
+        assert hatalar, "provenance'siz kayit kabul edildi"
+
+
 GATES_EXTRA = {
+    "corpus-carries-structure": (gate_corpus_carries_structure, selftest_corpus_carries_structure),
     "training-runner-engineering-vs-data": (gate_training_runner_engineering_vs_data, selftest_training_runner_engineering_vs_data),
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
