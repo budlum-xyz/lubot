@@ -43,8 +43,9 @@ use crate::{Adamw, Parametreler, Spec};
 pub const SIHIR: &[u8; 9] = b"LUBOTCKPT";
 /// Format version. A reader refuses a version it does not know.
 pub const SURUM: u8 = 1;
-/// Trailing digest length, in bytes.
-pub const OZET_UZUNLUK: usize = 32;
+/// Trailing digest length, in bytes. How much of the file is the check on
+/// the rest of it: part of the format, not part of its public surface.
+pub(crate) const OZET_UZUNLUK: usize = 32;
 
 /// How the block values were stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -946,8 +947,8 @@ mod tests {
                 jetonlar: (0..40).map(|j| ((i + j) % 15) as u32).collect(),
             })
             .collect();
-        let (_, egitim, dogrulama) =
-            crate::kosu::bolumden_pencereler(kayitlar, 0.25, 8).expect("split");
+        let bolum = crate::veri::bolumle(kayitlar, 0.25).expect("split");
+        let (egitim, dogrulama) = crate::veri::pencereler(&bolum, 8).expect("windows");
         let ayar = crate::kosu::KosuAyari {
             spec,
             pencere_uzunlugu: 8,

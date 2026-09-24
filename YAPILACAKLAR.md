@@ -120,8 +120,8 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
 - [x] **Adım 8a — Kıyas sınıfı beyanı.** `training/kiyas_sinifi.py` (kapı 56):
       parametre `model_spec.json`'dan, jeton `egitim_butcesi.py --olc`'ten
       okunuyor (ikinci literal yok). Ölçülen: **924.288 parametre**, sınırın
-      (SmolLM2-135M = 135.000.000) **altında**; 96.645 benzersiz jeton;
-      **0.1046 jeton/param** (yani parametre başına 9.56 jeton). Kural:
+      (SmolLM2-135M = 135.000.000) **altında**; 138.009 benzersiz jeton;
+      **0.149314 jeton/param** (yani parametre başına 6.70 jeton). Kural:
       "kapışma" iddiası yalnız **görev ekseninde** (alıntı doğruluğu + red
       disiplini) yapılabilir; parametre ekseninde bir iddia kaydı kapı reddediyor.
       Ratchet'e `exam` anahtarı eklendi (sınav sorusu sayısı, yalnız yükselir).
@@ -132,8 +132,8 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       en fazla bir soru, eşit aralıklı 12 adet. **Eksik olan önleme kapatıldı**:
       `make_sft.py` artık damgalı pasajları eliyor (`dropped_eval_only`), yani
       sınav seti gerçekten held-out; `eval_sft`'in reddi ikinci duvar olarak
-      duruyor. Ölçülen: 1701 grounded satır, damgalı 0; SFT 1789 satır
-      (1701 + 88 mufredat). Ne ölçtüğü dar ve kayıtlı: getirme + alıntı; soru
+      duruyor. Ölçülen: 2120 grounded satır, damgalı 0; SFT 2208 satır
+      (2120 + 88 mufredat). Ne ölçtüğü dar ve kayıtlı: getirme + alıntı; soru
       metni pasajın ilk satırından türediği için skor bir **üst sınır**.
 - [x] **Eğitim koşusu yüzeyi.** `lubot egitim-kosu`, `lubot cikarim
       {denetle,puanla,sirala}`, `lubot sinav-kosu`, `lubot korpus-damgasi`;

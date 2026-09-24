@@ -33,11 +33,13 @@
 
 use std::path::Path;
 
-use lubot_cikarim::{Cikarim, CikarimHatasi, CACHE_TOLERANCE};
+use lubot_cikarim::{Aday, Cikarim, CikarimHatasi, OnbellekRaporu, CACHE_TOLERANCE};
 use lubot_egitim::kontrol::{hex, Hassasiyet, Kontrol, SIHIR, SURUM};
-use lubot_egitim::kosu::{egitim_kosu, KosuAyari, KosuRaporu};
-use lubot_egitim::veri::{bolumle, pencereler, Bolum, BolumHatasi, Kayit};
-use lubot_egitim::{Adamw, Parametreler, Spec, INIT_STD_EMBEDDING};
+use lubot_egitim::kosu::{
+    egitim_kosu, AdimKaydi, DogrulamaKaydi, DurmaNedeni, KosuAyari, KosuHatasi, KosuRaporu,
+};
+use lubot_egitim::veri::{bolumle, pencere_uzunlugu, pencereler, Bolum, BolumHatasi, Kayit};
+use lubot_egitim::{Adamw, Parametreler, Spec, BLOK_ADLARI, INIT_STD_EMBEDDING};
 use sha2::{Digest, Sha256};
 
 /// Step every this many steps when `--bildir` is not given.
@@ -360,9 +362,11 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
 
     // Pencere uzunlugu spec'e karsi dogrulanir, kirpilmaz.
     let istenen = b.sayi::<usize>("--pencere")?.unwrap_or(128);
-    let pencere = lubot_egitim::veri::pencere_uzunlugu(spec, istenen)?;
+    let pencere = pencere_uzunlugu(spec, istenen)?;
     let pay = b.ondalik("--dogrulama-payi")?.unwrap_or(0.05);
     let kayit_sayisi = kayitlar.len();
+    // Bolme kimlige gore yapilir ve bolumlemeden sonra kayit asla ikiye
+    // bolunmez; iki adim, iki ayri cevap vermesin diye ayni yerde duruyor.
     let bolum: Bolum = bolumle(kayitlar, pay)
         .map_err(|h: BolumHatasi| format!("bolumleme reddedildi: {h:?} (pay {pay})"))?;
     let (egitim_pencereleri, dogrulama_hepsi) = pencereler(&bolum, pencere)?;
@@ -455,7 +459,7 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
         &dogrulama,
         &mut p,
         &mut opt,
-        |adim_kaydi, olcum| {
+        |adim_kaydi: &AdimKaydi, olcum: Option<&DogrulamaKaydi>| {
             if sessiz {
                 return;
             }
@@ -476,7 +480,7 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
             }
         },
     )
-    .map_err(|e| format!("kosu reddedildi: {e:?}"))?;
+    .map_err(|e: KosuHatasi| format!("kosu reddedildi: {e:?}"))?;
 
     let hassasiyet = if f32_mi {
         Hassasiyet::F32
@@ -645,7 +649,16 @@ fn kosu_markdown(
             )
         })
     ));
-    md.push_str(&format!("| durma | {} |\n", rapor.durma_nedeni.etiket()));
+    let durma: DurmaNedeni = rapor.durma_nedeni;
+    md.push_str(&format!(
+        "| durma | {} ({}) |\n",
+        durma.etiket(),
+        match durma {
+            DurmaNedeni::AdimButcesi => "butce doldu",
+            DurmaNedeni::EpochKurali => "dogrulama iyilesmedi",
+            DurmaNedeni::EpochTavani => "epoch tavani",
+        }
+    ));
     md.push_str(&format!("| kirpilan adim | {} |\n", rapor.kirpilan_adim));
     md.push_str(&format!(
         "| sure | {:.1} sn (makineye bagli; ratchet'e girmez) |\n",
@@ -653,8 +666,9 @@ fn kosu_markdown(
     ));
     md.push_str(&format!("| korpus ozeti | `{ozet}` |\n"));
     md.push_str(&format!(
-        "| kontrol noktasi | `{ckpt_yolu}` sha256 `{ckpt_ozeti}` ({} v{SURUM}) |\n",
-        String::from_utf8_lossy(SIHIR)
+        "| kontrol noktasi | `{ckpt_yolu}` sha256 `{ckpt_ozeti}` ({} v{SURUM}, {} blok) |\n",
+        String::from_utf8_lossy(SIHIR),
+        BLOK_ADLARI.len()
     ));
     md.push_str(&format!(
         "| held-out | `{sinav_yolu}`; {damga_sayisi} damga, {dislanan} kayit egitim akisindan cikarildi |\n"
@@ -725,7 +739,7 @@ fn cikarim_denetle(args: &[String]) -> Result<(), String> {
     let b = Bayraklar::ayikla(args, &["--ckpt", "--kimlikler"])?;
     let c = cikarim_yukle(&b)?;
     let kimlikler = kimlikleri_coz(b.zorunlu("--kimlikler")?, c.sozluk_boyutu())?;
-    let rapor = c
+    let rapor: OnbellekRaporu = c
         .onbellek_denetimi(&kimlikler)
         .map_err(|e| format!("onbellek denetimi reddedildi: {e}"))?;
     let md = format!(
@@ -802,7 +816,7 @@ fn cikarim_sirala(args: &[String]) -> Result<(), String> {
                 .map_err(|e| format!("{yol} satir {}: {e}", sira + 1))?,
         );
     }
-    let siralama = c
+    let siralama: Vec<Aday> = c
         .pasaj_sirala(&baglam, &adaylar)
         .map_err(|e| format!("siralama reddedildi: {e}"))?;
     let mut md = String::from(
