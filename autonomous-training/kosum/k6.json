@@ -1,0 +1,13 @@
+{
+  "cpu_cores": 2,
+  "kaynak": [
+    "training/bench_hardware.py",
+    "training/recommend_model_size.py"
+  ],
+  "kullanim_orani": 0.009474,
+  "muhasebe": "train_fp32_adamw",
+  "olculdu": true,
+  "ram_gib": 1.94,
+  "spec_parametre": 924288,
+  "tavan_parametre": 97565184
+}

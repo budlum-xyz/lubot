@@ -5415,7 +5415,368 @@ def selftest_injection_refusals_are_measured() -> None:
     assert "bayat" in (_enjeksiyon_kayit_bulgu(bayat, taze) or ""), "bayat sayi gecti"
 
 
+# --- otonom egitim dongusu: anayasa ve mutasyon alani ----------------------
+AT = ROOT / "autonomous-training"
+KARARLAR_ZORUNLU = {"K1", "K2", "K3", "K4", "K5", "K6", "no-generation"}
+DOKUNULMAZ_ZORUNLU = ("INVARIANTS.md", "INVARIANTS.sha256", "olcut.md", "ayarlar.json", "program.md")
+
+
+def _anayasa_bloku(metin: str) -> dict:
+    """INVARIANTS.md icindeki tek makine blogu (soz ile kodun tek kaynagi)."""
+    bloklar = re.findall(r"```json\s*(\{.*?\})\s*```", metin, re.S)
+    if len(bloklar) != 1:
+        raise SystemExit(f"INVARIANTS.md: tek makine blogu beklenir, {len(bloklar)} bulundu")
+    return json.loads(bloklar[0])
+
+
+def _damga_bulgu(icerik: bytes, damga_metni: str) -> str | None:
+    """Anayasa damgasi: dosyanin olculen ozeti yazili ozetle ayni mi."""
+    import hashlib
+
+    parcalar = damga_metni.split()
+    if not parcalar:
+        return "INVARIANTS.sha256 bos"
+    yazili = parcalar[0].strip().lower()
+    if len(yazili) != 64 or any(k not in "0123456789abcdef" for k in yazili):
+        return f"INVARIANTS.sha256 gecersiz ozet bicimi: {yazili!r}"
+    gercek = hashlib.sha256(icerik).hexdigest()
+    if yazili != gercek:
+        return f"anayasa damgasi tutmuyor: yazili {yazili[:12]}, olculen {gercek[:12]}"
+    return None
+
+
+def _anayasa_bulgu(blok: dict) -> str | None:
+    """Anayasa blogu kendi icinde tutarli ve eksiksiz mi."""
+    kararlar = {k.get("id") for k in blok.get("kararlar", [])}
+    eksik = sorted(KARARLAR_ZORUNLU - kararlar)
+    if eksik:
+        return f"anayasa blokunda eksik karar: {eksik}"
+    dokunulmaz = blok.get("dokunulmaz_dosyalar", [])
+    if not isinstance(dokunulmaz, list) or not dokunulmaz:
+        return "anayasa blogunda dokunulmaz_dosyalar yok"
+    for ad in DOKUNULMAZ_ZORUNLU:
+        if not any(d.endswith("autonomous-training/" + ad) for d in dokunulmaz):
+            return f"dokunulmazlar listesinde {ad} yok"
+    kosullar = blok.get("durdurma_kosullari", [])
+    if sorted(k.get("id") for k in kosullar) != ["S1", "S2", "S3", "S4", "S5"]:
+        return f"durdurma kosullari S1-S5 degil: {sorted(k.get('id') for k in kosullar)}"
+    if not all(k.get("ad") and k.get("kural") for k in kosullar):
+        return "durdurma kosulunda ad ya da kural eksik"
+    return None
+
+
+def _durus_kaplama_bulgu(kaynak: str, kosullar: list[dict]) -> str | None:
+    """Anayasada yazan her durdurma kosulu kodda cagriliyor mu (ve tersi)."""
+    # Kosul id'si `dur(...)` ailesinin ikinci argumanidir; birinci arguman
+    # durumun adi olabilir (s2_dur gibi sarmalayicilar durumu disaridan alir).
+    bulunan = set(re.findall(r'\bdur\(\s*[A-Za-z_][\w.]*\s*,\s*"(S\d)"', kaynak))
+    beyan = {k["id"] for k in kosullar}
+    if bulunan != beyan:
+        return f"anayasa ile kod ayrisiyor: beyan {sorted(beyan)}, kodda {sorted(bulunan)}"
+    return None
+
+
+def _yazma_kapisi_bulgu(kaynaklar: dict) -> str | None:
+    """Dosya yazan her fonksiyon yazma kapisindan gecmeli.
+
+    Otomasyon agacinda yazma tek noktadan yapilir: `guvenli_yaz`, o da
+    `yazma_reddi` ile dokunulmazlari denetler. Ikinci bir yazma yolu acilirsa
+    (ya da kapi denetimi cikarilirsa) burasi kirmizi yanar."""
+    import ast
+
+    kacak = []
+    for ad, metin in sorted(kaynaklar.items()):
+        for dugum in ast.walk(ast.parse(metin)):
+            if not isinstance(dugum, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            yazar = False
+            for cagri in ast.walk(dugum):
+                if not isinstance(cagri, ast.Call):
+                    continue
+                adi = cagri.func.attr if isinstance(cagri.func, ast.Attribute) else getattr(
+                    cagri.func, "id", ""
+                )
+                if adi in ("write_text", "write_bytes"):
+                    yazar = True
+                if adi == "open" and any(
+                    isinstance(a, ast.Constant) and isinstance(a.value, str)
+                    and ("w" in a.value or "a" in a.value)
+                    for a in cagri.args
+                ):
+                    yazar = True
+            if not yazar:
+                continue
+            kapi = any(
+                isinstance(c, ast.Call) and getattr(c.func, "id", "") in ("guvenli_yaz", "yazma_reddi")
+                for c in ast.walk(dugum)
+            )
+            if not kapi:
+                kacak.append(f"{ad}:{dugum.name}")
+    if kacak:
+        return "kapi disi yazici: " + ", ".join(sorted(kacak))
+    return None
+
+
+def _dokunulmaz_yazma_bulgu(kaynaklar: dict, dokunulmaz: list[str]) -> str | None:
+    """Dokunulmaz dosya adini yazma cagrisiyla ayni satirda gecen kod."""
+    kisayollar = [d.split("autonomous-training/")[-1] for d in dokunulmaz]
+    yazma = ("write_text", "write_bytes", "open(", ".write(", "shutil.copy", "os.replace", ">>")
+    yakalanan = []
+    for ad, metin in sorted(kaynaklar.items()):
+        for i, satir in enumerate(metin.splitlines(), 1):
+            if any(k in satir for k in kisayollar) and any(y in satir for y in yazma):
+                yakalanan.append(f"{ad}:{i}")
+    if yakalanan:
+        return "dokunulmaz dosyaya yazma yolundan gecen satir: " + ", ".join(yakalanan)
+    return None
+
+
+def _mutasyon_bulgu(mutasyon: dict, dokunulmaz: list[str], bayraklar: set) -> str | None:
+    """Mutasyon alani kapali mi: dugmeler gercek, kapsam disi ayri, yamalar dokunulmaz disinda."""
+    dugmeler = mutasyon.get("dugme_uzayi", {})
+    kapsam_disi = mutasyon.get("kapsam_disi_dugmeler", {})
+    if not isinstance(dugmeler, dict) or not dugmeler:
+        return "mutasyon alani bos: deneyin dokunabilecegi dugme yok"
+    if not isinstance(kapsam_disi, dict):
+        return "kapsam_disi_dugmeler sozluk degil"
+    ortak = sorted(set(dugmeler) & set(kapsam_disi))
+    if ortak:
+        return f"dugme hem icerde hem kapsam disi: {ortak}"
+    bilinmeyen = sorted((set(dugmeler) | set(kapsam_disi)) - set(bayraklar))
+    if bilinmeyen:
+        return f"egitim-kosu'da olmayan dugme: {bilinmeyen}"
+    for ad, aralik in sorted(dugmeler.items()):
+        if not isinstance(aralik, dict):
+            return f"{ad}: aralik sozluk degil"
+        alt, ust = aralik.get("alt"), aralik.get("ust")
+        if not isinstance(alt, (int, float)) or not isinstance(ust, (int, float)):
+            return f"{ad}: alt/ust sayi degil"
+        if alt >= ust:
+            return f"{ad}: alt >= ust ({alt} >= {ust})"
+        if not aralik.get("aile"):
+            return f"{ad}: aile yok"
+    izinli = mutasyon.get("kaynak_yamasi", {}).get("izinli_dosyalar", [])
+    if not izinli:
+        return "kaynak yamasi izinli dosya listesi bos"
+    for yol in izinli:
+        temiz = yol.rstrip("/")
+        for d in dokunulmaz:
+            if temiz == d or temiz.startswith(d.rstrip("/") + "/") or d.startswith(temiz + "/"):
+                return f"izinli dosya dokunulmazi kesiyor: {yol}"
+        if not (ROOT / yol).exists():
+            return f"izinli dosya yok: {yol}"
+    return None
+
+
+def _egitim_kosu_bayraklari() -> set:
+    """Gercek mutasyon yuzeyi: egitim-kosu'nun kabul ettigi bayraklar (ikiliden)."""
+    kosu = subprocess.run(
+        [_er_ikili(), "egitim-kosu", "--bilinmeyen-bayrak"], cwd=ROOT,
+        capture_output=True, text=True, check=False,
+    )
+    m = re.search(r"gecerli olanlar:\s*(.+)$", kosu.stdout + kosu.stderr, re.M)
+    if not m:
+        raise SystemExit(f"egitim-kosu bayrak listesi okunamadi: {(kosu.stdout + kosu.stderr)[-200:]}")
+    return {p.strip() for p in m.group(1).split(",") if p.strip()}
+
+
+def gate_invariants_are_frozen() -> str:
+    """Anayasa donmus bir kilit: ozet, blok, kod kaplamasi, yazma kapisi, kanarya."""
+    anayasa_yolu = AT / "INVARIANTS.md"
+    damga_yolu = AT / "INVARIANTS.sha256"
+    dongu_yolu = AT / "dongu.py"
+    if not anayasa_yolu.is_file() or not damga_yolu.is_file() or not dongu_yolu.is_file():
+        raise SystemExit("otomasyon agaci eksik: autonomous-training/{INVARIANTS.md,INVARIANTS.sha256,dongu.py}")
+    bulgu = _damga_bulgu(anayasa_yolu.read_bytes(), damga_yolu.read_text(encoding="utf-8"))
+    if bulgu:
+        raise SystemExit(bulgu)
+    blok = _anayasa_bloku(anayasa_yolu.read_text(encoding="utf-8"))
+    bulgu = _anayasa_bulgu(blok)
+    if bulgu:
+        raise SystemExit(bulgu)
+    bulgu = _durus_kaplama_bulgu(dongu_yolu.read_text(encoding="utf-8"), blok["durdurma_kosullari"])
+    if bulgu:
+        raise SystemExit(bulgu)
+    kaynaklar = {p.name: p.read_text(encoding="utf-8") for p in sorted(AT.glob("*.py"))}
+    if not kaynaklar:
+        raise SystemExit("otomasyon agacinda python kaynagi yok")
+    bulgu = _yazma_kapisi_bulgu(kaynaklar)
+    if bulgu:
+        raise SystemExit(bulgu)
+    tarama = {p.relative_to(ROOT).as_posix(): p.read_text(encoding="utf-8")
+              for p in sorted(list(AT.glob("*.py")) + list((ROOT / "training").glob("*.py")))}
+    bulgu = _dokunulmaz_yazma_bulgu(tarama, blok["dokunulmaz_dosyalar"])
+    if bulgu:
+        raise SystemExit(bulgu)
+    kosu = subprocess.run(
+        [sys.executable, str(dongu_yolu), "--kendini-test"], cwd=ROOT,
+        capture_output=True, text=True, check=False, timeout=600,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"durdurma kanaryasi dustu: {(kosu.stderr or kosu.stdout)[-300:]}")
+    import hashlib
+
+    ozet = hashlib.sha256(anayasa_yolu.read_bytes()).hexdigest()[:12]
+    return (f"anayasa donuk ({ozet}): {len(blok['kararlar'])} karar, "
+            f"{len(blok['dokunulmaz_dosyalar'])} dokunulmaz dosya, S1-S5 kodda cagrili, "
+            f"{len(tarama)} dosyada yazma taramasi temiz, kanarya yesil")
+
+
+def selftest_invariants_are_frozen() -> None:
+    """Kanarya: her denetim kendi kanitini reddeder."""
+    import hashlib
+
+    assert _damga_bulgu(b"abc", hashlib.sha256(b"abc").hexdigest()) is None, "gecerli damga reddedildi"
+    assert "tutmuyor" in (_damga_bulgu(b"abc", hashlib.sha256(b"abd").hexdigest()) or ""), "bayat damga gecti"
+    assert _damga_bulgu(b"abc", "kisa") is not None, "bozuk ozet bicimi gecti"
+    assert _damga_bulgu(b"abc", "") is not None, "bos damga gecti"
+
+    iyi = {"kararlar": [{"id": k, "kural": "k"} for k in sorted(KARARLAR_ZORUNLU)],
+           "dokunulmaz_dosyalar": ["autonomous-training/" + a for a in DOKUNULMAZ_ZORUNLU],
+           "durdurma_kosullari": [{"id": f"S{i}", "ad": "a", "kural": "k"} for i in range(1, 6)]}
+    assert _anayasa_bulgu(iyi) is None, "gecerli anayasa reddedildi"
+    eksik_karar = dict(iyi, kararlar=[{"id": "K1", "kural": "k"}])
+    assert "eksik karar" in (_anayasa_bulgu(eksik_karar) or ""), "eksik karar gecti"
+    eksik_dosya = dict(iyi, dokunulmaz_dosyalar=["autonomous-training/INVARIANTS.md"])
+    assert "dokunulmazlar" in (_anayasa_bulgu(eksik_dosya) or ""), "eksik dokunulmaz gecti"
+    eksik_kosul = dict(iyi, durdurma_kosullari=[{"id": "S1", "ad": "a", "kural": "k"}])
+    assert "S1-S5" in (_anayasa_bulgu(eksik_kosul) or ""), "eksik durdurma kosulu gecti"
+
+    kaynak = 'dur(durum, "S1", "x")\ndur(DURUM_AKTIF, "S5", "y")\n'
+    assert _durus_kaplama_bulgu(kaynak, [{"id": "S1"}, {"id": "S5"}]) is None, "kaplama reddedildi"
+    assert "ayrisiyor" in (_durus_kaplama_bulgu('dur(durum, "S9", "x")', [{"id": "S1"}]) or ""), "hayalet kosul gecti"
+    assert "ayrisiyor" in (_durus_kaplama_bulgu('dur(durum, "S1", "x")', [{"id": "S1"}, {"id": "S5"}]) or ""), "kapsanmayan kosul gecti"
+
+    assert _yazma_kapisi_bulgu({"a.py": "def y(p):\n    guvenli_yaz(p, 'x')\n"}) is None, "kapi reddedildi"
+    assert "kapi disi" in (_yazma_kapisi_bulgu({"a.py": "def y(p):\n    p.write_text('x')\n"}) or ""), "kapisiz yazar gecti"
+    assert "kapi disi" in (
+        _yazma_kapisi_bulgu({"a.py": "def y(p):\n    open(p, 'w').write('x')\n"}) or ""
+    ), "kapisiz open gecti"
+
+    dokunulmaz = ["autonomous-training/ayarlar.json"]
+    kotu = {"a.py": 'Path("autonomous-training/ayarlar.json").write_text("x")'}
+    assert "yazma yolundan" in (_dokunulmaz_yazma_bulgu(kotu, dokunulmaz) or ""), "dokunulmaz yazimi gecti"
+    iyi_kod = {"a.py": 'veri = (AT / "ayarlar.json").read_text()'}
+    assert _dokunulmaz_yazma_bulgu(iyi_kod, dokunulmaz) is None, "okuma reddedildi"
+
+
+def gate_mutation_surface_is_closed() -> str:
+    """Mutasyon alani ile dokunulmazlar kesisemez; dugmeler gercek bayraklardir."""
+    mutasyon_yolu = AT / "mutasyon_alani.json"
+    anayasa_yolu = AT / "INVARIANTS.md"
+    if not mutasyon_yolu.is_file() or not anayasa_yolu.is_file():
+        raise SystemExit("mutasyon alani ya da anayasa yok")
+    mutasyon = json.loads(mutasyon_yolu.read_text(encoding="utf-8"))
+    blok = _anayasa_bloku(anayasa_yolu.read_text(encoding="utf-8"))
+    bayraklar = _egitim_kosu_bayraklari()
+    bulgu = _mutasyon_bulgu(mutasyon, blok["dokunulmaz_dosyalar"], bayraklar)
+    if bulgu:
+        raise SystemExit(bulgu)
+    dugmeler = mutasyon["dugme_uzayi"]
+    return (f"mutasyon yuzeyi kapali: {len(dugmeler)} dugme "
+            f"({', '.join(sorted(dugmeler))}), {len(mutasyon['kapsam_disi_dugmeler'])} kapsam disi, "
+            f"{len(mutasyon['kaynak_yamasi']['izinli_dosyalar'])} yama dosyasi, "
+            f"dokunulmazlarla kesisim yok (gercek bayrak sayisi {len(bayraklar)})")
+
+
+def selftest_mutation_surface_is_closed() -> None:
+    """Kanarya: kesisim, hayalet bayrak, ters aralik, dokunulmaz yama ayri ayri reddedilir."""
+    bayraklar = {"--kirpma", "--yigin", "--pencere"}
+    dokunulmaz = ["autonomous-training/ayarlar.json", "autonomous-training/INVARIANTS.md"]
+    saglam = {
+        "dugme_uzayi": {"--kirpma": {"alt": 0.5, "ust": 2.0, "aile": "kararlilik"}},
+        "kapsam_disi_dugmeler": {"--pencere": "mimari"},
+        "kaynak_yamasi": {"izinli_dosyalar": ["training/"]},
+    }
+    assert _mutasyon_bulgu({"dugme_uzayi": {}, "kapsam_disi_dugmeler": {},
+                            "kaynak_yamasi": {"izinli_dosyalar": ["training/"]}},
+                           dokunulmaz, bayraklar) is not None, "bos alan gecti"
+    kesisim = dict(saglam, kapsam_disi_dugmeler={"--pencere": "m", "--kirpma": "m"})
+    assert "hem icerde" in (_mutasyon_bulgu(kesisim, dokunulmaz, bayraklar) or ""), "kesisim gecti"
+    hayalet = dict(saglam, dugme_uzayi={"--yok": {"alt": 0, "ust": 1, "aile": "a"}})
+    assert "olmayan dugme" in (_mutasyon_bulgu(hayalet, dokunulmaz, bayraklar) or ""), "hayalet bayrak gecti"
+    ters = dict(saglam, dugme_uzayi={"--kirpma": {"alt": 2.0, "ust": 0.5, "aile": "a"}})
+    assert "alt >= ust" in (_mutasyon_bulgu(ters, dokunulmaz, bayraklar) or ""), "ters aralik gecti"
+    eksik_aile = dict(saglam, dugme_uzayi={"--kirpma": {"alt": 0.5, "ust": 2.0}})
+    assert "aile" in (_mutasyon_bulgu(eksik_aile, dokunulmaz, bayraklar) or ""), "ailesiz dugme gecti"
+    yamali = dict(saglam, kaynak_yamasi={"izinli_dosyalar": ["autonomous-training/ayarlar.json"]})
+    assert "dokunulmazi kesiyor" in (_mutasyon_bulgu(yamali, dokunulmaz, bayraklar) or ""), "dokunulmaz yama gecti"
+    yoksa = dict(saglam, kaynak_yamasi={"izinli_dosyalar": ["yok/boyle/dizin"]})
+    assert "izinli dosya yok" in (_mutasyon_bulgu(yoksa, dokunulmaz, bayraklar) or ""), "olmayan yol gecti"
+    bos_yama = dict(saglam, kaynak_yamasi={"izinli_dosyalar": []})
+    assert "izinli dosya listesi bos" in (_mutasyon_bulgu(bos_yama, dokunulmaz, bayraklar) or ""), "bos yama listesi gecti"
+
+
+
+def _kimlik_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Kimlik bicimleri kaydinin semasi, tutarliligi ve tazeligi.
+
+    Denetim olcum betiginin icindedir (tek yerde yasasin diye oradan cagrilir):
+    kapi yalniz kaydi okumakla kalmaz, fiksturu yeniden kosar."""
+    sys.path.insert(0, str(ROOT / "training"))
+    import kimlik_bicimleri
+
+    return kimlik_bicimleri._bulgu(kayit, taze)
+
+
+def gate_credential_shapes_are_measured() -> str:
+    """8e/regex: bilinen kimlik bicimleri yakalaniyor mu, temiz metin yanlis alarm veriyor mu.
+
+    Iki madde ayni olcumu istiyordu: yakalama orani ve yanlis-pozitif denetimi.
+    Kapi kaydi okur, sonra fiksturu gercek tarayiciya yeniden kosar; kacirilan
+    bir bicim ya da yanlis pozitif varsa kirmizi yanar."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "kimlik-bicimleri-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit(f"kayit yok: {kayit_yolu.relative_to(ROOT)} (once --kur)")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "kimlik_bicimleri.py"), "--olc",
+         "--bin", _er_ikili()],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=600,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _kimlik_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    kanit = kayit["kanit"]
+    return (f"kimlik bicimleri olculdu: {kanit['yakalanan']}/{kanit['bicim']} bicim yakalandi "
+            f"(oran {kanit['yakalama_orani']}), yanlis pozitif "
+            f"{len(kanit['yanlis_pozitif'])}/{kanit['temiz_metin']}, "
+            f"kacirilan {len(kanit['kacirilan'])}")
+
+
+def selftest_credential_shapes_are_measured() -> None:
+    """Kanarya: kacirilan bicim, yanlis pozitif, tutarsiz oran ve bayat sayi ayri ayri reddedilir."""
+    taze = {"bicim": 3, "yakalanan": 3, "yakalama_orani": 1.0, "kacirilan": [],
+            "temiz_metin": 3, "temiz_gecen": 3, "yanlis_pozitif": [], "yanlis_pozitif_orani": 0.0}
+    kayit = {"olcut": {"sonuc": True}, "kanit": dict(taze)}
+    assert _kimlik_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    kacan = dict(taze, yakalanan=2, yakalama_orani=round(2 / 3, 4), kacirilan=["pem-rsa"])
+    assert "bayat" in (_kimlik_bulgu(kayit, kacan) or ""), "kacirilan bicim gecti"
+    yanlis_alarm = dict(taze, temiz_gecen=2, yanlis_pozitif=["duz-metin"],
+                        yanlis_pozitif_orani=round(1 / 3, 4))
+    assert "bayat" in (_kimlik_bulgu(kayit, yanlis_alarm) or ""), "yanlis pozitif gecti"
+    # Kayit kendi icinde celiskili: toplam tutmuyor.
+    celiskili = {"olcut": {"sonuc": True},
+                 "kanit": dict(taze, yakalanan=2, kacirilan=[], yakalama_orani=1.0)}
+    assert "yakalama_orani" in (_kimlik_bulgu(celiskili, taze) or ""), "tutarsiz oran gecti"
+    # Kayit "sonuc dogru" derken kacirilan listesi bos degil: olcut yanlis.
+    yanlis_olcut = {"olcut": {"sonuc": True}, "kanit": dict(taze, kacirilan=["x"])}
+    assert _kimlik_bulgu(yanlis_olcut, taze) is not None, "yanlis olcut gecti"
+    # Kanit alani olmayan kayit.
+    assert _kimlik_bulgu({"olcut": {"sonuc": True}}, taze) is not None, "kanitsiz kayit gecti"
+
+
+
 GATES_EXTRA = {
+    "credential-shapes-are-measured": (
+        gate_credential_shapes_are_measured,
+        selftest_credential_shapes_are_measured,
+    ),
+    "invariants-are-frozen": (gate_invariants_are_frozen, selftest_invariants_are_frozen),
+    "mutation-surface-is-closed": (gate_mutation_surface_is_closed, selftest_mutation_surface_is_closed),
     "injection-refusals-are-measured": (gate_injection_refusals_are_measured, selftest_injection_refusals_are_measured),
     "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
     "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),

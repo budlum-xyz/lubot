@@ -1,0 +1,45 @@
+{
+  "surum": 1,
+  "not": "Politika dosyasi: otomasyon bunu OKUR, degistirmez (dokunulmazlar listesinde). Butun degerler operator/uygulama ajaninin kararidir; gerekceleri README.md'de.",
+  "deney": {
+    "sure_butcesi_saniye": 300,
+    "gunluk_deney_ust_siniri": 40,
+    "dogrulama_her": 20,
+    "dogrulama_payi": 0.05,
+    "tohum": 20260924,
+    "adim_guvenlik_payi": 0.8
+  },
+  "olcut": {
+    "metrik": "en_iyi_dogrulama_kaybi",
+    "yon": "dusuk_iyi",
+    "asgari_iyilesme": 0.001
+  },
+  "k6": {
+    "tavan_kaynagi": [
+      "training/bench_hardware.py",
+      "training/recommend_model_size.py"
+    ],
+    "muhasebe": "train_fp32_adamw",
+    "kural": "spec parametre sayisi olculen tavani asamaz; asarsa otomasyon baslamaz (S3)"
+  },
+  "regresyon": {
+    "tutma_esigi": 0,
+    "durma_esigi_orani": 0.05,
+    "ust_uste_kirmizi_durur": 2
+  },
+  "checkpoint": {
+    "her_tutmada": 5,
+    "kendini_gelistirme_oncesi": true,
+    "kendini_gelistirme_sonrasi": true
+  },
+  "kendini_gelistirme": {
+    "aralik_deney": 5,
+    "pencere": 3,
+    "ust_uste_kotu_durur": 3
+  },
+  "pr": {
+    "konsolidasyon_her_tutmada": 5,
+    "ana_dala_push": false,
+    "dal": "egitim-dongusu"
+  }
+}

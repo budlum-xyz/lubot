@@ -630,14 +630,20 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       yükleyici, çıktı şema doğrulayıcı) için **tekrarlanabilir tohumlu**
       düşmanca girdi bataryası. Ölçülen: panik/refus sayısı; `no-panic-path`
       kapısıyla aynı çizgide.
-- [ ] **Kimlik bilgisi biçimleri (Awesome Password Cracking).** Saldırgan
-      tarafı: `no-secret-material` kapısının tarayıcısının bilinen biçimlere
-      karşı **yakalama oranı** ölçülecek (şu an oran ölçülmüyor).
+- [x] **Kimlik bilgisi biçimleri (Awesome Password Cracking).** Ölçüldü:
+      `training/kimlik_bicimleri.py` fikstürü çalışma anında üretir (geçici
+      dizinde; ağaçta tam bir kimlik biçimi durmaz) ve tarayıcıya koşar —
+      **10/10 bilinen biçim yakalandı (oran 1,0), 12 temiz metinde 0 yanlış
+      pozitif**; kayıt `training/eval/sonuclar/kimlik-bicimleri-2026-09-24.json`,
+      kapı `credential-shapes-are-measured` (kayıt tazeliği + kanarya).
 - [ ] **IAM / OpenID Connect kıyası (Awesome IAM).** `crates/grant` grant
       defterinin standart IAM desenleriyle karşılaştırması. İş: `docs/GRANT-KIYAS.md`
       — kod değil, karar kaydı.
-- [ ] **Düzenli ifadeler (Awesome Regex).** Kimlik bilgisi tarayıcısının ve lint
-      kurallarının desen denetimi; yanlış-pozitif/negatif ölçümü.
+- [x] **Düzenli ifadeler (Awesome Regex).** Ölçüldü (aynı batarya, aynı kapı):
+      desenlerin yanlış-pozitif tarafı 12 temiz metinle sınandı — yakın kaçırmalar
+      (35 karakterlik `ghp_`, 19 karakterlik `sk-`, `AKIA1234`, büyük harfli
+      `GHP_`, `-----BEGIN PUBLIC KEY-----`) **alarm üretmedi**; yanlış-negatif
+      tarafı bilinen 10 biçimin tamamının yakalanmasıyla ölçüldü.
 - [ ] **CI/CD saldırıları (Awesome CI/CD Attacks).** `it` komutunun kısıtlı
       push tasarımı tedarik zinciri kaygısıyla aynı yere bakıyor. İş: tehdit
       notu + gerekiyorsa kapı.

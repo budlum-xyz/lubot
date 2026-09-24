@@ -8,3 +8,4 @@ lubot-kuyruk.jsonl
 soru-cevaplari.jsonl
 training/eval/veri-karisimi.jsonl
 android/out/
+autonomous-training/kosum/*/ckpt.bin
