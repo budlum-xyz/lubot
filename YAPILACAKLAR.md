@@ -149,6 +149,19 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       `training-run-is-measured`, `reranker-is-measured`. Ölçülen: test 478 →
       **529**, kapı 63 → **67**; çıkarım önbelleği ile tam geçiş ve eğitim
       çekirdeği aynı dizide 1e-12'nin altında anlaşıyor.
+- [x] **Adım 8d — Belge turları: GG–RR'nin kapıya bağlanması.** Uygulama
+      promptu bölümleri ölçülebilir hâle geldi: MM
+      `training-runner-engineering-vs-data` (kapı 68; koşucu yalnız
+      stdlib+kardeş modül, veri yalnız kendi ağaçtan, provenance zorunlu),
+      JJ `corpus-carries-structure` (kapı 69; api-doc-pair 429, trait-impl
+      31, dependency-edge 85), RR `gap-report-is-measured` (kapı 70; audit
+      günlüğünden bilgi-boşluğu haritası + `kind: gap-report` kaydı), QQ
+      `doc-diagram-feeds-corpus` (kapı 71; Mermaid/SVG girdisi; görüntü
+      dosyası metne çevrilmez), KK `gate-pairs-carry-referee` (kapı 72;
+      iddia ↔ kanarya sayısı eşleşir, "kanaryada red yok" reddedilir).
+      Ölçülen: kapı 67 → **72**. LL (k-of-n karar konsensüsü) açık: en az
+      iki eğitilmiş karar başlığı ister; maliyet ekseni zaten
+      `decision-latency-is-recorded` ile ölçülüyor.
 - [ ] **Adım 8c — İlk kapışma ölçümü.** Görev ekseninde, taban olarak raporla —
       zafer ilanı değil. Eğitilmiş kontrol noktası yokken (K6) ölçülemez.
 
