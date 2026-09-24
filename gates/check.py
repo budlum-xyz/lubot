@@ -4559,7 +4559,82 @@ def selftest_gap_report_is_measured() -> None:
         assert json.loads((kok / "r.json").read_text(encoding="utf-8"))["soru"] == 0
 
 
+# --- QQ: diyagram girdisi ---------------------------------------------------
+
+
+def gate_doc_diagram_feeds_corpus() -> str:
+    """QQ: `doc` yeteneiginin girdi tarafi genisler - diyagram okunur, uretilmez.
+
+    Metin diyagramlari (Mermaid: .mmd dosyasi ya da ```mermaid citi) kenar ve
+    dugum etiketi kayitlarina cevrilir; SVG'den yalniz <text> etiketleri
+    okunur ve "kenarlar okunmadi" diye yazar. Bu bir uretim yuzeyi degildir:
+    kayitlar dosyanin kendi satirlarindan gelir, provenance tasir ve goruntu
+    dosyalari (png/jpg) metne cevrilmez - okumadigini iddia etmez."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "LICENSE.md").write_text("MIT License\n", encoding="utf-8")
+        (kok / "d.mmd").write_text(
+            "graph TD\n  A[Istek] --> B[Grant]\n  B --> C[Indeks]\n", encoding="utf-8")
+        (kok / "README.md").write_text(
+            "# Baslik\n\n```mermaid\ngraph LR\n  X[Oku] --> Y[Cevap]\n```\n",
+            encoding="utf-8")
+        (kok / "sekil.svg").write_text(
+            "<svg><text>Operator</text><text>Zincir</text></svg>\n", encoding="utf-8")
+        (kok / "resim.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        cikti = kok / "k.jsonl.gz"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(kok), "--out", str(cikti)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(f"korpus kurulamadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+        kayitlar = []
+        with gzip.open(cikti, "rt", encoding="utf-8") as fh:
+            for satir in fh:
+                if satir.strip():
+                    kayitlar.append(json.loads(satir))
+        diyagramlar = [k for k in kayitlar if k.get("kind") == "diagram"]
+        if not diyagramlar:
+            raise SystemExit("diyagram kaydi uretilmedi")
+        metinler = " ".join(k["text"] for k in diyagramlar)
+        if "`A` -> `B`" not in metinler:
+            raise SystemExit("mmd kenari okunmadi")
+        if not any(k["path"] == "README.md" for k in diyagramlar):
+            raise SystemExit("markdown icindeki mermaid citi okunmadi")
+        if "Operator" not in metinler or "edges are not read" not in metinler:
+            raise SystemExit("SVG etiketleri durustce raporlanmadi")
+        if any(str(k.get("path", "")).endswith(".png") for k in kayitlar):
+            raise SystemExit("goruntu dosyasi metne cevrilmis gibi kayit uretti")
+        if not all(k.get("path") and k.get("lines") for k in diyagramlar):
+            raise SystemExit("diyagram kaydi provenance tasimiyor")
+    return f"diyagram okunuyor ({len(diyagramlar)} kayit), goruntu dosyasi okunmuyor"
+
+
+def selftest_doc_diagram_feeds_corpus() -> None:
+    """Kanarya: kenarsiz metin diyagram uretmemeli; lisanssiz agac reddedilmeli."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "k.mmd").write_text("graph TD\n  tek dugum\n", encoding="utf-8")
+        sys.path.insert(0, str(ROOT / "training"))
+        import build_corpus as bc
+
+        kayitlar = list(bc.mermaid_kayitlari("graph TD\n  tek dugum\n", "k.mmd", 1))
+        assert kayitlar == [], "kenarsiz/etiketsiz satirdan kayit uretildi"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(kok), "--out", str(kok / "o.jsonl.gz")],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert kosu.returncode != 0, "lisanssiz agac kabul edildi"
+
+
 GATES_EXTRA = {
+    "doc-diagram-feeds-corpus": (gate_doc_diagram_feeds_corpus, selftest_doc_diagram_feeds_corpus),
     "gap-report-is-measured": (gate_gap_report_is_measured, selftest_gap_report_is_measured),
     "corpus-carries-structure": (gate_corpus_carries_structure, selftest_corpus_carries_structure),
     "training-runner-engineering-vs-data": (gate_training_runner_engineering_vs_data, selftest_training_runner_engineering_vs_data),
