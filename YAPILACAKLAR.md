@@ -8,9 +8,10 @@ depoların hiçbirisinden kod, veri veya ağırlık alınmaz; alınan şey, bir 
 nasıl bölündüğü ve nasıl ölçüldüğüdür. Lisans PolyForm Shield 1.0.0, eser
 Lubot'un kendisi.
 
-**Bu dosya tek kaynaktır.** Dört havuz burada birleşiyor: eğitim stratejisi
-fikir havuzu (A–FF), genişletme promptu (GG–RR), awesome eşleştirme kataloğu ve
-dış repo kaydı (kullanıcı repoları + Shizuku + Stagehand + budlum-xyz ailesi).
+**Bu dosya tek kaynaktır.** Beş havuz burada birleşiyor: eğitim stratejisi
+fikir havuzu (A–FF), genişletme promptu (GG–RR), awesome eşleştirme kataloğu,
+dış repo kaydı (kullanıcı repoları + Shizuku + Stagehand + budlum-xyz ailesi)
+ve direktif §4.1'in onaylı sekiz deposu.
 Her madde bitirilecek bir iştir; katalog linkleri olduğu gibi taşınmadı, lubot'a
 düşenler somut işe çevrildi, düşmeyenler gerekçesiyle kayıt defterinde duruyor.
 Başka bir yerde plan listesi tutulmuyor: bir iş buraya yazılmadıysa yoktur.
@@ -264,6 +265,77 @@ test disiplini, CLI araçları.
       model çağırmıyor (`reads-not-generates`, `no-generation-variant`).
       Alınan şey desendir, bağımlılık değil.
 
+### Yöntem esini: onaylı sekiz depo (direktif §4.1)
+
+Sekiz depo bu turda tek tek tarandı. Statü X araştırmasıyla aynı: kod, veri
+veya ağırlık alınmaz (K1); bu depoların çalıştırılabilir olanları workspace'in
+kendi `/skills` altyapısına aittir, lubot'un model/eğitim kodu bunlardan yalnız
+desen çıkarımıyla beslenir. Kullanıcının bu tur attığı on Jev'li liste de
+tekrar kontrol edildi: on madde de önceki turlarda bu listeye işlenmiş durumda
+(agent-desktop ve typesafe-mario ortak maddede; OneVOneJev, Canny'nin kalan
+yarısı, jev-trader'ın kalanı, Prism ve neo4jev yukarıda açık maddeler olarak
+duruyor) — tekrar açılmadı, açık olanlar bu turun sırasına girdi.
+
+- [ ] **Graphify-Labs/graphify → kenarı açıklanmış bilgi grafiği.** Ne olduğu
+      doğrulandı: kod tabanını, belgeleri ve şemaları sorgulanabilir bilgi
+      grafiğine çeviriyor; ayrıştırma yerel ve deterministik, vektör deposu
+      yok ve her kenarın gerekçesi duruyor. Lubot'a düşen iş: `crates/index`
+      BM25 üstünde; JJ'nin AST maddesiyle birleşip pasajlar arası kenar
+      katmanının taslağı — her kenar türü ve üretim kuralı kaydedilir,
+      alıntı kaynağı kaybolmaz (paketlemedeki konum-başına-iz ilkesinin
+      grafik hâli). Ölçülecek şey: kenar katmanının retrieval bataryasındaki
+      (Z) skora etkisi. Vektör-deposu deseni alınmıyor: benzerlik BM25 ve bu
+      karar GG'deki veri-sınırlı sınıf kalibrasyonuna bağlı.
+- [ ] **addyosmani/agent-skills → beceri kaydının şema disiplini.** Üretim
+      sınıfı beceriler derlenmiş bir artefakt olarak duruyor; not değil.
+      Lubot'taki karşılığı `crates/yetenek` (kendi kuralı: beyan edilmiş,
+      çalışıyor demek değildir — self-test geçmeden kullanılamaz). İş:
+      `training/curriculum/yetenek.jsonl` kayıtlarına kanıt alanının zorunlu
+      tutulması taslağı — tetikleyici, kapsam dışı ve ölçülen kanıt alanı
+      eksik kayıt reddedilir (fail-closed; eval-only damgasının kayıt
+      disiplinindeki hâli).
+- [ ] **openai/codex-security → bul → doğrula → düzelt döngüsü.** Güvenlik
+      açığını bulan, doğrulayan ve düzelten CLI+SDK. Lubot bulgu disiplinini
+      uyguluyor (Strix turları); eksik olan resmileştirme. İş: bulgu rapor
+      şemasına **yeniden-üretme adımını** zorunlu alan eklemek — yeniden
+      üretilemeyen bulgu kapanamaz. Taslak `docs/failure-families.md`
+      yanına ayrı kayıt olarak.
+- [ ] **headroomlabs-ai/headroom → sıkıştırmada kayıp ölçümü.** Araç
+      çıktılarını ve parçaları modele girmeden sıkıştırıyor ve tasarrufu
+      ölçülen olarak raporluyor. Lubot karşılığı `crates/sikistir` (pinlenen
+      satırlar bayt baytta, CCR deposu digest yeniden doğruluyor). İş:
+      sıkıştırma sonrası **alıntı koruma ölçümü** — sıkıştırılmış bağlamla
+      üretilen alıntı özgün kaydı hâlâ buluyor mu; bulamıyorsa sıkıştırma
+      kararı reddedilir. Tasarruf rakamı, kayıp ölçülmeden başarı sayılmaz.
+- [ ] **arcboxlabs/arcbox → her deneye ayrı kök.** İzole makineler: kendi
+      çekirdeği, dosya sistemi, ağı; yerel-first, OCI uyumlu. Lubot
+      karşılığı `crates/izolasyon` (oturum boş çalışma alanına açılır,
+      sonuçlar kopya çıkar). İş: izolasyon self-test'lerine **ağ-yok
+      kanıtı** taslağı — izole oturumda dış kaynak okuma denemesinin
+      reddi ölçülür; Android beyanı "ağ izni yok" satırının manifest'ten
+      düşmediği CI kontrol listesine girer.
+- [ ] **zhaoxuya520/reverse-skill → beceri yönlendirici + isteğe bağlı araç
+      zinciri.** Doğrulandı: tersine mühendislik / yetkili sızma beceri
+      paketi; yönlendirici beceriyi seçiyor, araç zinciri ihtiyaç anında
+      kuruluyor, deneyim tabanı kendini büyütüyor. İçerik kapsam dışı
+      (M'nin kırmızı takım sınırı: saldırı becerisi lubot'un iş alanı
+      değil). Alınan desen: **seçimin kanıtı** — yönlendirici hangi
+      beceriyi neden seçtiğini kayda yazar. İş: `karar`/`yetenek`
+      çağrılarında seçim günlüğü taslağı; önyükleme turunun (G) "hangi
+      satır ikinci tura girer" kararına bağlanır.
+- [ ] **affaan-m/ECC → performans bütçesi disiplini.** Koşum takımı
+      performans sistemi: beceriler, sezgiler, bellek, güvenlik. Lubot'a
+      düşen eksen: her yeni bileşenin başlatma ve ikili-boyut maliyeti beyan
+      edilir. Kapı 59 gecikmeyi, `derle.sh` APK içeriğini doğruluyor; eksik
+      olan crate başına ikili bütçesi. İş: `--release` ikili boyutunun
+      kapıya bağlanması taslağı (sayısal eşik değil, kayıtlı beyan +
+      gerileme ratchet'i).
+- [ ] **1jehuang/jcode → bellek bütçesi ölçümü.** RAM-verimi iddialı Rust
+      koşum takımı. K6 donanım tavanı olan projede bellek ikinci kısıt:
+      `egitim` çekirdeğinin ve `ask` yolunun en yüksek RSS'i ölçülmüyor.
+      İş: RSS zirvesi ölçüm taslağı — makineye bağlı, kapı-59 disiplini:
+      eksen beyan edilir, sayı eşik yapılmaz, ratchet'e konmaz.
+
 ### Awesome katalog kaydı (213 benzersiz depo, 6 grup)
 
 Katalog `uploads/budlum-awesome-eslestirme.md`. Sayılar dosyadan ölçüldü,
@@ -354,9 +426,15 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
       2.237 ms, süreç başlatma dahil ve kayıtta öyle yazıyor). **Ölçülmeyen:**
       karar başına enerji ve tekrarlı soruda marjinal maliyet (donanım düzeneği
       yok).
-- [ ] **V — Yerel-first çıkarım yığınını derinleştirmek.** İş: ağ olmadan çalışan
-      çıkarım yolunun ölçülmesi (soğuk başlatma + ilk cevap süresi) ve bunun
-      kapıya bağlanması.
+- [~] **V — Yerel-first çıkarım yığınını derinleştirmek.** İlk yarı kapandı:
+      `training/ilk_cevap_gecikme.py` + kapı `first-answer-latency-is-recorded`
+      — `lubot ask` **30 kez soğuk** koşuldu (bu yolda sıcak bileşen yok: her
+      çağrı süreç başlatma + korpus ayrıştırma ödüyor). Medyan ve aralık
+      `training/eval/sonuclar/ilk-cevap-gecikme-2026-09-24.json` dosyasında;
+      `uyari` alanı kapı tarafından zorunlu, beş kanaryalı self-test var.
+      Kapı-59 disiplini: eksen beyan edilir, sayı eşik yapılmaz, ratchet'e
+      konmaz. Kalan ikinci yarı: tekrarlı sorunun marjinal maliyeti (W) ve
+      yolun derinleşmesi (yerel skorlayıcılar, kontrol noktası K6'da).
 - [ ] **W — Karar ve cevap önbelleklemesi.** İş: aynı sorunun 2. kez sorulduğunda
       marjinal maliyetin ölçülmesi; U maddesinin "tekrarlı soruda maliyet → 0"
       iddiası ancak bununla ölçülebilir.
@@ -464,13 +542,23 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
 - [ ] **CI/CD saldırıları (Awesome CI/CD Attacks).** `it` komutunun kısıtlı
       push tasarımı tedarik zinciri kaygısıyla aynı yere bakıyor. İş: tehdit
       notu + gerekiyorsa kapı.
-- [ ] **SECURITY.md yazmak (Awesome AppSec / Security).** Ölçüldü: repoda
-      **SECURITY.md yok**. İş: ölçülen tehdit yüzeyiyle (kimlik bilgisi
-      tarayıcı, kapsam reddi, enjeksiyon, `it` kısıtı) bir güvenlik belgesi.
-- [ ] **ARCHITECTURE.md yazmak (Awesome Software Architecture).** Ölçüldü:
-      repoda **docs/ARCHITECTURE.md yok**; oysa `crates/mimari` katman kuralını
-      kodda zorluyor. İş: zorlanan kuralı anlatan belge — belge kuraldan
-      saparsa kapı düşmeli.
+- [x] **SECURITY.md yazmak (Awesome AppSec / Security).** Yazıldı:
+      `SECURITY.md` — özel raporlama yolu (GitHub private advisory, yedeği
+      kör kamu kaydı), kapsam bu kod tabanının ölçülen tehdit yüzeyiyle
+      tanımlı (grant bypass, şema bypass, eval sızıntısı, `it` allowlist
+      kaçışı, kapalı listedeki tarama kaçağı; debug keystore'un yetkisizliği
+      beyanlı kapsam dışı). SLA uydurulmadı: ölçülmemiş taahhüt yazılmadı,
+      \"güvenlik raporları özellik işinin önüne alınır\" hükmü duruyor.
+- [x] **ARCHITECTURE.md yazmak (Awesome Software Architecture).** Yazıldı:
+      `docs/ARCHITECTURE.md` — katman haritası (ilkel → birleşik → okuma →
+      giriş), okuma döngüsünün sırası, eğitim yolu, doğrulama otoritesi,
+      Android kabuğu ve sınırlar. Rakam taşımıyor; ölçülen tablonun
+      `docs/CRATES.md` olduğunu beyan ediyor (korpus geri-besleme kuralı).
+      \"Saparsa kapı düşmeli\" yarısı da mekanikleşti: kapı
+      `architecture-doc-tracks-layer-rule` belgenin 25 crate'in tamamını ve
+      katman kuralının kendi kelimelerini (`never above`, `topological`)
+      taşımasını zorluyor; kanarya: belgeyi silmek ya da bir crate adını
+      düşürmek kapıyı düşürüyor (self-test'te).
 - [ ] **README turu (Awesome README / Translations).** Ölçüldü: kaynak listede
       "README.tr.md zaten var" deniyor ama bu repoda **README.tr.md yok**. İş:
       ya yazmak ya da listeyi düzeltmek; ikisi de karar gerektiriyor.
@@ -544,6 +632,19 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       kararı.
 
 ## Süreç notları
+
+- [ ] **`lubot ratchet --set` yedi anahtarın dördünü yazıyor (bulgu, bu turda
+      yakalandı).** `crates/cli`'deki `ratchet::Measured` 4 alan ölçüyor
+      (tests/gates/pedantic/corpus) ve `as_baseline()` tablonun tamamıymış
+      gibi yazıyor; `gates/check.py` tarafının `RATCHET_KEYS`'i 7 anahtar
+      (tokens, bootstrap, exam Python tarafında yaşıyor). Sonuç: `--set`
+      koşusu `tokens`/`bootstrap`/`exam` satırlarını düşürüyor ve bir
+      sonraki `ratchet-holds` `ratchet baseline lost` ile düşüyor —
+      doğuştan kırmızı bir "tabanı yenile" yolu. Bu turda uydurma sayıyla
+      değil, sahiplerinin ölçümüyle (`egitim_butcesi.py --olc` + sonuç
+      dizini ve sınav seti sayımı) birleştirilerek onarıldı; iki tarafın
+      tek anahtar listesine bağlanması işi açık. Koruma yönü mevcut: kayıp
+      anahtar taban güncellemesi kapıda reddediliyor.
 
 - **Doğrulama CI'ın sabitlediği toolchain ile yapılır, en yenisiyle değil
   (ölçüldü: bu turda CI koşusu 50 bu yüzden düştü).** CI `rustup default
