@@ -184,6 +184,16 @@ def markdown_records(path: Path, rel: str):
             yield {"kind": "markdown", "text": text, "path": rel, "lines": [start, len(lines)]}
 
 
+def _fonksiyon_govdesi(text: str, ad: str) -> str:
+    """Bir fonksiyonun govdesi; sonraki ust duzey def'e kadar."""
+    bas = text.find(f"def {ad}(")
+    if bas < 0:
+        return ""
+    kalan = text[bas:]
+    son = kalan.find("\ndef ", 10)
+    return kalan if son < 0 else kalan[:son]
+
+
 def gate_records(root: Path):
     gate_file = root / "gates" / "check.py"
     if not gate_file.is_file():
@@ -197,6 +207,28 @@ def gate_records(root: Path):
             "text": f"The `{name}` gate blocks a merge unless: {summary}",
             "path": "gates/check.py",
             "lines": [text[: match.start()].count("\n") + 1, text[: match.end()].count("\n") + 1],
+        }
+    # KK: iddia ile onu curuten kanarya eslesir; hakem mekanik olmali.
+    for kayit in re.finditer(
+        r'"(?P<ad>[a-z0-9-]+)":\s*\(\s*gate_[a-z0-9_]+,\s*(?P<kanarya>selftest_[a-z0-9_]+)\s*,?\s*\)',
+        text,
+        re.S,
+    ):
+        ad = kayit.group("ad")
+        kanarya = kayit.group("kanarya")
+        govde = _fonksiyon_govdesi(text, kanarya)
+        reddeden = [
+            satir.strip()
+            for satir in govde.splitlines()
+            if "assert " in satir or "SystemExit" in satir or "AssertionError" in satir
+        ]
+        ozet = reddeden[0] if reddeden else "kanaryada red yok"
+        satir_no = text[: kayit.start()].count("\n") + 1
+        yield {
+            "kind": "gate-pair",
+            "text": f"`{ad}` gate: checked by `{kanarya}` - {ozet}",
+            "path": "gates/check.py",
+            "lines": [satir_no, satir_no],
         }
 
 
