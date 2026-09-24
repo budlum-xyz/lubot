@@ -1,0 +1,14 @@
+# Crates reachable from nothing, measured from the `cli` binary.
+#
+# This is a ratchet, not a permission: `gates/check.py::crates-are-reachable`
+# fails the moment an unwired crate is missing from here, and fails again when
+# a listed crate becomes reachable and is not removed. The list may only shrink.
+#
+# `arayuz` is listed for a structural reason, not as a debt: it is the Android
+# bridge, a `cdylib` whose consumer is the JVM, not the CLI binary. The gate
+# measures reachability from `cli`, so a second entry point is unreachable from
+# it by construction - the same reason the binary itself is excluded from what
+# the gate reports. It is not waiting to be wired; it is wired into the APK
+# (android/derle.sh links liblubot_arayuz.so and the device loads it over JNI).
+# If a Rust-side consumer ever appears, remove this entry: the gate demands it.
+arayuz
