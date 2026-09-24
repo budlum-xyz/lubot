@@ -4020,6 +4020,261 @@ def selftest_rust_tokenizer_agrees_with_python() -> None:
         _shutil.rmtree(dizin, ignore_errors=True)
 
 
+# --------------------------------------------------------------------------
+# gates: the trained surface
+# --------------------------------------------------------------------------
+# Four gates measure the four things that can be wrong quietly about a run:
+# the checkpoint file, the inference path, the run's own report, and the
+# ranking surface. They run the real binary on the real corpus - a gate that
+# only reads source text cannot see a checkpoint that does not round-trip.
+
+
+def _binary() -> list[str]:
+    """The fastest binary that exists: the release build when one is there,
+    otherwise `cargo run`, which reuses the debug artifacts the test step
+    already produced."""
+    release = ROOT / "target" / "release" / "lubot"
+    if release.is_file():
+        return [str(release)]
+    return ["cargo", "run", "--quiet", "-p", "lubot", "--bin", "lubot", "--"]
+
+
+def _kosu(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([*_binary(), *args], cwd=ROOT, capture_output=True,
+                          text=True, check=False)
+
+
+_MINI_CORPUS_KILIT = "_mini_corpus_kilidi"
+
+
+def _mini_korpus(tmp: Path) -> Path:
+    """Build the corpus once per gate process and keep it in the temp dir."""
+    corpus = tmp / "mini.jsonl.gz"
+    if not corpus.is_file():
+        built = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(ROOT), "--out", str(corpus)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if built.returncode != 0:
+            raise SystemExit(f"the corpus builder failed: {built.stderr.strip()[:200]}")
+    return corpus
+
+
+def _kucuk_kosu(tmp: Path, ad: str, *, tohum: int = 20260924, adim: int = 4,
+                ek: tuple[str, ...] = ()) -> dict[str, Path]:
+    """One genuinely small training run: real corpus, real stamp, real steps.
+
+    Small in steps and window, not in discipline: the stamp is computed and
+    declared, the held-out exam set is passed, and the checkpoint is written by
+    the same code path a long run uses.
+    """
+    corpus = _mini_korpus(tmp)
+    damga = _kosu("korpus-damgasi", "--corpus", str(corpus),
+                  "--vocab", "training/tokenizer/lubot-bpe-v2.json")
+    if damga.returncode != 0 or len(damga.stdout.strip()) != 64:
+        raise SystemExit(f"the corpus stamp could not be computed: {damga.stderr.strip()[:200]}")
+    ckpt = tmp / f"{ad}.ckpt"
+    rapor = tmp / f"{ad}.md"
+    kayit = tmp / f"{ad}.json"
+    run = _kosu(
+        "egitim-kosu", "--corpus", str(corpus), "--damga", damga.stdout.strip(),
+        "--sinav", "training/eval/sinav-seti.jsonl", "--ckpt", str(ckpt),
+        "--rapor", str(rapor), "--kayit", str(kayit), "--sessiz",
+        "--adim", str(adim), "--pencere", "64", "--yigin", "1",
+        "--dogrulama-her", "2", "--dogrulama-pencere", "4",
+        "--tohum", str(tohum), "--isinma", "1", *ek,
+    )
+    if run.returncode != 0:
+        raise SystemExit(f"a short training run failed: {run.stderr.strip()[:300]}")
+    return {"ckpt": ckpt, "rapor": rapor, "kayit": kayit, "corpus": corpus}
+
+
+def gate_checkpoint_round_trips() -> str:
+    """The same seed twice gives the same bytes; a different seed does not; a
+    file with one flipped byte is refused. A checkpoint that fails any of the
+    three is not a record of a run."""
+    import hashlib
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        a = _kucuk_kosu(tmp, "a")
+        b = _kucuk_kosu(tmp, "b")
+        c = _kucuk_kosu(tmp, "c", tohum=777)
+        oa = hashlib.sha256(a["ckpt"].read_bytes()).hexdigest()
+        ob = hashlib.sha256(b["ckpt"].read_bytes()).hexdigest()
+        oc = hashlib.sha256(c["ckpt"].read_bytes()).hexdigest()
+        if oa != ob:
+            raise SystemExit("the same seed produced two different checkpoints: the run is not reproducible")
+        if oa == oc:
+            raise SystemExit("a different seed produced the same checkpoint: the seed reaches nothing")
+        # tek bayt cevrilir: dosya kendini reddetmeli
+        bozuk = tmp / "bozuk.ckpt"
+        ham = bytearray(a["ckpt"].read_bytes())
+        ham[len(ham) // 2] ^= 0x01
+        bozuk.write_bytes(bytes(ham))
+        denetim = _kosu("cikarim", "denetle", "--ckpt", str(bozuk), "--kimlikler", "1,2,3,4")
+        if denetim.returncode == 0:
+            raise SystemExit("a checkpoint with a flipped byte loaded: the digest is not checked")
+        if "ozet" not in (denetim.stderr + denetim.stdout):
+            raise SystemExit(f"the refusal does not name the digest: {(denetim.stderr + denetim.stdout).strip()[:200]}")
+    return "the run round-trips byte for byte, the seed changes it, and a flipped byte is refused by the digest"
+
+
+def selftest_checkpoint_round_trips() -> None:
+    """The canaries: the comparisons this gate makes must each be able to fail."""
+    import hashlib
+    a = hashlib.sha256(b"one").hexdigest()
+    b = hashlib.sha256(b"another").hexdigest()
+    assert a != b, "the digest comparison cannot tell two files apart"
+    ham = bytearray(b"LUBOTCKPT" + bytes(range(32)))
+    ham[len(ham) // 2] ^= 0x01
+    assert bytes(ham) != b"LUBOTCKPT" + bytes(range(32)), "the byte flip did nothing"
+
+
+def _cache_finding(stdout: str, tolerance: float) -> str | None:
+    """Read the three-way agreement out of the report, or say what is missing."""
+    import re
+    for field in ("onbellekli ortalama log-olasilik", "tam gecis ortalamasi",
+                  "egitim cekirdegi", "en buyuk fark (onbellek/tam)"):
+        if field not in stdout:
+            return f"the report does not carry `{field}`"
+    match = re.search(r"\| en buyuk fark \(onbellek/tam\) \| ([0-9.e+-]+)", stdout)
+    if match is None:
+        return "the cached/full difference is not a number"
+    gap = float(match.group(1))
+    if gap != gap or gap > tolerance:
+        return f"the cached path and the full pass disagree by {gap:.3e} > {tolerance:.0e}"
+    return None
+
+
+def selftest_inference_cache_agrees() -> None:
+    """A report with a gap above the tolerance has to be refused, or the gate
+    is only checking that the report exists."""
+    iyi = "| en buyuk fark (onbellek/tam) | 1.000e-15 (tolerans 1e-9) |\n"
+    assert _cache_finding("onbellekli ortalama log-olasilik\n tam gecis ortalamasi\n egitim cekirdegi\n" + iyi, 1e-9) is None
+    kotu = "| en buyuk fark (onbellek/tam) | 1.000e-03 |\n"
+    assert _cache_finding("onbellekli ortalama log-olasilik\n tam gecis ortalamasi\n egitim cekirdegi\n" + kotu, 1e-9) is not None
+    eksik = "| en buyuk fark (onbellek/tam) | 1.000e-15 |\n"
+    assert _cache_finding(eksik, 1e-9) is not None, "a report that never measured the training kernel passed"
+
+
+def gate_inference_cache_agrees() -> str:
+    """Scoring a checkpoint through the cache and through a full recomputation
+    must give the same number, and the training kernel must agree with both."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        kosu = _kucuk_kosu(tmp, "c")
+        denetim = _kosu("cikarim", "denetle", "--ckpt", str(kosu["ckpt"]),
+                        "--kimlikler", "1,2,3,4,5,6,7,8")
+        if denetim.returncode != 0:
+            raise SystemExit(f"the cache check could not run: {denetim.stderr.strip()[:300]}")
+        finding = _cache_finding(denetim.stdout, 1e-9)
+        if finding:
+            raise SystemExit(finding)
+    return "the cached pass, a full recomputation and the training kernel give one number for one id sequence"
+
+
+def _run_report_finding(md: str) -> str | None:
+    """A run report has to carry what the run measured, by name."""
+    for field in ("| adim |", "| kayip |", "| durma |", "| jeton |",
+                  "| korpus ozeti |", "| kontrol noktasi |", "| held-out |",
+                  "| epoch |"):
+        if field not in md:
+            return f"the report has no `{field.strip('| ')}` row"
+    if "ALL" in md:
+        return "the report carries a verdict word"
+    return None
+
+
+def selftest_training_run_is_measured() -> None:
+    """The canaries: a report missing a measured row, or carrying a verdict
+    word, must each be refused."""
+    tam = "| adim | 1 -> 4 |\n| kayip | 9.0 -> 8.0 |\n| durma | adim-butcesi |\n| jeton | 100 |\n| korpus ozeti | x |\n| kontrol noktasi | y |\n| held-out | z |\n| epoch | 0 -> 1 (tavan 8) |\n"
+    assert _run_report_finding(tam) is None, "a complete report was refused"
+    assert _run_report_finding(tam.replace("| durma | adim-butcesi |\n", "")) is not None
+    assert _run_report_finding(tam + "ALL GATES PASSED\n") is not None
+
+
+def gate_training_run_is_measured() -> str:
+    """A short run writes a report that names every quantity it measured, and
+    an evaluation record that survives the mechanical-criterion schema."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        kosu = _kucuk_kosu(tmp, "r", adim=6)
+        md = kosu["rapor"].read_text(encoding="utf-8")
+        finding = _run_report_finding(md)
+        if finding:
+            raise SystemExit(finding)
+        if not _begins_with_heading(md):
+            raise SystemExit("the run report does not begin with a heading")
+        rec = json.loads(kosu["kayit"].read_text(encoding="utf-8"))
+        problem = _eval_run_finding(rec)
+        if problem:
+            raise SystemExit(f"the run's evaluation record is not a measurement: {problem}")
+        if rec["kaynaklar"]["cikti_jetonlari"] <= 0:
+            raise SystemExit("a model run reported zero output tokens")
+        if rec["kosucu"] != "model":
+            raise SystemExit("a training run is a model run and has to say so")
+    return "a real run's report carries every measured row and its record passes the one-criterion schema"
+
+
+def _ranking_finding(md: str) -> str | None:
+    """A ranking report has to be ordered, count its tokens and tie stably."""
+    import re
+    rows = re.findall(r"^\| (\d+) \| (\d+) \| (\d+) \| ([0-9.eE+-]+) \|$", md, re.M)
+    if len(rows) < 2:
+        return "the ranking report has fewer than two candidates"
+    puanlar = [float(r[3]) for r in rows]
+    if any(a < b - 1e-12 for a, b in zip(puanlar, puanlar[1:])):
+        return "the candidates are not in descending score order"
+    if any(int(r[2]) <= 0 for r in rows):
+        return "a candidate reports zero scored tokens"
+    esit = [(puanlar[i], int(rows[i][1]), int(rows[i + 1][1]))
+            for i in range(len(rows) - 1) if puanlar[i] == puanlar[i + 1]]
+    for _, once, sonra in esit:
+        if once >= sonra:
+            return "equal scores were reordered: a tie was broken by something other than the caller's index"
+    return None
+
+
+def selftest_reranker_is_measured() -> None:
+    """The canaries: a mis-ordered table and a zero-token row must be refused."""
+    iyi = "| 1 | 0 | 5 | -1.5 |\n| 2 | 1 | 5 | -2.0 |\n"
+    assert _ranking_finding(iyi) is None, "an ordered table was refused"
+    kotu = "| 1 | 0 | 5 | -2.5 |\n| 2 | 1 | 5 | -1.0 |\n"
+    assert _ranking_finding(kotu) is not None, "an ascending table passed as a ranking"
+    sifir = "| 1 | 0 | 0 | -1.5 |\n| 2 | 1 | 5 | -2.0 |\n"
+    assert _ranking_finding(sifir) is not None, "a candidate with no scored tokens passed"
+
+
+def gate_reranker_is_measured() -> str:
+    """The ranking surface orders candidates by score, counts the tokens it
+    scored, and leaves ties in the order the caller gave them."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        kosu = _kucuk_kosu(tmp, "s")
+        adaylar = tmp / "adaylar.txt"
+        adaylar.write_text("1,2,3,4,5\n6,7,8,9,10\n1,2,3,4,5\n", encoding="utf-8")
+        siralama = _kosu("cikarim", "sirala", "--ckpt", str(kosu["ckpt"]),
+                         "--baglam", "11,12", "--adaylar", str(adaylar))
+        if siralama.returncode != 0:
+            raise SystemExit(f"the ranking surface failed: {siralama.stderr.strip()[:300]}")
+        finding = _ranking_finding(siralama.stdout)
+        if finding:
+            raise SystemExit(finding)
+        if siralama.stdout.count("| 1,2,3,4,5 |") == 0 and "1,2,3,4,5" in siralama.stdout:
+            raise SystemExit("the report printed the ids instead of the caller's indices")
+    return "the ranking surface is ordered, counts its tokens, and keeps equal scores in the caller's order"
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -4108,7 +4363,12 @@ GATES_EXTRA = {
     "crates-doc-is-measured": (gate_crates_doc_is_measured, selftest_crates_doc_is_measured),
     "rpc-surface-consistent": (gate_rpc_surface_consistent, selftest_rpc_surface_consistent),
     "pub-api-is-used": (gate_pub_api_is_used, selftest_pub_api_is_used),
+    "checkpoint-round-trips": (gate_checkpoint_round_trips, selftest_checkpoint_round_trips),
+    "inference-cache-agrees": (gate_inference_cache_agrees, selftest_inference_cache_agrees),
+    "training-run-is-measured": (gate_training_run_is_measured, selftest_training_run_is_measured),
+    "reranker-is-measured": (gate_reranker_is_measured, selftest_reranker_is_measured),
 }
+
 
 
 GATES = {

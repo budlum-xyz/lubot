@@ -9,6 +9,7 @@ license-file.workspace = true
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 lubot-answer = { path = "../answer" }
 lubot-index = { path = "../index" }
 lubot-doc = { path = "../doc" }
@@ -31,6 +32,7 @@ lubot-izolasyon = { path = "../izolasyon" }
 lubot-kanit = { path = "../kanit" }
 lubot-yetenek = { path = "../yetenek" }
 lubot-egitim = { path = "../egitim" }
+lubot-cikarim = { path = "../cikarim" }
 lubot-jeton = { path = "../jeton" }
 
 [lints]

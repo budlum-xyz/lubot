@@ -31,7 +31,9 @@ The layers, bottom to top:
    that may decline), `tomurcuk` (the decision head: closed output shapes,
    fixed tier order, k-of-n), `egitim` (the from-scratch training core:
    forward pass, hand-written backward pass, packing with per-position
-   provenance).
+   provenance, the run loop and the checkpoint format) and `cikarim` (the
+   inference surface: score and rank with a trained checkpoint, and never a
+   generation surface).
 3. **Reading** — `read` (three channels, digest-verified), `index` (BM25
    with line-accurate citations), `grant` (permission settled before bytes),
    `tools` (exact-rational calculator, router), `doc` (PDF and rich

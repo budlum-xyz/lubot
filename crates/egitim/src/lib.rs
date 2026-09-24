@@ -28,6 +28,10 @@
 
 use lubot_grant::training::MAX_TRAINING_GRANT_EPOCHS;
 
+pub mod kontrol;
+pub mod kosu;
+pub mod veri;
+
 /// Relative error above which the backward pass is considered wrong.
 pub const GRADIENT_CHECK_TOLERANCE: f64 = 1e-6;
 /// Absolute floor under the relative check.
@@ -1164,6 +1168,405 @@ pub fn paketle(
             en_cok_kaynak: en_cok,
         },
     ))
+}
+
+/// The embedding initialisation the μP table asks for: width-independent, so
+/// the tied readout's `1/d_model` scale does not have to be re-tuned per width.
+pub const INIT_STD_EMBEDDING: f64 = 1.0;
+
+/// The parameter blocks, in the order a checkpoint stores them.
+///
+/// One list, used by three things: the checkpoint format (block names must
+/// match on both sides), the weight-decay mask (which tensors are decayed), and
+/// the shape check. Three copies of this list would be three chances to
+/// disagree about what "the model" is.
+pub const BLOK_ADLARI: [&str; 19] = [
+    "embedding",
+    "ln1_olcek",
+    "ln1_sapma",
+    "wq",
+    "bq",
+    "wk",
+    "bk",
+    "wv",
+    "bv",
+    "wo",
+    "bo",
+    "ln2_olcek",
+    "ln2_sapma",
+    "w1",
+    "b1",
+    "w2",
+    "b2",
+    "lnf_olcek",
+    "lnf_sapma",
+];
+
+/// A deterministic normal stream: xorshift64 for bits, Box-Muller for shape.
+///
+/// Written out rather than pulled in, because a run that cannot be reproduced
+/// from its seed is not a run anyone can compare a later run against, and the
+/// only thing this has to be is the same on every machine.
+struct Normal {
+    durum: u64,
+}
+
+impl Normal {
+    fn yeni(tohum: u64) -> Self {
+        Self {
+            durum: tohum
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407),
+        }
+    }
+
+    fn sonraki(&mut self) -> u64 {
+        self.durum ^= self.durum << 13;
+        self.durum ^= self.durum >> 7;
+        self.durum ^= self.durum << 17;
+        self.durum
+    }
+
+    /// Uniform in `(0, 1]`: the open end is at zero, because `ln(0)` is not a
+    /// number and a Box-Muller pair built on one is a NaN weight.
+    fn tek_duz(&mut self) -> f64 {
+        let ham = (self.sonraki() >> 11) as f64;
+        1.0 - ham / ((1u64 << 53) as f64)
+    }
+
+    fn normal(&mut self) -> f64 {
+        let u1 = self.tek_duz();
+        let u2 = self.tek_duz();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+}
+
+impl Parametreler {
+    /// Every weight at zero, in the spec's shape.
+    #[must_use]
+    pub fn sifir(spec: Spec) -> Self {
+        let d = spec.d_model;
+        let katman = spec.n_layers;
+        Self {
+            embedding: vec![0.0; spec.vocab * d],
+            ln1_olcek: vec![1.0; katman * d],
+            ln1_sapma: vec![0.0; katman * d],
+            wq: vec![0.0; katman * d * d],
+            bq: vec![0.0; katman * d],
+            wk: vec![0.0; katman * d * d],
+            bk: vec![0.0; katman * d],
+            wv: vec![0.0; katman * d * d],
+            bv: vec![0.0; katman * d],
+            wo: vec![0.0; katman * d * d],
+            bo: vec![0.0; katman * d],
+            ln2_olcek: vec![1.0; katman * d],
+            ln2_sapma: vec![0.0; katman * d],
+            w1: vec![0.0; katman * spec.d_ff * d],
+            b1: vec![0.0; katman * spec.d_ff],
+            w2: vec![0.0; katman * d * spec.d_ff],
+            b2: vec![0.0; katman * d],
+            lnf_olcek: vec![1.0; d],
+            lnf_sapma: vec![0.0; d],
+        }
+    }
+
+    /// The μP initialisation the spec's parameter-group table describes.
+    ///
+    /// * hidden weights (`wq`/`wk`/`wv`/`wo`/`w1`/`w2`): `sqrt(2/fan_in)`,
+    /// * the tied embedding: `base_init_std`, width-independent,
+    /// * LayerNorm scales at one, every bias at zero.
+    #[must_use]
+    pub fn mup_init(spec: Spec, tohum: u64, base_init_std: f64) -> Self {
+        let mut p = Self::sifir(spec);
+        let mut akis = Normal::yeni(tohum);
+        let d = spec.d_model;
+        let f = spec.d_ff;
+        let gizli = (2.0 / d as f64).sqrt();
+        let yukari = (2.0 / d as f64).sqrt();
+        let asagi = (2.0 / f as f64).sqrt();
+        for deger in &mut p.embedding {
+            *deger = akis.normal() * base_init_std;
+        }
+        for blok in [&mut p.wq, &mut p.wk, &mut p.wv, &mut p.wo] {
+            for deger in blok.iter_mut() {
+                *deger = akis.normal() * gizli;
+            }
+        }
+        for deger in &mut p.w1 {
+            *deger = akis.normal() * yukari;
+        }
+        for deger in &mut p.w2 {
+            *deger = akis.normal() * asagi;
+        }
+        p
+    }
+
+    /// The blocks in the format's order.
+    #[must_use]
+    pub fn bloklar(&self) -> [&[f64]; 19] {
+        [
+            &self.embedding,
+            &self.ln1_olcek,
+            &self.ln1_sapma,
+            &self.wq,
+            &self.bq,
+            &self.wk,
+            &self.bk,
+            &self.wv,
+            &self.bv,
+            &self.wo,
+            &self.bo,
+            &self.ln2_olcek,
+            &self.ln2_sapma,
+            &self.w1,
+            &self.b1,
+            &self.w2,
+            &self.b2,
+            &self.lnf_olcek,
+            &self.lnf_sapma,
+        ]
+    }
+
+    /// The blocks, mutable, in the same order.
+    #[must_use]
+    pub fn bloklar_mut(&mut self) -> [&mut [f64]; 19] {
+        [
+            &mut self.embedding,
+            &mut self.ln1_olcek,
+            &mut self.ln1_sapma,
+            &mut self.wq,
+            &mut self.bq,
+            &mut self.wk,
+            &mut self.bk,
+            &mut self.wv,
+            &mut self.bv,
+            &mut self.wo,
+            &mut self.bo,
+            &mut self.ln2_olcek,
+            &mut self.ln2_sapma,
+            &mut self.w1,
+            &mut self.b1,
+            &mut self.w2,
+            &mut self.b2,
+            &mut self.lnf_olcek,
+            &mut self.lnf_sapma,
+        ]
+    }
+
+    /// The blocks with their format names, for a checkpoint that has to say
+    /// which tensor each row belongs to.
+    #[must_use]
+    pub fn bloklar_adli(&self) -> Vec<(&'static str, &[f64])> {
+        BLOK_ADLARI.iter().copied().zip(self.bloklar()).collect()
+    }
+
+    /// The format's block names.
+    #[must_use]
+    pub fn blok_adlari() -> Vec<&'static str> {
+        BLOK_ADLARI.to_vec()
+    }
+
+    /// Put a named block back. `false` names a block that is not in the format.
+    pub fn blok_ata(&mut self, ad: &str, degerler: Vec<f64>) -> bool {
+        let Some(konum) = BLOK_ADLARI.iter().position(|a| *a == ad) else {
+            return false;
+        };
+        let bloklar = self.bloklar_mut();
+        if bloklar[konum].len() != degerler.len() {
+            return false;
+        }
+        bloklar[konum].copy_from_slice(&degerler);
+        true
+    }
+
+    /// How many numbers the whole model holds: the length an optimiser's moment
+    /// vectors must have.
+    #[must_use]
+    pub fn toplam_ogeler(&self) -> usize {
+        self.bloklar().iter().map(|b| b.len()).sum()
+    }
+
+    /// Whether every block is the length the spec's shape implies.
+    #[must_use]
+    pub fn sekil_dogru(&self, spec: Spec) -> bool {
+        let d = spec.d_model;
+        let katman = spec.n_layers;
+        self.embedding.len() == spec.vocab * d
+            && self.ln1_olcek.len() == katman * d
+            && self.ln1_sapma.len() == katman * d
+            && self.wq.len() == katman * d * d
+            && self.bq.len() == katman * d
+            && self.wk.len() == katman * d * d
+            && self.bk.len() == katman * d
+            && self.wv.len() == katman * d * d
+            && self.bv.len() == katman * d
+            && self.wo.len() == katman * d * d
+            && self.bo.len() == katman * d
+            && self.ln2_olcek.len() == katman * d
+            && self.ln2_sapma.len() == katman * d
+            && self.w1.len() == katman * spec.d_ff * d
+            && self.b1.len() == katman * spec.d_ff
+            && self.w2.len() == katman * d * spec.d_ff
+            && self.b2.len() == katman * d
+            && self.lnf_olcek.len() == d
+            && self.lnf_sapma.len() == d
+    }
+
+    /// Add another parameter set position by position, block by block.
+    pub fn topla_ile(&mut self, digeri: &Self) {
+        let diger_bloklar = digeri.bloklar();
+        for (hedef, kaynak) in self.bloklar_mut().iter_mut().zip(diger_bloklar) {
+            if hedef.len() != kaynak.len() {
+                continue;
+            }
+            for (a, b) in hedef.iter_mut().zip(kaynak) {
+                *a += *b;
+            }
+        }
+    }
+
+    /// Scale every weight.
+    pub fn olcekle(&mut self, k: f64) {
+        for blok in self.bloklar_mut() {
+            for deger in blok.iter_mut() {
+                *deger *= k;
+            }
+        }
+    }
+
+    /// Which weights the optimiser decays, one flag per element.
+    ///
+    /// Decaying a LayerNorm scale or the tied embedding shrinks a scale the
+    /// model needs; it does not regularise anything. The mask is the format's
+    /// order, so it lines up with the moment vectors by construction.
+    #[must_use]
+    pub fn sonum_maskesi(&self) -> Vec<bool> {
+        let mut maske = Vec::with_capacity(self.toplam_ogeler());
+        for (ad, blok) in self.bloklar_adli() {
+            let sonumlu = matches!(ad, "wq" | "wk" | "wv" | "wo" | "w1" | "w2");
+            maske.extend(std::iter::repeat_n(sonumlu, blok.len()));
+        }
+        maske
+    }
+
+    /// Round every weight to `f32` and back.
+    ///
+    /// In place and irreversible on purpose: a checkpoint written at `f32`
+    /// precision is a different model from the one that was trained, and the
+    /// caller is expected to say so rather than to keep both.
+    pub fn yuvarla_f32(&mut self) {
+        for blok in self.bloklar_mut() {
+            for deger in blok.iter_mut() {
+                *deger = f64::from(*deger as f32);
+            }
+        }
+    }
+}
+
+impl Adamw {
+    /// Step count and the two moment vectors, for a checkpoint.
+    #[must_use]
+    pub fn durum(&self) -> (u64, &[f64], &[f64]) {
+        (self.adim, &self.m, &self.v)
+    }
+
+    /// Rebuild an optimiser where it stopped.
+    ///
+    /// The step count matters as much as the weights: the bias correction is
+    /// `1 - beta^step`, so a resumed run that starts the count at zero applies a
+    /// different correction than the run it is continuing, and the loss curve
+    /// moves for a reason that has nothing to do with the data.
+    ///
+    /// # Errors
+    /// A length mismatch between the two moment vectors, or a hyper-parameter
+    /// outside its range.
+    pub fn durumdan(
+        m: Vec<f64>,
+        v: Vec<f64>,
+        adim: u64,
+        ogrenme_orani: f64,
+        agirlik_sonumu: f64,
+    ) -> Result<Self, String> {
+        if m.len() != v.len() {
+            return Err(format!(
+                "moment vectors {} and {}: ayni modelin durumu degil",
+                m.len(),
+                v.len()
+            ));
+        }
+        let mut o = Self::yeni(m.len(), ogrenme_orani, agirlik_sonumu)?;
+        o.adim = adim;
+        o.m = m;
+        o.v = v;
+        Ok(o)
+    }
+
+    /// One update over the whole model, with the decay decided per tensor.
+    ///
+    /// # Errors
+    /// When the mask, the gradients or the moment vectors do not cover the same
+    /// parameter, which is the only way this can be wrong silently.
+    pub fn adim_maskele(
+        &mut self,
+        w: &mut Parametreler,
+        gradyan: &Parametreler,
+        maske: &[bool],
+    ) -> Result<(), String> {
+        let oge = w.toplam_ogeler();
+        if maske.len() != oge {
+            return Err(format!(
+                "sonum maskesi {} ama parametre {oge}: maske modeli kaplamiyor",
+                maske.len()
+            ));
+        }
+        if gradyan.toplam_ogeler() != oge {
+            return Err(format!(
+                "gradyan {} parametre {oge}: ayni modele bakmiyorlar",
+                gradyan.toplam_ogeler()
+            ));
+        }
+        let Self {
+            adim,
+            ogrenme_orani,
+            beta1,
+            beta2,
+            epsilon,
+            agirlik_sonumu,
+            m,
+            v,
+        } = self;
+        *adim += 1;
+        let duzeltme1 = 1.0 - beta1.powi(*adim as i32);
+        let duzeltme2 = 1.0 - beta2.powi(*adim as i32);
+        let (b1, b2, eps, oran, sonum) =
+            (*beta1, *beta2, *epsilon, *ogrenme_orani, *agirlik_sonumu);
+        let gradyanlar = gradyan.bloklar();
+        let mut konum = 0usize;
+        for (blok, grad) in w.bloklar_mut().iter_mut().zip(gradyanlar) {
+            if blok.len() != grad.len() {
+                return Err(format!(
+                    "blok {} gradyan {}: ayni tensore bakmiyorlar",
+                    blok.len(),
+                    grad.len()
+                ));
+            }
+            for (deger, g) in blok.iter_mut().zip(grad) {
+                let mm = b1 * m[konum] + (1.0 - b1) * *g;
+                let vv = b2 * v[konum] + (1.0 - b2) * *g * *g;
+                m[konum] = mm;
+                v[konum] = vv;
+                let m_hat = mm / duzeltme1;
+                let v_hat = vv / duzeltme2;
+                let mut delta = oran * m_hat / (v_hat.sqrt() + eps);
+                if maske[konum] {
+                    delta += oran * sonum * *deger;
+                }
+                *deger -= delta;
+                konum += 1;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

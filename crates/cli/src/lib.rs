@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod activation;
+pub mod egitim_kosu;
 pub mod graph;
 pub mod karar;
 pub mod kosum;
