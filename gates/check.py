@@ -4746,13 +4746,13 @@ def selftest_corpus_kinds_agree() -> None:
 
 
 # --- I: alma (retrieval) yuzeyinin olcumu -----------------------------------
-# Almak, model cagirmaz: BM25 ayni korpusu tarar. Bu yuzden olcum ikiliyi
-# ister ama agirlik istemez - ve ikili yoksa `cargo run` ile 12 soru 12 kez
-# derlemeye kalkisirdi; bir kez release derlenir.
+# Almak model cagirmaz: BM25 ayni korpusu tarar. Bu yuzden olcum ikiliyi
+# ister, agirlik istemez - ve ikili yoksa olcum 12 soru icin 12 kez
+# derlemeye kalkisirdi; ikili bir kez derlenir.
 
 
 def _er_ikili() -> str:
-    """Olcum icin ikili spec'i: release yoksa bir kez derlenir."""
+    """Olcum icin ikili spec'i: release ikili yoksa bir kez derlenir."""
     import shlex
 
     if not (ROOT / "target" / "release" / "lubot").is_file():
@@ -4778,14 +4778,45 @@ def _er_olc(*ek: str) -> dict:
     return json.loads(kosu.stdout)
 
 
+def _alma_kanit_bulgu(kayit: dict, taze: dict, alinti: dict) -> str | None:
+    """Olcum kaydinin taze olcumle uyusu; uyusmuyorsa gerekcesi.
+
+    Iki sorgu bicimi ayri ayri karsilastirilir: tam soru metni yonerge
+    tasir, `alinti` alani yalniz cekirdek cumleyi olcer. Ikisi ayni
+    yonde sapmaz, bu yuzden kayit ikisini de tasimak zorunda."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor: olcum kaniti olmadan iddia sayilamaz"
+    for ad, olcum in (("tam", taze), ("alinti", alinti)):
+        if not olcum["ilk_sirada"] <= olcum["ilk_n_icinde"] <= olcum["soru"]:
+            return f"{ad} olcumu ic tutarsiz: ilk sirada {olcum['ilk_sirada']}, " \
+                   f"ilk {olcum['n']} icinde {olcum['ilk_n_icinde']}, soru {olcum['soru']}"
+        if len(olcum["sirali"]) != olcum["soru"]:
+            return f"{ad} olcumunde her soru icin sira kaydi yok"
+        if len(olcum["bulunamayan"]) > olcum["soru"] - olcum["ilk_n_icinde"]:
+            return f"{ad} olcumunde bulunamayan listesi isabetsizlikle uyusmuyor"
+    ikinci = kanit.get("ikinci_olcum")
+    if not isinstance(ikinci, dict) or ikinci.get("sorgu_alani") != "alinti":
+        return "kayit ikinci olcumu tasimiyor: sorgu bicimi ayrimi olculmemis"
+    for ad, kayitli, olcum in (("tam", kanit, taze), ("alinti", ikinci, alinti)):
+        if (kayitli.get("ilk_sirada"), kayitli.get("ilk_n_icinde")) != (
+            olcum["ilk_sirada"], olcum["ilk_n_icinde"]
+        ):
+            return (
+                f"kayit bayat ({ad}): kayitta {kayitli.get('ilk_sirada')}/"
+                f"{kayitli.get('ilk_n_icinde')}, olcum {olcum['ilk_sirada']}/"
+                f"{olcum['ilk_n_icinde']} - kaydi yeniden uret"
+            )
+    return None
+
+
 def gate_retrieval_at_k_is_measured() -> str:
     """I: alma katmani iddia degil olcumdur.
 
     Sinav setindeki her soru damgalanmis bir pasaja dayanir; `ara` ayni
     korpusu BM25 ile tarar ve damganin kacinci sirada ciktigi olculur.
-    Kapi olcumu yeniden kosar, sayilarin ic tutarliligini (ilk sirada <=
-    ilk n <= soru) ve kaydin agacla birlikte yasamasini denetler: kayittaki
-    sayi taze olcumle uyusmuyorsa kayit yeniden uretilmelidir."""
+    Kapi olcumu yeniden kosar, kaydi taze olcumle karsilastirir ve olcumun
+    deterministik oldugunu gorur: sapma varsa kayit yeniden uretilmelidir."""
     kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "erisim-2026-09-24.json"
     if not kayit_yolu.is_file():
         raise SystemExit("alma olcumu kaydi yok: training/eval/sonuclar/erisim-2026-09-24.json")
@@ -4794,50 +4825,50 @@ def gate_retrieval_at_k_is_measured() -> str:
     if bulgu:
         raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
     taze = _er_olc()
-    if not (taze["ilk_sirada"] <= taze["ilk_n_icinde"] <= taze["soru"]):
-        raise SystemExit(
-            f"olcum ic tutarsiz: ilk sirada {taze['ilk_sirada']}, "
-            f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}, soru {taze['soru']}"
-        )
-    if len(taze["sirali"]) != taze["soru"]:
-        raise SystemExit("her soru icin sira kaydi yok")
-    if len(taze["bulunamayan"]) > taze["soru"] - taze["ilk_n_icinde"]:
-        raise SystemExit("bulunamayan listesi isabetsizlikle uyusmuyor")
-    kanit = kayit["kanit"]
-    # Iki alan ayri olculur: yonerge soruyu seyreltiyorsa yalniz cekirdek
-    # cumleyle olcum daha iyi cikar; kayit bu ayrimi kanit.ikinci_olcum'de
-    # tasir ve kapi ikisini de taze olcumle karsilastirir.
-    kayit_alinti = kanit.get("ikinci_olcum")
-    if not isinstance(kayit_alinti, dict) or kayit_alinti.get("sorgu_alani") != "alinti":
-        raise SystemExit("kayit ikinci olcumu tasimiyor: iki sorgu bicimi olculmemis")
     alinti = _er_olc("--sorgu-alani", "alinti")
-    if (alinti["ilk_sirada"], alinti["ilk_n_icinde"]) != (
-        kayit_alinti["ilk_sirada"], kayit_alinti["ilk_n_icinde"]
-    ):
-        raise SystemExit(
-            f"kayit bayat (alinti): kayitta {kayit_alinti['ilk_sirada']}/"
-            f"{kayit_alinti['ilk_n_icinde']}, olcum {alinti['ilk_sirada']}/"
-            f"{alinti['ilk_n_icinde']} - kaydi yeniden uret"
-        )
-    if (taze["ilk_sirada"], taze["ilk_n_icinde"]) != (kanit["ilk_sirada"], kanit["ilk_n_icinde"]):
-        raise SystemExit(
-            f"kayit bayat: kayitta {kanit['ilk_sirada']}/{kanit['ilk_n_icinde']}, "
-            f"olcum {taze['ilk_sirada']}/{taze['ilk_n_icinde']} - kaydi yeniden uret"
-        )
+    bulgu = _alma_kanit_bulgu(kayit, taze, alinti)
+    if bulgu:
+        raise SystemExit(bulgu)
     tekrar = _er_olc()
     if tekrar["sirali"] != taze["sirali"]:
-        raise SystemExit("alma olcumu deterministik degil")
+        raise SystemExit("alma olcumu deterministik degil: ayni sorgu farkli sira verdi")
     return (
         f"alma olculdu: damga ilk sirada {taze['ilk_sirada']}/{taze['soru']}, "
         f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}/{taze['soru']}; "
-        f"yalniz cekirdek cumleyle ilk {alinti['n']} icinde {alinti['ilk_n_icinde']}/{alinti['soru']}"
+        f"yalniz cekirdek cumleyle ilk {alinti['n']} icinde "
+        f"{alinti['ilk_n_icinde']}/{alinti['soru']}"
     )
 
 
 def selftest_retrieval_at_k_is_measured() -> None:
-    """Kanarya: eksik korpus ve bos soru seti ayri ayri reddedilir - reddin
-    sebebi mesajdan okunur (ikili yoklugu degil)."""
+    """Kanarya: bayat kayit, eksik ikinci olcum, ic tutarsiz sayi ve bos soru
+    seti ayri ayri reddedilir.
+
+    Kayit semasi saf denetlenir (alt surec yok); betik girdisi ise kendi
+    korpusuyla sinanir - kanarya deponun korpusuna baglanirsa CI'da
+    korpus henuz kurulmamisken yanlis sebepten kirmizi yanar."""
+    import gzip
     import tempfile
+
+    ornek = {"soru": 12, "n": 3, "ilk_sirada": 10, "ilk_n_icinde": 10,
+             "bulunamayan": [{"soru": "sinav-01", "neden": "ilk n icinde yok"}],
+             "sirali": [{"soru_kimligi": f"sinav-{i:02d}", "sira": None} for i in range(1, 13)],
+             "sorgu_alani": "tam"}
+    alinti = dict(ornek, ilk_sirada=5, ilk_n_icinde=11, sorgu_alani="alinti")
+    kayit = {"kanit": {k: ornek[k] for k in ("soru", "n", "ilk_sirada", "ilk_n_icinde")},
+             "alinti": None}
+    kayit["kanit"]["ikinci_olcum"] = {k: alinti[k] for k in ("sorgu_alani", "ilk_sirada", "ilk_n_icinde")}
+    assert _alma_kanit_bulgu(kayit, ornek, alinti) is None, "gecerli kayit reddedildi"
+    bayat = json.loads(json.dumps(kayit))
+    bayat["kanit"]["ilk_sirada"] = 9
+    assert "bayat" in (_alma_kanit_bulgu(bayat, ornek, alinti) or ""), "bayat kayit gecti"
+    eksik = json.loads(json.dumps(kayit))
+    del eksik["kanit"]["ikinci_olcum"]
+    assert "ikinci olcumu" in (_alma_kanit_bulgu(eksik, ornek, alinti) or ""), "tek alanli kayit gecti"
+    tutarsiz = dict(ornek, ilk_sirada=11)
+    assert "tutarsiz" in (_alma_kanit_bulgu(kayit, tutarsiz, alinti) or ""), "tutarsiz sayi gecti"
+    fazla = dict(ornek, bulunamayan=[{"soru": f"s{i}"} for i in range(5)])
+    assert "isabetsizlikle" in (_alma_kanit_bulgu(kayit, fazla, alinti) or ""), "isabetsizlik gecti"
 
     with tempfile.TemporaryDirectory() as td:
         kok = pathlib.Path(td)
@@ -4846,23 +4877,27 @@ def selftest_retrieval_at_k_is_measured() -> None:
             "soru_kimligi": "kanarya-01", "soru": "cevap nedir",
             "content_id": "0" * 64, "kaynak_dosya": "yok.md",
         }) + "\n", encoding="utf-8")
-        eksik = subprocess.run([
+        eksik_korpus = subprocess.run([
             sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
             "--corpus", str(kok / "yok.jsonl.gz"), "--sorular", str(sorular),
-            "--bin", _er_ikili(),
+            "--bin", "lubot",
         ], cwd=ROOT, capture_output=True, text=True, check=False)
-        assert eksik.returncode != 0 and "korpus yok" in (eksik.stderr + eksik.stdout), (
-            "eksik korpus reddedilmedi: " + eksik.stderr[-200:]
+        assert eksik_korpus.returncode != 0 and "korpus yok" in (eksik_korpus.stderr + eksik_korpus.stdout), (
+            "eksik korpus reddedilmedi: " + (eksik_korpus.stderr or eksik_korpus.stdout)[-200:]
         )
+        # Bos soru seti: betik sorgu kosmadan durur, bu yuzden burada ikili
+        # gerekmez - korpus gercek, soru listesi bos.
+        gercek = kok / "kucuk.jsonl.gz"
+        with gzip.open(gercek, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"content_id": "0" * 64, "path": "yok.md", "text": "bir kayit"}) + "\n")
         bos = kok / "bos.jsonl"
         bos.write_text("\n", encoding="utf-8")
         bos_kosu = subprocess.run([
             sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
-            "--corpus", "corpus/knowledge-self.jsonl.gz", "--sorular", str(bos),
-            "--bin", _er_ikili(),
+            "--corpus", str(gercek), "--sorular", str(bos), "--bin", "lubot",
         ], cwd=ROOT, capture_output=True, text=True, check=False)
         assert bos_kosu.returncode != 0 and "soru seti bos" in (bos_kosu.stderr + bos_kosu.stdout), (
-            "bos soru seti reddedilmedi: " + bos_kosu.stderr[-200:]
+            "bos soru seti reddedilmedi: " + (bos_kosu.stderr or bos_kosu.stdout)[-200:]
         )
 
 
