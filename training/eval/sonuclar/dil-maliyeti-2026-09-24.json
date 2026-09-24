@@ -1,0 +1,47 @@
+{
+  "bulgu_var": false,
+  "is": "Iki dilin jeton maliyeti korpusta olculdu: her kayit dil isaretlerine gore ayrildi ve jeton/karakter orani sinif basina hesaplandi. Sozluk ailesi spec'ten okundu; ikinci bir jetonlama duzenegi yok.",
+  "kanit": {
+    "bulgu_dil_maliyeti": null,
+    "fark_esigi": 0.1,
+    "fark_orani": 0.034054,
+    "siniflar": {
+      "en": {
+        "jeton": 136981,
+        "jeton_basina_karakter": 2.6631,
+        "karakter": 364794,
+        "karakter_basina_jeton": 0.375502,
+        "kayit": 1791
+      },
+      "karisik": {
+        "jeton": 25603,
+        "jeton_basina_karakter": 2.7056,
+        "karakter": 69271,
+        "karakter_basina_jeton": 0.369606,
+        "kayit": 908
+      },
+      "tr": {
+        "jeton": 26736,
+        "jeton_basina_karakter": 2.5724,
+        "karakter": 68776,
+        "karakter_basina_jeton": 0.38874,
+        "kayit": 88
+      }
+    },
+    "sozluk_ailesi": "lubot-bpe-v2",
+    "sure_saniye": 0.5
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.5
+  },
+  "kosucu": "betik",
+  "olcut": {
+    "ad": "iki_dilin_jeton_maliyeti_sinif_bazinda_beyan_edildi",
+    "sonuc": true
+  },
+  "tarih": "2026-09-24"
+}

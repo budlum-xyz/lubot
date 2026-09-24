@@ -428,10 +428,13 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
 - [x] **H — Gate'leri ödül sinyaline dönüştürmek.** Mekanizma kurulu: geçen
       çıktılar 2. tura müfredat satırı, geçmeyenler neden etiketiyle negatif
       havuza. **Ölçülmeyen:** gerçek bir koşuda ödül şekillendirmenin etkisi.
-- [ ] **I — Retrieval'ın kendisini güçlendirmek.** `crates/index` BM25 + satır
-      düzeyinde alıntı var, ama **getirme kalitesi ölçülmüyor**. İş: sınav seti
-      üzerinde getirme@k ölçen `training/getirme_olcumu.py` + kapı; BM25
-      parametreleri ölçülmeden değiştirilmeyecek.
+- [x] **I — Retrieval'ın kendisini güçlendirmek.** `crates/index` BM25 + satır
+      düzeyinde alıntı var; getirme kalitesi artık **ölçülüyor**:
+      `training/erisim_geri_cagirma.py` sınav setinin 12 sorusunu `ara`
+      sıralamasında arar (tam metinle 10/12 ilk sırada, çekirdek cümleyle ilk
+      3'te 11/12); kapı 74 `retrieval-at-k-is-measured` kaydı taze ölçümle
+      karşılaştırır, `--kayit` kaydı tek komutla yeniden üretir. BM25
+      parametreleri ölçüm olmadan değiştirilmiyor.
 - [x] **J — Donanım ve verimlilik.** `bench_hardware.py` + `recommend_model_size.py`;
       kalıcı tavan owner donanımında (K6). Sandbox tavanının 105 kat altında
       kalındığı spec'te kayıtlı.
@@ -444,10 +447,20 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
       ekseninde iddia kaydı kapı reddediyor.
 - [x] **M — Kırmızı takım ve kapsam disiplini.** `kirmizi-senaryolar` kapısı +
       kapsam reddi; genişletmesi Y maddesinde.
-- [ ] **N — Çok dillilik: TR/EN kombinasyonu.** Ölçülmüyor. İş: korpus üzerinde
-      TR ve EN metinler için **jeton/karakter** oranını ölçmek (sözlük Türkçe
-      ağırlıklı kesildi); fark büyükse EN ağırlıklı kayıtların bütçe maliyeti
-      beyan edilmeli.
+- [x] **N — Çok dillilik: TR/EN kombinasyonu.** `training/cok_dillilik.py`
+      ölçüyor (kapı 76 `language-cost-is-declared`): her kayıt dil işaretlerine
+      göre sınıflandırıldı (Türkçe'ye özgü harfler + işlev kelimeleri; karışık
+      üçüncü sınıf duruyor, çünkü iki dilli bir kaydı zorla bir sınıfa yazmak
+      ölçümü iddiaya çevirirdi). Sonuç: sınıf başına düşen jeton/karakter
+      oranları ayrı ayrı kayıtta duruyor ve üç sınıf da korpusta kalabalık;
+      iki dil arasındaki fark beyan edilen %10 eşiğinin **altında** kaldı
+      (kayıt: `training/eval/sonuclar/dil-maliyeti-2026-09-24.json`), bu yüzden
+      EN ağırlıklı kayıtlar için ayrı bütçe cezası beyan edilmedi. Sayılar
+      buraya yazılmıyor: korpustan gelen sayı bu dosyaya yazılırsa ölçüm
+      kendine bağlanır (`measurements-do-not-feed-back`). Eşik aşılırsa
+      kayıt `bulgu_dil_maliyeti` alanını (ölçülen/hüküm/yapılmayan) zorunlu
+      taşır ve kapı bunu denetler. Jetonlama jetonlayıcının kendi `encode`
+      yolundan; ikinci bir jetonlama düzeneği yok.
 - [~] **O — Sürümleme, provenance, zincir kaydı.** Provenance ve digest
       zorunlu (`corpus-records-carry-provenance`, `provenance-fails-closed`),
       `asset_id` hesaplanıyor ama **`asset_id_pending` her kayıtta dolu** —
@@ -473,9 +486,19 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
       Kapı-59 disiplini: eksen beyan edilir, sayı eşik yapılmaz, ratchet'e
       konmaz. Kalan ikinci yarı: tekrarlı sorunun marjinal maliyeti (W) ve
       yolun derinleşmesi (yerel skorlayıcılar, kontrol noktası K6'da).
-- [ ] **W — Karar ve cevap önbelleklemesi.** İş: aynı sorunun 2. kez sorulduğunda
-      marjinal maliyetin ölçülmesi; U maddesinin "tekrarlı soruda maliyet → 0"
-      iddiası ancak bununla ölçülebilir.
+- [x] **W — Karar ve cevap önbelleklemesi.** `training/tekrar_maliyeti.py`
+      ölçüyor (kapı 77 `repeat-cost-is-measured`). Tasarım iki tuzağı kapatır:
+      (1) ikinci çağrının ucuzluğu işletim sistemi sayfa önbelleğinden
+      gelebilir — bu yüzden kontrol, **fiyatı eşitlenmiş başka bir soru**
+      (adaylar önce taranır, eşleşme farkı kayda geçer ve %25'i aşarsa koşu
+      durur); (2) soru maliyeti farklıysa "ikinci çağrı daha hızlı" sonucu
+      önbellekten mi kolaylıktan mı geldiği ayrılamaz. Ölçülen: ilk çağrı ~461
+      ms, tekrar ~449 ms, kontrol ~436 ms → **tekrar/kontrol ≈ 1** (eşik 0,6),
+      yani ikinci aynı çağrı, fiyatı eşitlenmiş başka sorunun ilk çağrısından
+      ucuz değil → `onbellek_var = false`. Hüküm: **U'nun "tekrarlı soruda maliyet →
+      0" iddiası bugün desteklenmiyor**; cevap önbelleği yazılmadı (kalıcılık,
+      geçersizleştirme ve damga tazeliği kurallarını getirir — operatör
+      kararı).
 - [x] **X — Dış veri bağlayıcıları. KAPSAM DIŞI.** K2: korpus yalnız budlum
       yüzeyi; dışarıdan veri yok. Giriş kapısı deseni `doc` kabulüyle sınırlı.
 - [ ] **Y — Kırmızı takım çalışmalarını genişletmek.** İş: enjeksiyon bataryası
@@ -514,10 +537,15 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
       `mup-measurement-reproduced`: dikkat ölçeği oranı **0.497** (beklenen
       0.500), bağlı readout sapması **0.0124** (bant 0.10). **Ölçülmeyen:**
       akışı RMS 1.231→5.440 (4.418×), `theta_1_bandinda=false`.
-- [ ] **JJ — Rust'ın kendi sözdizim ağacını korpus inşasında kullanmak.** Ölçüm
-      bunu gerekli kılıyor: kayıt uzunluğu p99 **546**, en uzun **2581** jeton;
-      spec bu kayıtların AST-farkında parçalamaya kalacağını söylüyor. İş:
-      parçalayıcı + parçaların `content_id` izini koruması.
+- [x] **JJ — Rust'ın kendi sözdizim ağacını korpus inşasında kullanmak.** Ölçüm
+      bunu gerekli kılıyor: kayıt uzunluğu p99 **546**, en uzun **2581** jeton.
+      Yapılan: korpus sözdizimine duyarlı kayıt türleri üretiyor — `api-doc-pair`
+      429, `trait-impl` 31, `dependency-edge` 85 (kapı 69
+      `corpus-carries-structure`); parçalar kendi `content_id` ve ağaç içi
+      provenance'ını taşıyor. Kalan iş ayrı maddede duruyor: uzun kayıtları
+      pencereye bölmek yerine kayıtlar arası paketlemek — bütçe ölçümündeki
+      `bulgu_veri_yolu`, kayıt başına pencerelemenin jetonların %80,6'sını
+      attığını gösteriyor.
 - [x] **KK — Derleyiciyi ve test takımını hakem olarak kullanmak.** Veri
       karışımında `derleyici-hakem` katmanı **433 satır**; `epoch_ledger`
       fail-closed.
@@ -530,20 +558,26 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
       kararı).
 - [x] **NN — İlk sıfırdan koşu için başlangıç defteri.** Bu dosyanın NN §8
       bölümü; 8 adım, ölçümleriyle.
-- [ ] **OO — EE'ye ek riskler.** İş: her risk için ya bir kapı ya bir
-      `olculmeyen` kaydı. Şu an kısmen kapılarda, kısmen dağınık.
+- [x] **OO — EE'ye ek riskler.** `TRAINING.md`'deki "Risk kaydı (OO)" tablosu
+      beş riski ölçülebilir bekçisine bağlıyor (her satır: risk → kapı →
+      bugünkü ölçüm); kapsanmayan kalemler `olculmeyen` listelerinde adıyla
+      duruyor, sessiz risk kalmadı.
 - [x] **PP — Değerlendirme setinin sızmasını fiziksel olarak imkânsız kılmak.**
       Üç duvar: sınav seti damgalıyor (`sinav.py`, kapı 57), üretici eliyor
       (`make_sft.py` `dropped_eval_only`), okuyucu reddediyor (`eval_sft`,
       `eval-set-never-trained`). Ölçülen: 1701 grounded satır, damgalı 0.
-- [ ] **QQ — Görsel/diyagram okuma (girdi, üretim değil).** Durum ölçüldü:
-      korpus kayıtlarının tamamı `kind: markdown`, görsel kayıt yok. İş: görsel
-      varlıkların korpusa hangi şemayla gireceğine karar vermek + PDF dışı
-      görsel metin çıkarımı. Üretim tarafı kapsam dışı (`reads-not-generates`).
-- [ ] **RR — "Ölçülmedi" yanıtlarını bilgi-boşluğu haritasına çevirmek.**
-      `olculmeyen` alanları kayıtlarda duruyor ama **tek bir haritada
-      toplanmıyor**. İş: tüm `olculmeyen` girdilerini toplayıp tek dosyaya
-      yazan betik + kapı.
+- [x] **QQ — Görsel/diyagram okuma (girdi, üretim değil).** Karar verildi ve
+      kapıya bağlandı: metin diyagramları (`.mmd`/`mermaid` çitleri, SVG
+      `<text>` düğümleri) korpusa `kind: diagram` olarak girer — kapı 71
+      `doc-diagram-feeds-corpus` (10 kayıt okundu). Görüntü dosyası metne
+      çevrilmez (kanaryada `png` reddi); üretim tarafı kapsam dışı
+      (`reads-not-generates`).
+- [x] **RR — "Ölçülmedi" yanıtlarını bilgi-boşluğu haritasına çevirmek.**
+      `training/bosluk_haritasi.py` audit günlüğünden konu bazlı haritayı
+      üretir (ölçüt: `refusals > 0` ya da `citations` boş) ve `kind:
+      gap-report` kaydı olarak korpusa girer; kapı 70 `gap-report-is-measured`
+      günlüksüz koşuyu reddeder. Bugünkü harita: 5 soru / 3 cevapsız, en zayıf
+      konu `kapsamasiz`.
 
 ## Awesome listesinden lubot'a düşenler (budlum-awesome-eslestirme.md)
 
@@ -552,9 +586,11 @@ her biri somut bir işe çevrildi. K1 gereği bunlar **yöntem ilhamı**: hiçbi
 liste, crate ya da veri içe alınmayacak. budlum/seed'e ait bölümler (konsensüs,
 QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
 
-- [ ] **Bilgi getirimi (Awesome Information Retrieval).** Kendi arama motorunu
+- [x] **Bilgi getirimi (Awesome Information Retrieval).** Kendi arama motorunu
       geliştirme literatürü; lubot'un BM25 + alıntı hattının tam karşılığı. İş:
-      I maddesindeki getirme@k ölçümü.
+      I maddesiyle aynı iş ve o madde kapandı: getirme@k ölçümü + kapı 74;
+      sıralama yüzeyinin sıralılığı, jeton sayımı ve eşit skorda çağıranın
+      sırasını koruduğu `reranker-is-measured` kapısında denetleniyor.
 - [ ] **Soru-cevap (Awesome QA).** `ask`/`batch` akışının literatürü. İş: sınav
       bataryasını soru tipi bazında genişletmek ve her tipin skorunu ayrı
       raporlamak (tek ortalama skoru tip bazlı gerilemeyi gizler).
