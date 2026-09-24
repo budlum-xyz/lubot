@@ -4887,12 +4887,16 @@ def selftest_corpus_kinds_agree() -> None:
 
 
 def _er_ikili() -> str:
-    """Olcum icin ikili spec'i: release ikili yoksa bir kez derlenir."""
+    """Olcum icin ikili spec'i: release ikili HER ZAMAN tazelenir.
+
+    Bir kez derleyip birakmak yetmiyor: bayat bir release ikilisi, kayitla
+    taze olcumu ayirir ve kapi "kayit bayat" der - sucu kayitta gostererek.
+    Olcumun agaca gore yapildigindan emin olmanin yolu derlemeyi atlamamak;
+    artimli derleme zaten ucuz."""
     import shlex
 
-    if not (ROOT / "target" / "release" / "lubot").is_file():
-        subprocess.run(["cargo", "build", "--release", "-p", "lubot"], cwd=ROOT,
-                       capture_output=True, text=True, check=False)
+    subprocess.run(["cargo", "build", "--release", "-p", "lubot"], cwd=ROOT,
+                   capture_output=True, text=True, check=False)
     return shlex.join(_binary())
 
 
@@ -5230,7 +5234,95 @@ def selftest_repeat_cost_is_measured() -> None:
         dict(kayit, kanit=dict(taze, onbellek_var=True)), taze) or ""), "bayat hukum gecti"
 
 
+# --- XAI: cevaptaki iddialarin kaynagi ---------------------------------------
+
+
+def _alinti_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Alinti kapsamasi kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor"
+    etiketler = kanit.get("cevap_etiketleri")
+    if not isinstance(etiketler, dict) or not etiketler:
+        return "kayit cevap etiketlerini tasimiyor: hangi cevabin kaynak istedigi belli degil"
+    if not isinstance(kanit.get("audit_kaynaksiz"), list):
+        return "kayit audit kaynaksiz listesini tasimiyor"
+    if kanit["audit_kaynaksiz"] and kayit.get("olcut", {}).get("sonuc") is not False:
+        return "audit kaynaksiz cevap varken olcut dogru isaretlenmis"
+    if not kanit["audit_kaynaksiz"] and kayit.get("olcut", {}).get("sonuc") is not True:
+        return "audit kaynaksiz cevap yokken olcut yanlis isaretlenmis"
+    if not isinstance(kanit.get("metinde_alintisiz"), list):
+        return "kayit metinde alintisiz listesini tasimiyor"
+    for alan in ("iddia", "alintisiz", "oran", "soru"):
+        if kanit.get(alan) != taze.get(alan):
+            return (
+                f"kayit bayat ({alan}): kayitta {kanit.get(alan)}, olcum {taze.get(alan)} "
+                "- kaydi yeniden uret"
+            )
+    if kanit.get("audit_kaynaksiz") != taze.get("audit_kaynaksiz"):
+        return (
+            f"kayit bayat (audit_kaynaksiz): kayitta {kanit.get('audit_kaynaksiz')}, "
+            f"olcum {taze.get('audit_kaynaksiz')} - kaydi yeniden uret"
+        )
+    return None
+
+
+def gate_answer_claims_carry_citations() -> str:
+    """XAI: "her cumlenin kaynagini goster" olculur.
+
+    Cevap yuzeyi iki turlu okunur: audit satirindaki `citations` listesi
+    (makinenin gordugu) ve cevap metnindeki gorunur kaynak. Kapi olcumu
+    yeniden kosar; kayit taze olcumle uyusmuyorsa yeniden uretilmelidir.
+    Gosterim eksikligi orani beyan edilen esigi asarsa kayit bulgu tasir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "alintisiz-cumle-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("alinti kapsamasi kaydi yok: training/eval/sonuclar/alintisiz-cumle-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    # `_er_ikili()` hazir bir spec dizesi dondurur (shlex ile tirnaklanmis).
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "alintisiz_cumle.py"), "--olc",
+         "--bin", _er_ikili()],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _alinti_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    etiketler = taze["cevap_etiketleri"]
+    return (
+        f"alinti kapsamasi olculdu: {taze['soru']} cevap "
+        f"({', '.join(f'{k} {v}' for k, v in sorted(etiketler.items()))}); "
+        f"audit kaynaksiz {len(taze['audit_kaynaksiz'])}, metinde alintisiz "
+        f"{len(taze['metinde_alintisiz'])}/{taze['soru']}, kapsanmayan iddia "
+        f"{taze['alintisiz']}/{taze['iddia']} (esik {taze['esik']})"
+    )
+
+
+def selftest_answer_claims_carry_citations() -> None:
+    """Kanarya: kaynaksiz grounded cevabi tasiyip olcutu dogru diyen kayit,
+    eksik etiket, eksik liste ve bayat sayi ayri ayri reddedilir."""
+    taze = {"iddia": 18, "alintisiz": 6, "oran": 0.3333, "soru": 12,
+            "cevap_etiketleri": {"grounded": 9, "not-found": 3},
+            "audit_kaynaksiz": [], "metinde_alintisiz": ["sinav-04"]}
+    kayit = {"olcut": {"sonuc": True}, "kanit": dict(taze)}
+    assert _alinti_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    celiskili = {"olcut": {"sonuc": True},
+                 "kanit": dict(taze, audit_kaynaksiz=["sinav-01"])}
+    assert "olcut dogru" in (_alinti_kayit_bulgu(celiskili, taze) or ""), "celiskili kayit gecti"
+    eksik_etiket = {"olcut": {"sonuc": True},
+                    "kanit": {k: v for k, v in taze.items() if k != "cevap_etiketleri"}}
+    assert "etiket" in (_alinti_kayit_bulgu(eksik_etiket, taze) or ""), "etiketsiz kayit gecti"
+    bayat = {"olcut": {"sonuc": True}, "kanit": dict(taze, iddia=99)}
+    assert "bayat" in (_alinti_kayit_bulgu(bayat, taze) or ""), "bayat sayi gecti"
+
+
 GATES_EXTRA = {
+    "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
     "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
     "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),
     "retrieval-at-k-is-measured": (gate_retrieval_at_k_is_measured, selftest_retrieval_at_k_is_measured),

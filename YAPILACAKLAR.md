@@ -594,9 +594,20 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
 - [ ] **Soru-cevap (Awesome QA).** `ask`/`batch` akışının literatürü. İş: sınav
       bataryasını soru tipi bazında genişletmek ve her tipin skorunu ayrı
       raporlamak (tek ortalama skoru tip bazlı gerilemeyi gizler).
-- [ ] **Açıklanabilirlik (Awesome XAI).** "Her cümlenin kaynağını göster"
-      ilkesinin ölçülebilir hali. İş: üretilen cevapta **alıntısız cümle
-      oranını** ölçen betik + eşik aşımında red.
+- [x] **Açıklanabilirlik (Awesome XAI).** `training/alintisiz_cumle.py` +
+      kapı 78 `answer-claims-carry-citations`: `ask` cevaplarının iki yüzeyi
+      birlikte okunur — audit satırındaki `citations` listesi (makinenin
+      gördüğü) ve cevap metnindeki görünür kaynak (okuyucunun gördüğü).
+      Ölçüt: **her `grounded` cevap audit kaydında alıntı taşır** (bugün
+      sağlanıyor; `not-found` ve red cevapları kaynak taşımak zorunda değil,
+      çünkü onlar cevap vermiyor). Gösterim tarafı ayrıca ölçülüyor: cevap
+      metninde görünür kaynağı olmayan cevap sayısı ve hiçbir alıntılı
+      maddenin metninde geçmeyen iddia oranı kayıtta duruyor; oran beyan
+      edilen %50 eşiğini aşarsa kayıt `bulgu_alintisiz_iddia` taşır. Bugün
+      eşik aşılmıyor ama gösterim eksikliği **ölçülmüş bir açık** olarak
+      kayıtta: kaynak zinciri var, cevabın içinde görünmüyor. Sayılar buraya
+      yazılmıyor (korpus türevi); kayıt:
+      `training/eval/sonuclar/alintisiz-cumle-2026-09-24.json`.
 - [ ] **İstem enjeksiyonu (Awesome Prompt Injection).** Fail-closed/kapsam reddi
       tasarımı için tehdit kataloğu. İş: enjeksiyon bataryası + ölçülen red
       oranı; `kirmizi-senaryolar` kapısının genişletilmiş hali (Y maddesi).
@@ -738,6 +749,13 @@ sayısı gerilemez), ama damgalı kayıt ne aranabilir ne alıntılanabilir.
 
 ## Süreç notları
 
+- [x] **Bayat release ikilisi ölçümü yanıltıyor (bu turda yakalandı).** Alma
+      kapısındaki `_er_ikili()` release ikili *varsa* onu kullanıyordu; birleşme
+      sonrası ağaç değişti, ikili eski kaldı ve ölçüm eski okuyucuyu ölçtü.
+      Kapanış: `_er_ikili()` artık **her çağrıda** `cargo build --release -p
+      lubot` koşuyor (artımlı, ucuz). Ders: ölçüm, ağacı değil ikiliyi ölçer;
+      ikilinin tazeliği ölçümün parçasıdır. İki kaydın (alma, alıntı kapsaması)
+      sayıları bu yüzden taze ikiliyle yeniden üretildi.
 - [x] **İki kolun birleşmesi (operatör b5f6104 + yerel iş).** Operatörün
       "servis-yüzeyi damgası + okuma onarımları" commit'i ile bu turdaki yerel
       `ratchet --set` işi tek ağaçta birleşti; çakışan üç dosyada kural şu

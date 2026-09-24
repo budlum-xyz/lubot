@@ -1,17 +1,17 @@
 {
-  "hukum": "tekrarli soruda maliyet sifira yaklasmiyor: ikinci ayni cagri (442.095 ms), fiyati esitlenmis baska sorunun ilk cagrisindan (429.811 ms) ucuz degil (tekrar/kontrol 1.0286)",
+  "hukum": "tekrarli soruda maliyet sifira yaklasmiyor: ikinci ayni cagri (461.842 ms), fiyati esitlenmis baska sorunun ilk cagrisindan (472.776 ms) ucuz degil (tekrar/kontrol 0.9769)",
   "is": "Ayni soru arka arkaya iki kez soruldu; ikinci cagri, fiyati esitlenmis BASKA bir sorunun ilk cagrisiyla karsilastirildi. Kontrol, isletim sistemi sayfa onbellegi ile uygulama duzeyi yeniden kullanimi ayirmak icin var.",
   "kanit": {
-    "ilk_ms": 435.392,
-    "kontrol_eslesme_farki": 0.0084,
-    "kontrol_ms": 429.811,
+    "ilk_ms": 456.901,
+    "kontrol_eslesme_farki": 0.0176,
+    "kontrol_ms": 472.776,
     "kontrol_soru": "what does the queue log hold?",
     "kosu": 10,
     "onbellek_var": false,
     "soru": "what does a view grant name?",
-    "tekrar_bolu_ilk": 1.0154,
-    "tekrar_bolu_kontrol": 1.0286,
-    "tekrar_ms": 442.095,
+    "tekrar_bolu_ilk": 1.0108,
+    "tekrar_bolu_kontrol": 0.9769,
+    "tekrar_ms": 461.842,
     "uyari": "Olculen sureler duvar saatidir ve makineye baglidir; kayit bu yuzden ratchet'e girmez. Sayilar surec baslatma + korpus ayristirmayi icerir, cunku cagiranin odedigi maliyet budur. Kontrol sorusu once fiyat eslesmesi icin taranir; eslesme farki kayitta durur.",
     "yeniden_kullanim_esigi": 0.6
   },
@@ -20,7 +20,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 20.9
+    "sure_saniye": 21.93
   },
   "kosucu": "ask",
   "olcut": {
