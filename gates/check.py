@@ -3721,6 +3721,138 @@ def selftest_decision_latency_is_recorded() -> None:
             kayit_dosya.write_text(gercek, encoding="utf-8")
 
 
+def gate_first_answer_latency_is_recorded() -> str:
+    """V's half: cold start plus first answer on the local path has one number.
+
+    V asks for the local-first inference stack to be measured (cold start +
+    first-answer time) and wired into a gate. Nothing on this path stays warm -
+    no daemon, no cache, no loaded weights - so the caller's cost is the cold
+    span, and that is what the record must carry, with the caveat as a field.
+    """
+    import json as _json
+
+    kayit_dosya = (
+        ROOT / "training" / "eval" / "sonuclar" / "ilk-cevap-gecikme-2026-09-24.json"
+    )
+    if not kayit_dosya.is_file():
+        raise SystemExit("no first-answer (cold path) latency baseline is recorded")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "ilk_cevap_gecikme.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the cold-path baseline does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    gecikme = kayit["gecikme"]
+    return (
+        f"ask path measured cold over {gecikme['kosu_sayisi']} runs: median "
+        f"{gecikme['medyan_ms']} ms (process startup + corpus parse included, "
+        "stated in the record)"
+    )
+
+
+def selftest_first_answer_latency_is_recorded() -> None:
+    """Canaries: thin baselines, a missing caveat, a missing cold flag, a
+    swapped-in other path and a self-contradicting interval must be refused.
+    None of them needs the binary."""
+    kosu = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "training" / "ilk_cevap_gecikme.py"),
+            "--self-test",
+        ],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise AssertionError(
+            f"the cold-path canaries did not fire: {kosu.stdout[-300:]}"
+        )
+    kayit_dosya = (
+        ROOT / "training" / "eval" / "sonuclar" / "ilk-cevap-gecikme-2026-09-24.json"
+    )
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    try:
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_first_answer_latency_is_recorded()
+            raise AssertionError("an unrecorded cold-path axis was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
+def gate_architecture_doc_tracks_layer_rule() -> str:
+    """The architecture doc names what the code enforces, or the gate drops.
+
+    crates/mimari holds the layer rule in code (a component may depend on its
+    own layer or below, never above). A document describing the architecture
+    that drifts away from the rule would teach a reader a system that does not
+    exist, so the doc must name every crate in crates/ and carry the rule's
+    own words - checked mechanically, not reviewed by memory.
+    """
+    belge = ROOT / "docs" / "ARCHITECTURE.md"
+    if not belge.is_file():
+        raise SystemExit("docs/ARCHITECTURE.md is missing")
+    metin = belge.read_text(encoding="utf-8")
+    crate_adlari = sorted(
+        d.name for d in (ROOT / "crates").iterdir() if d.is_dir()
+    )
+    eksikler = [
+        ad for ad in crate_adlari
+        if not re.search(rf"`{re.escape(ad)}`", metin)
+    ]
+    if eksikler:
+        raise SystemExit(
+            f"the architecture doc no longer names these crates: {', '.join(eksikler)}"
+        )
+    for isaret in ("never above", "topological"):
+        if isaret not in metin:
+            raise SystemExit(
+                f"the layer rule drifted out of the architecture doc: "
+                f"missing '{isaret}'"
+            )
+    return (
+        f"architecture doc names all {len(crate_adlari)} crates and carries "
+        "the layer rule"
+    )
+
+
+def selftest_architecture_doc_tracks_layer_rule() -> None:
+    """Canaries: a missing doc and a doc that silently lost a crate must each
+    be refused."""
+    belge = ROOT / "docs" / "ARCHITECTURE.md"
+    icerik = belge.read_text(encoding="utf-8") if belge.is_file() else None
+    try:
+        if belge.is_file():
+            belge.unlink()
+        try:
+            gate_architecture_doc_tracks_layer_rule()
+            raise AssertionError("a missing architecture doc was accepted")
+        except SystemExit:
+            pass
+        assert icerik is not None, "canary needs the real document"
+        bir_crate = sorted(
+            d.name for d in (ROOT / "crates").iterdir() if d.is_dir()
+        )[0]
+        belge.write_text(icerik.replace(f"`{bir_crate}`", "kayip-crate"))
+        try:
+            gate_architecture_doc_tracks_layer_rule()
+            raise AssertionError("a doc that lost a crate name was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if icerik is not None:
+            belge.write_text(icerik, encoding="utf-8")
+
+
 def _geri_besleme_ihlalleri(sayilar: set[str], yollar: set[str]) -> list[str]:
     """Which corpus-visible files restate a corpus-derived number."""
     import re as _re
@@ -3948,6 +4080,14 @@ GATES_EXTRA = {
     "decision-latency-is-recorded": (
         gate_decision_latency_is_recorded,
         selftest_decision_latency_is_recorded,
+    ),
+    "first-answer-latency-is-recorded": (
+        gate_first_answer_latency_is_recorded,
+        selftest_first_answer_latency_is_recorded,
+    ),
+    "architecture-doc-tracks-layer-rule": (
+        gate_architecture_doc_tracks_layer_rule,
+        selftest_architecture_doc_tracks_layer_rule,
     ),
     "measurements-do-not-feed-back": (
         gate_measurements_do_not_feed_back,
