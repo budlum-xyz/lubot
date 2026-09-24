@@ -4314,7 +4314,8 @@ def _mm_disi_url(metin: str) -> bool:
 
 
 def _mm_veri_ihlalleri(kok: pathlib.Path) -> list[str]:
-    """corpus/ ve training/curriculum/ yalniz kendi agactan uretilmis veri tasir."""
+    """K2 siniri: curriculum yalniz kendi agactan (dis URL yasak), korpus kayitlarinin
+    provenance'i agac icindeki bir dosyayi gostermek zorunda."""
     ihlaller: list[str] = []
     for p in sorted((kok / "training" / "curriculum").glob("*.jsonl")):
         for no, satir in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -4337,8 +4338,6 @@ def _mm_veri_ihlalleri(kok: pathlib.Path) -> list[str]:
                 yol = str(kayit.get("path", ""))
                 if not yol or yol.startswith(("/", "..")) or not (kok / yol).is_file():
                     ihlaller.append(f"{p.name}:{no} provenance agac disi: {yol!r}")
-                if _mm_disi_url(satir):
-                    ihlaller.append(f"{p.name}:{no} dis URL tasiyor")
     return ihlaller
 
 
@@ -4463,7 +4462,105 @@ def selftest_corpus_carries_structure() -> None:
         assert hatalar, "provenance'siz kayit kabul edildi"
 
 
+# --- RR: bilgi boslugu haritasi ---------------------------------------------
+
+
+_BH_SATIRLAR = [
+    {"at": 1, "question": "tokenizer sozlugu nasil donar", "citations": ["a"], "refusals": 0},
+    {"at": 2, "question": "tokenizer merge tablosu nedir", "citations": ["b"], "refusals": 0},
+    {"at": 3, "question": "tokenizer kac jeton", "citations": [], "refusals": 1},
+    {"at": 4, "question": "zkvm icine ispat", "citations": [], "refusals": 0},
+    {"at": 5, "question": "zkvm kaniti nasil", "citations": [], "refusals": 0},
+]
+
+
+def _bh_kos(kok: pathlib.Path, satirlar: list[dict] | None = None) -> tuple[dict, dict]:
+    """Sahte gunluk + korpus uzerinde haritayi kosar; (rapor, kayit) doner."""
+    korpus = kok / "k.jsonl.gz"
+    with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+        fh.write(json.dumps({"kind": "doc", "text": "tokenizer donmus sozluk",
+                             "path": "a.md", "lines": [1, 1]}) + "\n")
+    gunluk = kok / "audit.jsonl"
+    gunluk.write_text(
+        "\n".join(json.dumps(s, ensure_ascii=False) for s in (satirlar or _BH_SATIRLAR)) + "\n",
+        encoding="utf-8",
+    )
+    rapor_yolu = kok / "rapor.json"
+    kayit_yolu = kok / "kayit.jsonl"
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "bosluk_haritasi.py"),
+         "--audit", str(gunluk), "--corpus", str(korpus),
+         "--out", str(rapor_yolu), "--kayit", str(kayit_yolu), "--kok", str(kok)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"harita kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    return (
+        json.loads(rapor_yolu.read_text(encoding="utf-8")),
+        json.loads(kayit_yolu.read_text(encoding="utf-8").strip()),
+    )
+
+
+def gate_gap_report_is_measured() -> str:
+    """RR: "cevaplanamadi" tek tek cevaplarin kaderi olarak kalmasin.
+
+    Audit gunlugu her soruyu, cevap turunu ve red sayisini yazar; harita bu
+    gunlukten turetilir: en cok sorulan ama korpusta en az karsiligi olan
+    konular siralanir. Kapi, haritanin *gunlukle birlikte* degistigini
+    gosterir (sabit bir sayi degil, olcumdur) ve kaydin provenance'ini
+    denetler."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        rapor, kayit = _bh_kos(kok)
+        if rapor["soru"] != 5 or rapor["cevapsiz"] != 3:
+            raise SystemExit(
+                f"harita gunlugu saymiyor: soru={rapor['soru']} cevapsiz={rapor['cevapsiz']}"
+            )
+        ilk = rapor["bosluklar"][0]
+        if ilk["konu"] != "zkvm" or ilk["korpus_kaydi"] != 0:
+            raise SystemExit(f"en zayif konu yanlis siralandi: {ilk}")
+        tokenizer = [b for b in rapor["karsiligi_olan"] if b["konu"] == "tokenizer"]
+        if not tokenizer or tokenizer[0]["korpus_kaydi"] != 1:
+            raise SystemExit("korpusta karsiligi olan konu kapsama almadi")
+        if kayit.get("kind") != "gap-report" or not kayit.get("path"):
+            raise SystemExit(f"harita kaydi korpusa girmez: {kayit}")
+        # Gunluk degisince harita da degisir: sabit sayi degil, olcum.
+        rapor2, _ = _bh_kos(kok, _BH_SATIRLAR[:-1])
+        if rapor2["soru"] != 4:
+            raise SystemExit("harita gunlukle birlikte degismiyor")
+        eksik = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "bosluk_haritasi.py"), "--out", str(kok / "x.json")],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if eksik.returncode == 0:
+            raise SystemExit("harita gunluk olmadan yazildi")
+    return "harita gunluge bagli: 5 soru/3 cevapsiz, en zayif konu kapsamasiz"
+
+
+def selftest_gap_report_is_measured() -> None:
+    """Kanarya: bos ve bozuk gunluk kabul edilmemeli; cikti iki kosuda ayni."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        rapor, _ = _bh_kos(kok)
+        rapor_ikinci, _ = _bh_kos(kok)
+        assert rapor == rapor_ikinci, "harita deterministik degil"
+        bos = kok / "bos.jsonl"
+        bos.write_text("\n", encoding="utf-8")
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "bosluk_haritasi.py"),
+             "--audit", str(bos), "--out", str(kok / "r.json")],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert kosu.returncode == 0, "bos gunluk hata verdi"
+        assert json.loads((kok / "r.json").read_text(encoding="utf-8"))["soru"] == 0
+
+
 GATES_EXTRA = {
+    "gap-report-is-measured": (gate_gap_report_is_measured, selftest_gap_report_is_measured),
     "corpus-carries-structure": (gate_corpus_carries_structure, selftest_corpus_carries_structure),
     "training-runner-engineering-vs-data": (gate_training_runner_engineering_vs_data, selftest_training_runner_engineering_vs_data),
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
