@@ -501,8 +501,11 @@ iş**. Durumlar bu repoda doğrulanmış artefaktlara bağlanıyor, tahmine değ
       kararı).
 - [x] **X — Dış veri bağlayıcıları. KAPSAM DIŞI.** K2: korpus yalnız budlum
       yüzeyi; dışarıdan veri yok. Giriş kapısı deseni `doc` kabulüyle sınırlı.
-- [ ] **Y — Kırmızı takım çalışmalarını genişletmek.** İş: enjeksiyon bataryası
-      (aşağıda Awesome Prompt Injection maddesiyle aynı iş) + ölçülen red oranı.
+- [x] **Y — Kırmızı takım çalışmalarını genişletmek.** `training/enjeksiyon.jsonl`
+      (7 aile, 12 senaryo: talimat ezme, istem çıkarma, rol yapma, araç
+      suiistimali, kapsam dışı üretim, Türkçe enjeksiyon, Unicode homoglif) +
+      `training/enjeksiyon_bataryasi.py` + kapı 79
+      `injection-refusals-are-measured`.
 - [x] **Z — Adı konmuş değerlendirme bataryaları.** `training/soru-bataryasi.json`
       + `soru-bataryasi-gecerli` + held-out sınav seti (12 soru, kapı 57).
 - [x] **AA — Rakip küçük modellerle kapışma protokolü.** L ile aynı mekanizma;
@@ -608,9 +611,20 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       kayıtta: kaynak zinciri var, cevabın içinde görünmüyor. Sayılar buraya
       yazılmıyor (korpus türevi); kayıt:
       `training/eval/sonuclar/alintisiz-cumle-2026-09-24.json`.
-- [ ] **İstem enjeksiyonu (Awesome Prompt Injection).** Fail-closed/kapsam reddi
-      tasarımı için tehdit kataloğu. İş: enjeksiyon bataryası + ölçülen red
-      oranı; `kirmizi-senaryolar` kapısının genişletilmiş hali (Y maddesi).
+- [x] **İstem enjeksiyonu (Awesome Prompt Injection).** Tehdit kataloğu
+      bataryaya çevrildi (Y maddesiyle aynı iş; kapı 79). Ölçüm üç sonucu
+      ayırır, çünkü ikisi aynı şey değil: **uyum** (enjeksiyon sıradan istek
+      gibi işlendi — kabul edilemez), **açık red** (gerekçesiyle reddedildi),
+      **sessiz red** (cevap verilmedi: "Nothing relevant was found").
+      Fiyatı eşitlenmiş kontrol soruları aynı fikstür korpusunda
+      cevaplanıyor, yoksa sessizlik "korpus boş" sonucuna bağlanırdı.
+      Ölçülen bugün: **uyum yok** (kabul edilemez sonuç sıfır) ve kontrol
+      cevaplanıyor — ölçüt sağlanıyor. Ama açık red oranı beyan edilen %50
+      eşiğinin **altında**: enjeksiyonların çoğu gerekçesiz geçiştiriliyor.
+      Bu, kayıtta `bulgu_sessiz_red` olarak duruyor (davranış güvenli, reddin
+      adı yok) — reddi adıyla söylemek cevap yüzeyinde bir değişiklik ister,
+      kayıt onu yapmaz, ölçer. Sayılar kayıtta:
+      `training/eval/sonuclar/enjeksiyon-2026-09-24.json`.
 - [ ] **Belirsiz girdi / fuzzing (Awesome Fuzzing).** Yeni bağımlılık eklemek
       yok: ayrıştırıcılar (`lubot-jeton` sözlük yükleyici, `lubot-read` korpus
       yükleyici, çıktı şema doğrulayıcı) için **tekrarlanabilir tohumlu**
