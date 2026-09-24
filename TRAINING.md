@@ -45,7 +45,7 @@ One corpus, one source: this repository, rebuilt by CI on every run.
 
 | file | records | kinds | tokens (approx) |
 |---|---|---|---|
-| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 807 | api 241 · behaviour 178 · doc 287 · markdown 101 | ~28K |
+| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 2127 | api 658 · behaviour 529 · doc 785 · markdown 155 | ~91K |
 | `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: lubot + budlum + workspace root) | 23604 | api 6015 · behaviour 4684 · doc 7323 · markdown 5582 | ~1.2M |
 
 Every record carries the provenance pair; the provenance gate measures 100%
@@ -58,6 +58,50 @@ refusal, never a guess) and emits the exact one-line record format the
 corpus builder consumes. Chain records enter as `kind: doc` (chain analysis
 text under `chain/<type>`, `request_id` kept), licence PolyForm Shield
 1.0.0, own work.
+
+## Eğitim koşusu ve kontrol noktası
+
+Eğitim çekirdeği (`crates/egitim`) aritmetiği tutar; koşunun **disiplini** ayrı
+modüllerde durur ve komut satırında birleşir:
+
+```
+lubot korpus-damgasi --corpus corpus/knowledge-self.jsonl.gz
+lubot egitim-kosu --corpus corpus/knowledge-self.jsonl.gz --damga <sha256> \
+  --sinav training/eval/sinav-seti.jsonl --ckpt out.ckpt --rapor out.md \
+  --kayit training/eval/sonuclar/<gun>.json \
+  --adim 1500 --pencere 128 --yigin 2 --epoch 8 --tohum 20260924
+```
+
+Üç kural, üçü de fail-closed:
+
+1. **Damga beyan edilmeden koşu yok.** `--damga`, `content_id` kümesinin
+   (sıralı) ve sözlük ailesinin SHA-256'sıdır. Hesaplanan değerle tutmazsa koşu
+   reddedilir: aynı veri üzerinde koşmayan bir tur, önceki turlarla
+   karşılaştırılamaz.
+2. **Sınav seti eğitime girmez.** `--sinav`'ın damgaları `eval-only.json`'dan
+   okunur ve o kayıtlar eğitim akışından **çıkarılır**; kaç kaydın çıkarıldığı
+   rapora yazılır. "Held-out" bir iddiadır ve arkasında bir sayı olmalı.
+3. **Devam eden tur kimliğini taşır.** `--devam`, kontrol noktasının damgasını ve
+   sözlük ailesini bu koşununkiyle karşılaştırır; ayrıca adım, epoch, **epoch
+   içindeki pencere konumu** ve devralınan en iyi doğrulama taşınır. Taşınmazsa
+   devam eden tur kesintisiz turun aynısı olmaz - ölçüldü: 6+6 adım, 12 adımın
+   kayıp eğrisini 1e-12 içinde yeniden üretiyor.
+
+Kontrol noktası biçimi: `LUBOTCKPT` | sürüm | hassasiyet | bayrak |
+başlık (JSON) | adlandırılmış bloklar (19 ağırlık + iki moment) | SHA-256.
+Başlık koşunun kimliğini taşır: spec, adım, epoch, tohum, sözlük ailesi, korpus
+özeti, kayıplar, devam konumu. Tek baytı bozuk bir dosya yüklenmez; kapı
+`ozet` diyerek reddeder. `--f32` hassasiyeti dosyaya yazılır, okuyucu tahmin
+etmez: bir depolama kararı sessizce başka bir modele dönüşemez.
+
+Ölçüm yüzeyi çıkarım tarafındadır (`crates/cikarim`): jeton, kendisini **içeren**
+bir gizli durumdan değil, bir önceki konumun durumundan puanlanır - sızıntı
+görünmezdir çünkü sayı yine makul bir log-olasılıktır. Önbellekli artımlı yol,
+her öneki sıfırdan işleyen tam geçişle **ve** eğitim çekirdeğinin kendi kaybıyla
+karşılaştırılır (üç görüş: aynı crate içindeki iki yol ortak bir hatayı
+paylaşabilir). Model üretmez; `temel+dur`da kalan bir üretim yüzeyi arayan kapı
+(`decision-head-has-no-generation-surface`) burada da geçerlidir.
+
 
 ## Gates (in `gates/check.py`, each with a self-test)
 
@@ -290,5 +334,6 @@ Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar)
 - A Markdown schema validator: lives in Lubot (`crates/read/src/output_schema.rs`)
   and is enforced at the single answer exit (`Answer::render_markdown`).
   The node's own output path is out of Lubot's scope.
-- Pretrain stage for the from-scratch run (the from-scratch runner is this
-  repository's next training item).
+- The first comparison measurement (Adim 8c): the runner and the checkpoint
+  exist now, but a scored comparison against the declared class needs a run
+  that has finished and a protocol run against a second scorer.

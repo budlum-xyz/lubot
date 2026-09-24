@@ -135,6 +135,20 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       duruyor. Ölçülen: 1701 grounded satır, damgalı 0; SFT 1789 satır
       (1701 + 88 mufredat). Ne ölçtüğü dar ve kayıtlı: getirme + alıntı; soru
       metni pasajın ilk satırından türediği için skor bir **üst sınır**.
+- [x] **Eğitim koşusu yüzeyi.** `lubot egitim-kosu`, `lubot cikarim
+      {denetle,puanla,sirala}`, `lubot sinav-kosu`, `lubot korpus-damgasi`;
+      çekirdekte `crates/egitim::{veri,kosu,kontrol}`, çıkarımda
+      `crates/cikarim`. Üç kural fail-closed: damga beyan edilmeden koşu yok;
+      `eval-only` damgalı kayıtlar eğitim akışından çıkarılır ve **sayısı
+      rapora yazılır**; devam eden tur adımı, epoch'u, epoch içindeki pencere
+      konumunu ve devralınan en iyiyi taşır (ölçüldü: 6+6 adım, kesintisiz 12
+      adımın kayıp eğrisini 1e-12 içinde yeniden üretiyor). Kontrol noktası
+      biçimi: `LUBOTCKPT` v1, başlık JSON + adlandırılmış bloklar + tek baytlık
+      bozulmayı yakalayan SHA-256; `--f32` dosyaya yazılır. Dört yeni kapı
+      (64–67): `checkpoint-round-trips`, `inference-cache-agrees`,
+      `training-run-is-measured`, `reranker-is-measured`. Ölçülen: test 478 →
+      **529**, kapı 63 → **67**; çıkarım önbelleği ile tam geçiş ve eğitim
+      çekirdeği aynı dizide 1e-12'nin altında anlaşıyor.
 - [ ] **Adım 8c — İlk kapışma ölçümü.** Görev ekseninde, taban olarak raporla —
       zafer ilanı değil. Eğitilmiş kontrol noktası yokken (K6) ölçülemez.
 

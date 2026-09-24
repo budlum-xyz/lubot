@@ -387,6 +387,7 @@ dependencies = [
  "flate2",
  "lubot-anlama",
  "lubot-answer",
+ "lubot-cikarim",
  "lubot-denetim",
  "lubot-doc",
  "lubot-egitim",
@@ -410,6 +411,7 @@ dependencies = [
  "lubot-yetenek",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -441,6 +443,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-cikarim"
+version = "0.1.0"
+dependencies = [
+ "lubot-egitim",
+]
+
+[[package]]
 name = "lubot-denetim"
 version = "0.1.0"
 dependencies = [
@@ -459,6 +468,8 @@ name = "lubot-egitim"
 version = "0.1.0"
 dependencies = [
  "lubot-grant",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
