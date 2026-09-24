@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="uygulama_adi">Lubot</string>
-    <string name="baslik">Lubot — okuyan istemci</string>
+    <string name="baslik">Lubot · okuyan istemci</string>
     <string name="yukleniyor">Korpus yükleniyor…</string>
-    <string name="soru_ipucu">Soru sor, ya da cihazdan bir belge al</string>
-    <string name="dugme_sor">Sor</string>
-    <string name="dugme_belge">Belge al</string>
-    <string name="bos_cevap">Cevap burada görünecek.\n\nLubot üretmez, okur: cevap ya korpusun satırlarına alıntıyla bağlanır ya da reddedilir.</string>
+    <string name="soru_ipucu">Lubot\u0027a sor…</string>
+    <string name="dugme_sor">Gönder</string>
+    <string name="dugme_belge">Belge</string>
+    <string name="bos_cevap">Merhaba. Ben Lubot — üretmem, okurum: cevabım ya korpusun satırlarına alıntıyla bağlanır ya da reddedilir. Sorunu yaz, aşağıda balonlar hâlinde oku.</string>
     <string name="belge_okunamadi">Belge okunamadı</string>
 </resources>

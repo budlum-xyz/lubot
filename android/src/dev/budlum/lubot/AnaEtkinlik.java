@@ -2,11 +2,16 @@ package dev.budlum.lubot;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -18,20 +23,27 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Lubot'un tek ekranı.
+ * Lubot'un tek ekranı — sohbet akışı, koyu tema.
  *
  * Arayüz bilerek ince: ne bir model çağırır ne bir şey üretir. Yaptığı üç iş
  * var — korpusu cihaza açmak, soruyu Rust çekirdeğine götürmek, cihazdan
  * seçilen belgeyi izole kayda eklemek. Cevabın doğrulanması arayüzde değil,
- * çekirdekte olur; burası yalnızca gösterir.
+ * çekirdekte olur; burası yalnızca gösterir. AndroidX yok: balonlar
+ * GradientDrawable ile programatik çiziliyor.
  */
 public class AnaEtkinlik extends Activity {
 
     private static final int BELGE_SEC = 4711;
     private static final String KORPUS_VARLIGI = "korpus/knowledge-self.jsonl.gz";
 
+    private static final int RENK_BALON_KULLANICI = Color.parseColor("#1F6FEB");
+    private static final int RENK_BALON_LUBOT = Color.parseColor("#21262D");
+    private static final int RENK_YAZI = Color.parseColor("#E6EDF3");
+    private static final int RENK_HATA = Color.parseColor("#F85149");
+
     private TextView durum;
-    private TextView cevap;
+    private LinearLayout akis;
+    private ScrollView kaydirma;
     private EditText soruKutusu;
     private volatile boolean hazir = false;
 
@@ -41,7 +53,8 @@ public class AnaEtkinlik extends Activity {
         setContentView(R.layout.ana);
 
         durum = (TextView) findViewById(R.id.durum);
-        cevap = (TextView) findViewById(R.id.cevap);
+        akis = (LinearLayout) findViewById(R.id.akis);
+        kaydirma = (ScrollView) findViewById(R.id.kaydirma);
         soruKutusu = (EditText) findViewById(R.id.soru);
         Button sorDugmesi = (Button) findViewById(R.id.dugme_sor);
         Button belgeDugmesi = (Button) findViewById(R.id.dugme_belge);
@@ -53,34 +66,52 @@ public class AnaEtkinlik extends Activity {
             @Override public void onClick(View v) { belgeSec(); }
         });
 
+        balonEkle(getString(R.string.bos_cevap), false);
         kurulusuBaslat();
     }
 
-    /** Korpusu varlıklardan cihaza çıkarır ve köprüyü arka planda kurar. */
-    private void kurulusuBaslat() {
-        final Activity self = this;
-        yeniIsParcacigi(new Runnable() {
+    /** Karar verici dp dönüşümü: pikseli burada üretilir, layout içinde kullanılır. */
+    private int dp(int deger) {
+        return (int) (deger * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    /**
+     * Akışa bir balon ekler. Kullanıcı balonu sağda ve mavi; Lubot balonu
+     * solda ve yuzey grisi. HATA öneki taşıyan metin kırmızıya boyanır —
+     * hata yutulmuyor, olduğu gibi gösteriliyor.
+     */
+    private void balonEkle(String metin, boolean kullanici) {
+        TextView balon = new TextView(this);
+        balon.setText(metin);
+        balon.setTextSize(14f);
+        balon.setTextIsSelectable(true);
+        balon.setTextColor(metin.startsWith("HATA:") ? RENK_HATA : RENK_YAZI);
+        int yatay = dp(12);
+        int dikey = dp(9);
+        balon.setPadding(yatay, dikey, yatay, dikey);
+
+        GradientDrawable zemin = new GradientDrawable();
+        zemin.setColor(kullanici ? RENK_BALON_KULLANICI : RENK_BALON_LUBOT);
+        zemin.setCornerRadius(dp(16));
+        balon.setBackground(zemin);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = kullanici ? Gravity.END : Gravity.START;
+        int boslukYan = dp(56);
+        int boslukUst = dp(6);
+        if (kullanici) {
+            lp.setMargins(boslukYan, boslukUst, 0, 0);
+        } else {
+            lp.setMargins(0, boslukUst, boslukYan, 0);
+        }
+        balon.setLayoutParams(lp);
+
+        akis.addView(balon);
+        kaydirma.post(new Runnable() {
             @Override public void run() {
-                String sonuc;
-                try {
-                    File korpusDizini = varligiCikar();
-                    sonuc = Kopru.kurulus(korpusDizini.getAbsolutePath(),
-                            getFilesDir().getAbsolutePath());
-                } catch (Exception e) {
-                    sonuc = "HATA: " + e.getClass().getSimpleName() + ": " + e.getMessage();
-                }
-                final String s = sonuc;
-                self.runOnUiThread(new Runnable() {
-                    @Override public void run() {
-                        if (s.startsWith("HATA:")) {
-                            durum.setText(s);
-                            hazir = false;
-                        } else {
-                            durum.setText(hazirSatiri(s));
-                            hazir = true;
-                        }
-                    }
-                });
+                kaydirma.fullScroll(View.FOCUS_DOWN);
             }
         });
     }
@@ -116,6 +147,8 @@ public class AnaEtkinlik extends Activity {
             Toast.makeText(this, "Soru boş", Toast.LENGTH_SHORT).show();
             return;
         }
+        balonEkle(soru, true);
+        soruKutusu.setText("");
         durum.setText("Okunuyor…");
         final Activity self = this;
         yeniIsParcacigi(new Runnable() {
@@ -123,8 +156,10 @@ public class AnaEtkinlik extends Activity {
                 final String sonuc = Kopru.soru(soru);
                 self.runOnUiThread(new Runnable() {
                     @Override public void run() {
-                        cevap.setText(sonuc);
-                        durum.setText(sonuc.startsWith("HATA:") ? sonuc : "Cevap aşağıda · okuyucu: android-arayuz");
+                        balonEkle(sonuc, false);
+                        durum.setText(sonuc.startsWith("HATA:")
+                                ? sonuc
+                                : "Cevap alındı · okuyucu: android-arayuz");
                     }
                 });
             }
@@ -166,8 +201,11 @@ public class AnaEtkinlik extends Activity {
                     @Override public void run() {
                         if (sonuc.startsWith("HATA:")) {
                             durum.setText(sonuc);
+                            balonEkle(sonuc, false);
                         } else {
-                            durum.setText("Belge eklendi (izole kayıt, korpus dışı) · " + sonuc.substring(0, 12));
+                            durum.setText("Belge eklendi (izole kayıt, korpus dışı)");
+                            balonEkle("Belge alındı — izole kayıtta duruyor, korpusa karışmadı. "
+                                    + "Kayıt: " + sonuc.substring(0, Math.min(12, sonuc.length())), false);
                         }
                     }
                 });
@@ -196,6 +234,35 @@ public class AnaEtkinlik extends Activity {
         return kesme >= 0 ? yol.substring(kesme + 1) : yol;
     }
 
+    /** Korpusu varlıklardan cihaza çıkarır ve köprüyü arka planda kurar. */
+    private void kurulusuBaslat() {
+        final Activity self = this;
+        yeniIsParcacigi(new Runnable() {
+            @Override public void run() {
+                String sonuc;
+                try {
+                    File korpusDizini = varligiCikar();
+                    sonuc = Kopru.kurulus(korpusDizini.getAbsolutePath(),
+                            getFilesDir().getAbsolutePath());
+                } catch (Exception e) {
+                    sonuc = "HATA: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+                }
+                final String s = sonuc;
+                self.runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (s.startsWith("HATA:")) {
+                            durum.setText(s);
+                            hazir = false;
+                        } else {
+                            durum.setText(hazirSatiri(s));
+                            hazir = true;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     /** Korpusu APK varlıklarından uygulama dizinine bir kez çıkarır. */
     private File varligiCikar() throws Exception {
         File dizin = new File(getFilesDir(), "korpus");
@@ -220,9 +287,7 @@ public class AnaEtkinlik extends Activity {
         return dizin;
     }
 
-    private static void yeniIsParcacigi(Runnable is) {
-        Thread t = new Thread(is, "lubot-is");
-        t.setDaemon(true);
-        t.start();
+    private void yeniIsParcacigi(Runnable is) {
+        new Thread(is).start();
     }
 }
