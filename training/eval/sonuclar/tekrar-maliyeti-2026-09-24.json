@@ -1,0 +1,33 @@
+{
+  "hukum": "tekrarli soruda maliyet sifira yaklasmiyor: ikinci ayni cagri (442.095 ms), fiyati esitlenmis baska sorunun ilk cagrisindan (429.811 ms) ucuz degil (tekrar/kontrol 1.0286)",
+  "is": "Ayni soru arka arkaya iki kez soruldu; ikinci cagri, fiyati esitlenmis BASKA bir sorunun ilk cagrisiyla karsilastirildi. Kontrol, isletim sistemi sayfa onbellegi ile uygulama duzeyi yeniden kullanimi ayirmak icin var.",
+  "kanit": {
+    "ilk_ms": 435.392,
+    "kontrol_eslesme_farki": 0.0084,
+    "kontrol_ms": 429.811,
+    "kontrol_soru": "what does the queue log hold?",
+    "kosu": 10,
+    "onbellek_var": false,
+    "soru": "what does a view grant name?",
+    "tekrar_bolu_ilk": 1.0154,
+    "tekrar_bolu_kontrol": 1.0286,
+    "tekrar_ms": 442.095,
+    "uyari": "Olculen sureler duvar saatidir ve makineye baglidir; kayit bu yuzden ratchet'e girmez. Sayilar surec baslatma + korpus ayristirmayi icerir, cunku cagiranin odedigi maliyet budur. Kontrol sorusu once fiyat eslesmesi icin taranir; eslesme farki kayitta durur.",
+    "yeniden_kullanim_esigi": 0.6
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 20.9
+  },
+  "kosucu": "ask",
+  "olcut": {
+    "ad": "tekrar_bolu_kontrol_orani_esigin_altinda",
+    "sonuc": false
+  },
+  "tarih": "2026-09-24",
+  "uyari": "Olculen sureler duvar saatidir ve makineye baglidir; kayit bu yuzden ratchet'e girmez. Sayilar surec baslatma + korpus ayristirmayi icerir, cunku cagiranin odedigi maliyet budur. Kontrol sorusu once fiyat eslesmesi icin taranir; eslesme farki kayitta durur.",
+  "yapilmayan": "cevap onbellegi YAZILMADI; U maddesinin iddiasi olculdu ve bugun desteklenmiyor. Onbellek eklemek operator karari: kalicilik, gecersizlestirme ve damga tazeligi kurallarini da getirir."
+}

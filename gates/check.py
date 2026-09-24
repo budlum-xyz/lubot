@@ -5036,7 +5036,203 @@ def selftest_retrieval_at_k_is_measured() -> None:
         )
 
 
+# --- N ve W: iki dilin maliyeti ve tekrarin maliyeti ------------------------
+# Ikisi de ayni bicimde calisir: betik olcumu kosar ve kaydi yazar; kapi
+# kaydi TAZE olcumle karsilastirir. Sayilar makineye bagli oldugu icin
+# (duvar saati, sozluk ailesi) kapi sayinin degismedigini degil, kaydin
+# mekanik oldugunu ve taze olcumle ayni sonucu verdigini denetler.
+
+
+def _dil_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Dil maliyeti kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor: olculmus iki dil olmadan iddia kurulmaz"
+    siniflar = kanit.get("siniflar")
+    if not isinstance(siniflar, dict):
+        return "kayit dil siniflarini tasimiyor"
+    for sinif in ("tr", "en", "karisik"):
+        kayit_sinif = siniflar.get(sinif)
+        if not isinstance(kayit_sinif, dict):
+            return f"{sinif} sinifi kayitta yok: karsilastirma eksik kalir"
+        for alan in ("kayit", "karakter", "jeton"):
+            if not isinstance(kayit_sinif.get(alan), int) or kayit_sinif[alan] < 0:
+                return f"{sinif}.{alan} sayi degil"
+    if not siniflar["tr"]["kayit"] or not siniflar["en"]["kayit"]:
+        return "iki dilden biri korpusta hic yok: fark olculemez"
+    bulgu = kanit.get("bulgu_dil_maliyeti")
+    beklenen = kanit.get("fark_orani", 0.0) > kanit.get("fark_esigi", 1.0)
+    if kayit.get("bulgu_var") is not bool(bulgu) or kayit.get("bulgu_var") is not beklenen:
+        return "bulgu_var bayragi olcumle uyusmuyor (esik asildiysa bulgu yazilir)"
+    if bulgu is not None:
+        for alan in ("olculen", "hukum", "yapilmayan"):
+            if not isinstance(bulgu.get(alan), str) or not bulgu[alan].strip():
+                return f"bulgu {alan} alanini tasimiyor"
+    for sinif in ("tr", "en", "karisik"):
+        for alan in ("kayit", "karakter", "jeton"):
+            if siniflar[sinif][alan] != taze["siniflar"][sinif][alan]:
+                return (
+                    f"kayit bayat ({sinif}.{alan}): kayitta {siniflar[sinif][alan]}, "
+                    f"olcum {taze['siniflar'][sinif][alan]} - kaydi yeniden uret"
+                )
+    if kanit.get("fark_orani") != taze["fark_orani"]:
+        return (
+            f"kayit bayat (fark_orani): kayitta {kanit.get('fark_orani')}, "
+            f"olcum {taze['fark_orani']} - kaydi yeniden uret"
+        )
+    return None
+
+
+def gate_language_cost_is_declared() -> str:
+    """N: iki dilin jeton maliyeti sinif bazinda beyan edilir.
+
+    Korpusta Turkce ve Ingilizce kayitlar var ve sozluk karisik kesildi; N
+    "jeton/karakter orani olculmuyor" diyordu. Kapi, olcumu yeniden kosar ve
+    kaydi taze sayilarla karsilastirir; esik asildiysa bulgunun uc alanini
+    (olculen/hukum/yapilmayan) zorunlu tutar."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "dil-maliyeti-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("dil maliyeti kaydi yok: training/eval/sonuclar/dil-maliyeti-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "cok_dillilik.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _dil_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    tr = taze["siniflar"]["tr"]
+    en = taze["siniflar"]["en"]
+    return (
+        f"iki dil olculdu: tr {tr['karakter_basina_jeton']:.6f} jeton/karakter "
+        f"({tr['kayit']} kayit), en {en['karakter_basina_jeton']:.6f} ({en['kayit']} kayit); "
+        f"fark {round(taze['fark_orani'] * 100, 2)}% (esik {round(taze['fark_esigi'] * 100, 2)}%), "
+        f"bulgu={'var' if taze['bulgu_dil_maliyeti'] else 'yok'}"
+    )
+
+
+def selftest_language_cost_is_declared() -> None:
+    """Kanarya: eksik sinif, uyusmayan bulgu bayragi, eksik bulgu alani ve
+    bayat sayi ayri ayri reddedilir."""
+    siniflar = {"tr": {"kayit": 3, "karakter": 30, "jeton": 12},
+                "en": {"kayit": 4, "karakter": 40, "jeton": 14},
+                "karisik": {"kayit": 1, "karakter": 10, "jeton": 3}}
+    taze = {"siniflar": siniflar, "fark_orani": 0.05, "fark_esigi": 0.10,
+            "bulgu_dil_maliyeti": None}
+    kayit = {"bulgu_var": False, "kanit": dict(taze)}
+    assert _dil_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    eksik = {"bulgu_var": False, "kanit": {"siniflar": {"tr": siniflar["tr"]},
+                                          "fark_orani": 0.0, "fark_esigi": 0.1}}
+    assert "sinifi kayitta yok" in (_dil_kayit_bulgu(eksik, taze) or ""), "eksik sinif gecti"
+    yanlis_bayrak = {"bulgu_var": True, "kanit": dict(taze)}
+    assert "bulgu_var" in (_dil_kayit_bulgu(yanlis_bayrak, taze) or ""), "uyusmayan bayrak gecti"
+    esik_asildi = {"bulgu_var": True,
+                   "kanit": dict(taze, fark_orani=0.5, bulgu_dil_maliyeti={"olculen": "x"})}
+    assert "bulgu hukum" in (_dil_kayit_bulgu(esik_asildi, taze) or ""), "eksik bulgu alani gecti"
+    bayat = {"bulgu_var": False,
+             "kanit": dict(taze, siniflar=dict(siniflar,
+                                               tr=dict(siniflar["tr"], jeton=99)))}
+    assert "bayat" in (_dil_kayit_bulgu(bayat, taze) or ""), "bayat sayi gecti"
+
+
+def _tekrar_eslesme_tavani() -> float:
+    """Betikteki eslesme tavani okunur; kapi ikinci bir literal tasimaz.
+
+    Ayni sabitin iki yerde durmasi, olcumle kapinin ayrisacagi ilk gunun
+    hazirligidir; bu deponun kuralı: tek kaynak, kapi okur."""
+    import re as _re
+
+    kaynak = (ROOT / "training" / "tekrar_maliyeti.py").read_text(encoding="utf-8")
+    eslesme = _re.search(r"^ESLESME_TAVANI = ([0-9.]+)", kaynak, _re.M)
+    if not eslesme:
+        raise SystemExit("tekrar_maliyeti.py: ESLESME_TAVANI bulunamadi")
+    return float(eslesme.group(1))
+
+
+def _tekrar_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Tekrar maliyeti kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    if not isinstance(kayit.get("uyari"), str) or "duvar saati" not in kayit["uyari"]:
+        return "kayit duvar saati uyarisini tasimiyor: makineye bagli sayi uyari ister"
+    if kayit.get("olcut", {}).get("ad") != "tekrar_bolu_kontrol_orani_esigin_altinda":
+        return "kayit beklenen mekanik olcutu tasimiyor"
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor"
+    eslesme = kanit.get("kontrol_eslesme_farki")
+    if not isinstance(eslesme, (int, float)) or eslesme > _tekrar_eslesme_tavani():
+        return "kayit kontrol sorusunun fiyat eslesmesini tasimiyor (uyari/isabet yok)"
+    if kanit.get("kontrol_soru") == kanit.get("soru"):
+        return "kontrol sorusu ana soruyla ayni: karsilastirma kurulmamis"
+    if kanit.get("onbellek_var") != taze["onbellek_var"]:
+        return (
+            f"kayit bayat: kayitta onbellek_var={kanit.get('onbellek_var')}, taze olcum "
+            f"{taze['onbellek_var']} (tekrar/kontrol {taze['tekrar_bolu_kontrol']}) - "
+            "kaydi yeniden uret"
+        )
+    return None
+
+
+def gate_repeat_cost_is_measured() -> str:
+    """W: tekrarli sorunun marjinal maliyeti olculur, iddia degil.
+
+    U "tekrarli soruda maliyet sifira yaklasir" diyor. Kapi olcumu yeniden
+    kosar; sonuc taze olcumle ayni yonde degilse kayit yeniden uretilmelidir.
+    Sayi ratchet'e girmez - duvar saati makineye baglidir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "tekrar-maliyeti-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("tekrar maliyeti kaydi yok: training/eval/sonuclar/tekrar-maliyeti-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "tekrar_maliyeti.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _tekrar_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    return (
+        f"tekrarli soru olculdu: ilk {taze['ilk_ms']} ms, tekrar {taze['tekrar_ms']} ms, "
+        f"kontrol {taze['kontrol_ms']} ms; tekrar/kontrol {taze['tekrar_bolu_kontrol']} -> "
+        f"onbellek_var={taze['onbellek_var']} (U'nun iddiasi bugun "
+        f"{'destekleniyor' if taze['onbellek_var'] else 'desteklenmiyor'})"
+    )
+
+
+def selftest_repeat_cost_is_measured() -> None:
+    """Kanarya: uyarisiz kayit, yanlis olcut adi, eslesmesiz kontrol, ayni
+    kontrol sorusu ve bayat hukum ayri ayri reddedilir."""
+    taze = {"onbellek_var": False, "tekrar_bolu_kontrol": 0.99, "ilk_ms": 1.0,
+            "tekrar_ms": 1.0, "kontrol_ms": 1.0, "kontrol_eslesme_farki": 0.02,
+            "kontrol_soru": "baska soru", "soru": "soru"}
+    kayit = {"uyari": "duvar saati makineye bagli", "olcut": {"ad": "tekrar_bolu_kontrol_orani_esigin_altinda"},
+             "kanit": dict(taze)}
+    assert _tekrar_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    assert "duvar saati" in (_tekrar_kayit_bulgu(
+        dict(kayit, uyari="yok"), taze) or ""), "uyarisiz kayit gecti"
+    assert "mekanik olcut" in (_tekrar_kayit_bulgu(
+        dict(kayit, olcut={"ad": "olculemedi"}), taze) or ""), "yanlis olcut adi gecti"
+    assert "eslesmesini tasimiyor" in (_tekrar_kayit_bulgu(
+        dict(kayit, kanit=dict(taze, kontrol_eslesme_farki=0.9)), taze) or ""), "eslesmesiz kontrol gecti"
+    assert "ayni" in (_tekrar_kayit_bulgu(
+        dict(kayit, kanit=dict(taze, kontrol_soru="soru")), taze) or ""), "ayni kontrol sorusu gecti"
+    assert "bayat" in (_tekrar_kayit_bulgu(
+        dict(kayit, kanit=dict(taze, onbellek_var=True)), taze) or ""), "bayat hukum gecti"
+
+
 GATES_EXTRA = {
+    "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
+    "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),
     "retrieval-at-k-is-measured": (gate_retrieval_at_k_is_measured, selftest_retrieval_at_k_is_measured),
     "corpus-kinds-agree": (gate_corpus_kinds_agree, selftest_corpus_kinds_agree),
     "gate-pairs-carry-referee": (gate_gate_pairs_carry_referee, selftest_gate_pairs_carry_referee),
