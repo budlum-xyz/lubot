@@ -691,10 +691,25 @@ QR/codec, merkeziyetsiz depolama, site/WASM, k8s/terraform) bilerek alınmadı.
       - [ ] **README turu (Awesome README / Translations).** Ölçüldü: kaynak listede
       "README.tr.md zaten var" deniyor ama bu repoda **README.tr.md yok**. İş:
       ya yazmak ya da listeyi düzeltmek; ikisi de karar gerektiriyor.
-- [ ] **Markdown şeması (Awesome Markdown / NLG).** `ai-output-schema-enforced`
+- [x] **Markdown şeması (Awesome Markdown / NLG). KAPANDI (madde 26).**
+      `training/sema_kapsam.py`: kural listesi Rust kaynağından okunur, her ret
+      kuralı için kötü örnek üretilir ve `lubot prompt --path` ile denenir.
+      Ölçülen: **6/6 kural hesap veriyor** (5'i şema kapısında ısırıyor,
+      `NotUtf8` okuma kapısında reddediliyor ve kasa testi
+      `invalid_utf8_is_refused` ile atfediliyor). Kapı
+      `markdown-schema-is-covered` (85. kapı) tazeliği ve atıfları denetler.
+      Döküm: `docs/MARKDOWN-KAPSAM.md`.
+      Eski not:
+      - [ ] **Markdown şeması (Awesome Markdown / NLG).** `ai-output-schema-enforced`
       var; iş şemanın kurallarını tek tek sayıp **kapsanmayan durum** kalıp
       kalmadığını ölçmek.
-- [ ] **Lisansı temiz kaynak adayları (Awesome Uncopyright / Public Datasets).**
+- [x] **Lisansı temiz kaynak adayları (Awesome Uncopyright / Public Datasets). KAPANDI (madde 27).**
+      `docs/LISANS-ADAY.md`: aday sınıfları, her aday için lisans/provenance/atıf/
+      korpus katmanı/K2/K6 alanları ve bugünkü değerleri; kararın operatörde
+      olduğu açık yazılı. Bu belge korpusa kayıt **kabul etmez** — izinli lisans
+      kümesi kapalıdır ve genişletmek kod değişikliği ister.
+      Eski not:
+      - [ ] **Lisansı temiz kaynak adayları (Awesome Uncopyright / Public Datasets).**
       K3 kapsamında: kamu malı/lisansı temiz kaynakların **aday listesi**,
       provenance ve lisans alanlarıyla. Karar operatörün; bu madde yalnız
       listeyi ve alanları hazırlar.

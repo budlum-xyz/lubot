@@ -1191,6 +1191,91 @@ def selftest_undefined_input_is_fuzzed() -> None:
     assert "yok" in (_belirsiz_girdi_bulgu({"tohum": 1}, taze) or ""), "eksik alan gecti"
 
 
+# --------------------------------------------------------------------------
+# kapi: markdown semasinin kurallari hesap veriyor (madde 26)
+# --------------------------------------------------------------------------
+def _sema_kapsam_bulgu(kayit: dict, taze: dict, kurallar: list[str]) -> str | None:
+    """Her ret kurali bir kapiya bagli mi - ve kayit taze mi.
+
+    Kural listesi Rust kaynagindan okunur; kayit onunla karsilastirilir. Bir
+    kural ne sema kapisinda isiriyor ne de baska bir kapiya kanitiyla
+    atfediliyorsa bulgu doner: semada bir dal var ama onu tutan bir kanit yok.
+    """
+    if sorted(kayit.get("kurallar") or []) != sorted(kurallar):
+        return (f"kural listesi kayitta {sorted(kayit.get('kurallar') or [])}, "
+                f"kodda {sorted(kurallar)} - kaydi yeniden uret")
+    if sorted(taze.get("kurallar") or []) != sorted(kurallar):
+        return "taze olcum kural listesini kaynaktan okuyamadi"
+    hesap = set(taze.get("kapsanan") or []) | {b.get("kural") for b in (taze.get("baska_kapida") or [])}
+    eksik = sorted(set(kurallar) - hesap)
+    if eksik:
+        return f"hesap vermeyen kural: {eksik} - kural var, onu tutan kanit yok"
+    for atif in taze.get("baska_kapida") or []:
+        if not atif.get("kanit_test"):
+            return f"{atif.get('kural')} baska kapiya atfedilmis ama kanit testi yok"
+    if taze.get("kapsanmayan"):
+        return f"olcum kapsanmayan kural bildiriyor: {taze['kapsanmayan']}"
+    if not taze.get("olcut", {}).get("sonuc"):
+        return "olcumun kendi olcutu dustu"
+    return None
+
+
+def gate_markdown_schema_is_covered() -> str:
+    """Semanin her ret kurali kendini hedefleyen bir vakayla sinanir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "sema-kapsam-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("sema kapsam kaydi yok: kapsanmayan durum olculemez")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sema_kapsam.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=300,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"kapsam bataryasi dustu: {(kosu.stderr or kosu.stdout)[-200:]}")
+    taze = json.loads(kosu.stdout[kosu.stdout.index("{"):])
+    # Kural listesi koddan bagimsiz okunur: kayit kendini dogrulamasin.
+    kaynak = read("crates/read/src/output_schema.rs")
+    eslesme = re.search(r"pub enum OutputSchemaError\s*\{(.*?)\n\}", kaynak, re.S)
+    if not eslesme:
+        raise SystemExit("OutputSchemaError enum'i bulunamadi")
+    kurallar = [satir.split("//")[0].strip().rstrip(",").split("{")[0].split("(")[0].strip()
+                for satir in eslesme.group(1).splitlines() if satir.split("//")[0].strip()]
+    bulgu = _sema_kapsam_bulgu(kayit, taze, kurallar)
+    if bulgu:
+        raise SystemExit(bulgu)
+    atif = ", ".join(f"{b['kural']}->{b['kanit_test']}" for b in taze.get("baska_kapida") or [])
+    return (f"{len(kurallar)} ret kurali: {len(taze['kapsanan'])} sema kapisinda isirdi"
+            + (f", {atif} baska kapiya atfedildi" if atif else "")
+            + ", hesap vermeyen yok")
+
+
+def selftest_markdown_schema_is_covered() -> None:
+    """Kanarya: hesapsiz kural, kanitsiz atif ve bayat kayit reddedilir."""
+    kurallar = ["Empty", "NotUtf8", "TooLarge"]
+    taze = {"kurallar": kurallar, "kapsanan": ["Empty", "TooLarge"],
+            "baska_kapida": [{"kural": "NotUtf8", "kanit_test": "t"}],
+            "kapsanmayan": [], "olcut": {"sonuc": True}}
+    kayit = dict(taze)
+    assert _sema_kapsam_bulgu(kayit, dict(taze), kurallar) is None, "gecerli kayit reddedildi"
+    kacsiz = {"kurallar": kurallar, "kapsanan": ["Empty"], "baska_kapida": [],
+              "kapsanmayan": ["NotUtf8"], "olcut": {"sonuc": False}}
+    assert "hesap vermeyen" in (_sema_kapsam_bulgu(kacsiz, kacsiz, kurallar) or ""), (
+        "hesapsiz kural gecti"
+    )
+    kanitsiz = {"kurallar": kurallar, "kapsanan": ["Empty", "TooLarge"],
+                "baska_kapida": [{"kural": "NotUtf8"}], "kapsanmayan": [],
+                "olcut": {"sonuc": True}}
+    assert "kanit testi yok" in (_sema_kapsam_bulgu(kanitsiz, kanitsiz, kurallar) or ""), (
+        "kanitsiz atif gecti"
+    )
+    bayat = dict(kayit, kurallar=["Empty"])
+    assert "kural listesi" in (_sema_kapsam_bulgu(bayat, dict(taze), kurallar) or ""), (
+        "bayat kural listesi gecti"
+    )
+    dustu = dict(taze, olcut={"sonuc": False})
+    assert "olcutu dustu" in (_sema_kapsam_bulgu(dustu, dustu, kurallar) or ""), "dusen olcut gecti"
+
+
 
 # --------------------------------------------------------------------------
 # gate: rustfmt agrees with the tree (ci.py / olc.py power)
@@ -5994,6 +6079,7 @@ GATES_EXTRA = {
     "injection-refusals-are-measured": (gate_injection_refusals_are_measured, selftest_injection_refusals_are_measured),
     "danisma-layer-is-closed": (gate_danisma_layer_is_closed, selftest_danisma_layer_is_closed),
     "undefined-input-is-fuzzed": (gate_undefined_input_is_fuzzed, selftest_undefined_input_is_fuzzed),
+    "markdown-schema-is-covered": (gate_markdown_schema_is_covered, selftest_markdown_schema_is_covered),
     "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
     "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
     "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),
