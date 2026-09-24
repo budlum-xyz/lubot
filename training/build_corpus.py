@@ -200,6 +200,61 @@ def gate_records(root: Path):
         }
 
 
+MERMAID_KENAR = re.compile(
+    r"^\s*([A-Za-z0-9_]+)(?:\[[^\]]*\]|\{[^}]*\}|\([^)]*\))?\s*-{1,2}>+\s*([A-Za-z0-9_]+)"
+)
+MERMAID_ETIKET = re.compile(r"([A-Za-z0-9_]+)\[([^\]]+)\]")
+SVG_ETIKET = re.compile(r"<text[^>]*>([^<]{2,})</text>")
+
+
+def mermaid_kayitlari(metin: str, rel: str, satir_temel: int):
+    """QQ: metin diyagrami okunur - uretilmez. Kenarlar ve etiketler ayri kayit."""
+    for no, satir in enumerate(metin.splitlines(), satir_temel):
+        kenar = MERMAID_KENAR.match(satir)
+        if kenar:
+            yield {
+                "kind": "diagram",
+                "text": f"{rel}: diagram edge `{kenar.group(1)}` -> `{kenar.group(2)}`.",
+                "path": rel,
+                "lines": [no, no],
+            }
+        for ad, etiket in MERMAID_ETIKET.findall(satir):
+            yield {
+                "kind": "diagram",
+                "text": f'{rel}: diagram node `{ad}` is labelled "{etiket}".',
+                "path": rel,
+                "lines": [no, no],
+            }
+
+
+def mermaid_bloklari(path: Path, rel: str):
+    """```mermaid citleri icindeki diyagramlar; satir numaralari dosyadan."""
+    icinde = False
+    baslangic = 0
+    govde: list[str] = []
+    for no, satir in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        s = satir.strip()
+        if not icinde and s.startswith("```mermaid"):
+            icinde, baslangic, govde = True, no, []
+        elif icinde and s.startswith("```"):
+            icinde = False
+            yield from mermaid_kayitlari("\n".join(govde), rel, baslangic + 1)
+        elif icinde:
+            govde.append(satir)
+
+
+def svg_kayitlari(path: Path, rel: str):
+    """SVG'den yalniz metin etiketleri okunur; kenarlar okunmaz ve bu soylenir."""
+    for no, satir in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        for etiket in SVG_ETIKET.findall(satir):
+            yield {
+                "kind": "diagram",
+                "text": f'{rel}: diagram label "{etiket.strip()}" (SVG text; edges are not read).',
+                "path": rel,
+                "lines": [no, no],
+            }
+
+
 def dependency_records(path: Path, rel: str):
     """JJ: Cargo.toml bagimlilik grafigi ayri bir "modul iliski" korpus turu.
 
@@ -244,7 +299,14 @@ def collect(root: Path, source: str, root_only: bool):
         if path.suffix == ".rs":
             yield from rust_records(path, rel)
         elif path.suffix == ".md":
+            yield from mermaid_bloklari(path, rel)
             yield from markdown_records(path, rel)
+        elif path.suffix in (".mmd", ".mermaid"):
+            yield from mermaid_kayitlari(
+                path.read_text(encoding="utf-8", errors="ignore"), rel, 1
+            )
+        elif path.suffix == ".svg":
+            yield from svg_kayitlari(path, rel)
         elif path.name == "Cargo.toml":
             yield from dependency_records(path, rel)
     yield from gate_records(root)
