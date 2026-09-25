@@ -4885,6 +4885,7 @@ def selftest_training_runner_engineering_vs_data() -> None:
         kok = pathlib.Path(td)
         (kok / "training" / "curriculum").mkdir(parents=True)
         (kok / "corpus").mkdir()
+        (kok / "veri").mkdir()
         (kok / "training" / "temiz.py").write_text(
             "import json\nfrom pathlib import Path\n", encoding="utf-8")
         assert _mm_muhendislik_ihlalleri(kok / "training") == []
