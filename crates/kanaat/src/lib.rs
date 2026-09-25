@@ -41,13 +41,15 @@
 //! arithmetic here is exact and repeatable, and a verdict is reproducible from
 //! the case alone - which is the property that makes a battery meaningful.
 
+mod defter;
 mod metin;
 mod puanlama;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use lubot_tomurcuk::{tek_bas, Guven, Karar, Politika, Puan, PuanKarari, Sonuc, YukseltmeNedeni};
 
+pub use defter::{Defter, DefterHatasi, Kayit};
 pub use puanlama::SecenekPuan;
 
 /// The battery format this build understands.
@@ -58,7 +60,11 @@ pub use puanlama::SecenekPuan;
 pub const BATARYA_SURUMU: u32 = 1;
 
 /// One piece of evidence.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+///
+/// Serializable as well as deserializable: a case can be written out again, so
+/// a verdict can be replayed from the case it was made on rather than from a
+/// description of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Kanit {
     /// Stable identity, quoted by the reasoning.
     pub kimlik: String,
@@ -72,7 +78,7 @@ pub struct Kanit {
 }
 
 /// One question with a closed set of options and the evidence for it.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Dava {
     /// The question being decided.
     pub soru: String,
