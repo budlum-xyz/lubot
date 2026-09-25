@@ -1,0 +1,14 @@
+[package]
+name = "lubot-tasiyici"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+description = "The mapped weight container: a directory, a payload read in place, a depth ladder, and the ceiling an operator may declare."
+
+[lints]
+workspace = true
+
+[dependencies]
+lubot-nicem = { path = "../nicem" }
+sha2 = "0.10"

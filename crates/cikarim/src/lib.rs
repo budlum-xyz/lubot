@@ -33,6 +33,7 @@
 //! a comment saying "equivalent".
 
 pub mod cezalar;
+pub mod motor;
 pub mod ornekleyici;
 pub mod uretim;
 

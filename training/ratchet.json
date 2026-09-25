@@ -3,7 +3,7 @@
   "corpus": 81673,
   "exam": 12,
   "gates": 87,
-  "pedantic": 456,
-  "tests": 772,
+  "pedantic": 600,
+  "tests": 1116,
   "tokens": 14185482
 }

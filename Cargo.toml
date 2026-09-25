@@ -1,6 +1,22 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/veri",
+    "crates/uc-asama",
+    "crates/transformer",
+    "crates/tasiyici",
+    "crates/sozluk",
+    "crates/sistem",
+    "crates/paralel",
+    "crates/olcum",
+    "crates/nicem",
+    "crates/mu",
+    "crates/kendinden",
+    "crates/karma",
+    "crates/karar",
+    "crates/kapisma",
+    "crates/derin",
+    "crates/bpe-gelismis",
     "crates/grant",
     "crates/read",
     "crates/index",
