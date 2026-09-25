@@ -1,0 +1,12 @@
+[package]
+name = "lubot-nicem"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+description = "Sub-byte weight quantisation written here: rotation, an optimal codebook, and packing, with the reconstruction error measured rather than asserted."
+
+[lints]
+workspace = true
+
+[dependencies]

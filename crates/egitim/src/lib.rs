@@ -28,6 +28,7 @@
 
 use lubot_grant::training::MAX_TRAINING_GRANT_EPOCHS;
 
+pub mod dongu;
 pub mod kernel32;
 pub mod kontrol;
 pub mod kosu;

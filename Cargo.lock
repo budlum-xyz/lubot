@@ -448,6 +448,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-bpe-gelismis"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-cikarim"
 version = "0.1.0"
 dependencies = [
@@ -460,6 +464,10 @@ version = "0.1.0"
 dependencies = [
  "lubot-muhur",
 ]
+
+[[package]]
+name = "lubot-derin"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-doc"
@@ -536,6 +544,27 @@ name = "lubot-kanit"
 version = "0.1.0"
 
 [[package]]
+name = "lubot-kapisma"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-karar"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "lubot-karma"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-kendinden"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-kodlayici"
 version = "0.1.0"
 dependencies = [
@@ -553,6 +582,10 @@ name = "lubot-mimari"
 version = "0.1.0"
 
 [[package]]
+name = "lubot-mu"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-muhur"
 version = "0.1.0"
 dependencies = [
@@ -560,7 +593,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-nicem"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-olcek"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-olcum"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-paralel"
 version = "0.1.0"
 
 [[package]]
@@ -591,8 +636,24 @@ name = "lubot-sir"
 version = "0.1.0"
 
 [[package]]
+name = "lubot-sistem"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-sozluk"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-takip"
 version = "0.1.0"
+
+[[package]]
+name = "lubot-tasiyici"
+version = "0.1.0"
+dependencies = [
+ "lubot-nicem",
+ "sha2",
+]
 
 [[package]]
 name = "lubot-tomurcuk"
@@ -611,11 +672,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-transformer"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-uc-asama"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-usl"
 version = "0.1.0"
 dependencies = [
  "lubot-muhur",
 ]
+
+[[package]]
+name = "lubot-veri"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-yetenek"
