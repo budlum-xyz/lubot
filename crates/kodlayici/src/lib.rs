@@ -12,14 +12,15 @@
 //! | [`hesap`] | matrix-vector, layer norm, gelu, softmax, rope | each against its defining values, including the cases that produce `NaN` if written the obvious way |
 //! | [`blok`] | the layer stack: attention with a window, the gated feed-forward, mean pooling | depth, determinism, the window's bound, and the gate/value split |
 //! | [`karar`] | the decision head: type embedding, two bidirectional layers, the scorer, the action head, temperature | where the type embedding lands, which position is read, the four features, and that temperature cannot reorder the options |
+//! | [`sozluk`] | the checkpoint's own tokenizer: added tokens, the space marker, the merge table, byte fallback, the template | added tokens are matched before anything else, a marker appears once at the start, unknown characters become their bytes, and the whole thing agrees with the reference id by id |
 //!
 //! # What is not here yet
 //!
-//! The tokenizer that turns text into ids, and an independent cross-check of
-//! the whole stack against a second implementation. Neither is claimed: a
-//! checkpoint that can be read, encoded and scored from ids is not a checkpoint
-//! that can be asked a question in words, and the distinction is why the
-//! modules are separate in the first place.
+//! An agreed accuracy on real decisions: the stack runs, and the reference
+//! agreement of the tokenizer and the encoder is measured, but nothing here has
+//! been scored against a labelled set of decisions. That number is the one that
+//! says whether the port is *useful*, as opposed to correct, and it is not
+//! claimed until it is measured.
 //!
 //! # Numbers
 //!
@@ -33,6 +34,7 @@ pub mod baslik;
 pub mod blok;
 pub mod hesap;
 pub mod karar;
+pub mod sozluk;
 pub mod yapilandirma;
 
 pub use baslik::{BaslikHatasi, Dizin, ParcaliDosya, TensorBasligi};
@@ -43,4 +45,5 @@ pub use hesap::{
 pub use karar::{
     puanla, tip_indeksi, Cevap, KararAgirliklari, KararYapisi, OZELLIK_SAYISI, TIPLER, TIP_SAYISI,
 };
+pub use sozluk::Sozluk;
 pub use yapilandirma::{KafaYapisi, KatmanTuru, KodlayiciYapisi};

@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use lubot_kodlayici::baslik::{Dizin, ParcaliDosya};
 use lubot_kodlayici::blok::{kodla, kullanilan_adlar, ortalama_havuz, Agirliklar, PencereKurali};
 use lubot_kodlayici::karar::{kullanilan_adlar as kafa_adlari, puanla, tip_indeksi, KararAgirliklari, KararYapisi, TIPLER};
+use lubot_kodlayici::sozluk::Sozluk;
 use lubot_kodlayici::yapilandirma::{KafaYapisi, KodlayiciYapisi};
 
 /// Dispatches the `kodlayici` subcommands.
@@ -24,6 +25,7 @@ pub fn cmd_kodlayici(args: &[String]) -> Result<(), String> {
         None | Some("envanter") => envanter(&args[1..]),
         Some("kosu") => kosu(&args[1..]),
         Some("dogrula") => dogrula(&args[1..]),
+        Some("sozluk") => crate::sozluk::cmd_sozluk(&args[1..]),
         Some(other) => Err(format!(
             "unknown kodlayici subcommand: {other}\nusage: lubot kodlayici [envanter|kosu|dogrula] --paket <dizin> ..."
         )),
@@ -176,12 +178,22 @@ fn dogrula(args: &[String]) -> Result<(), String> {
 /// Runs the encoder over a token sequence.
 fn kosu(args: &[String]) -> Result<(), String> {
     let paket = paket(args)?;
+    // `--metin` turns the whole path on: the text is tokenized by this
+    // repository's own port of the vocabulary, and the ids it produces are what
+    // the encoder runs on. Without it the command runs on ids given directly,
+    // which is what the cross-check compares.
+    let metin = match deger(args, "--metin-dosya") {
+        Some(yol) => Some(
+            std::fs::read_to_string(&yol).map_err(|e| format!("{yol}: {e}"))?,
+        ),
+        None => deger(args, "--metin"),
+    };
+
     // The window rule is validated before anything else is demanded: it is the
     // one flag whose value a caller can get wrong in a way that still runs, and
     // a usage error about a missing token list would hide the typo.
     let pencere = pencere_kurali(deger(args, "--pencere").as_deref())?;
-    let kimlikler = deger(args, "--kimlik")
-        .ok_or("usage: lubot kodlayici kosu --paket <dizin> --kimlik 1,2,3".to_string())?;
+    let kimlikler = deger(args, "--kimlik").unwrap_or_default();
     let jetonlar: Vec<u32> = kimlikler
         .split(',')
         .filter(|p| !p.trim().is_empty())
@@ -193,13 +205,35 @@ fn kosu(args: &[String]) -> Result<(), String> {
         .collect::<Result<Vec<u32>, String>>()?;
     let mut yapi = yapi_oku(&paket)?;
     yapi.pencere_kurali = pencere;
+    let jetonlar = if let Some(metin) = &metin {
+        let sozluk = Sozluk::oku(&paket.join("tokenizer").join("tokenizer.json"))
+            .map_err(|h| format!("{h:?}"))?;
+        let idler = sozluk.jetonla(metin);
+        println!(
+            "# Metin\n\n- yazi: {} bayt\n- jeton: {}\n- ids: {}\n",
+            metin.len(),
+            idler.len(),
+            idler
+                .iter()
+                .take(24)
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        idler
+    } else {
+        jetonlar
+    };
+    if jetonlar.is_empty() {
+        return Err("usage: --kimlik 1,2,3 ya da --metin <yazi> gerekli".to_string());
+    }
     let tip = match deger(args, "--tip") {
         Some(ad) => tip_indeksi(&ad)
             .ok_or_else(|| format!("bilinmeyen tip `{ad}`: {}", TIPLER.join(" | ")))?,
         None => 0,
     };
-    let isaretler: Vec<usize> = match deger(args, "--isaret") {
-        Some(metin) => metin
+    let mut isaretler: Vec<usize> = match deger(args, "--isaret") {
+        Some(liste) => liste
             .split(',')
             .filter(|p| !p.trim().is_empty())
             .map(|p| {
@@ -210,6 +244,12 @@ fn kosu(args: &[String]) -> Result<(), String> {
             .collect::<Result<Vec<usize>, String>>()?,
         None => Vec::new(),
     };
+    // With text and no marker named there is only one sensible position - the
+    // last one - and a run that reports a decision is more useful than one that
+    // asks for a position the caller thought was implied.
+    if isaretler.is_empty() && metin.is_some() {
+        isaretler.push(jetonlar.len() - 1);
+    }
     let dosya = ParcaliDosya::ac(&paket, "model.safetensors.part-")
         .map_err(|h| format!("{}: {h:?}", paket.display()))?;
     let dizin = Dizin::oku(&dosya).map_err(|h| format!("{h:?}"))?;

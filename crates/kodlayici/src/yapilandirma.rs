@@ -200,8 +200,19 @@ impl KodlayiciYapisi {
     /// The path or the parser, named.
     pub fn oku(yol: &Path) -> Result<Self, String> {
         let metin = std::fs::read_to_string(yol).map_err(|h| format!("{}: {h}", yol.display()))?;
-        let yapi: Self =
-            serde_json::from_str(&metin).map_err(|h| format!("{}: {h}", yol.display()))?;
+        Self::metinden(&metin).map_err(|h| format!("{}: {h}", yol.display()))
+    }
+
+    /// The same parse, over text that is already in memory.
+    ///
+    /// `oku` reads a file and then calls this, so the file path and the fuzz
+    /// path are the same code: a reader that behaved differently for a string
+    /// than for a file would be two readers with one name.
+    ///
+    /// # Errors
+    /// The JSON parse error as text, and this type's own consistency refusal.
+    pub fn metinden(metin: &str) -> Result<Self, String> {
+        let yapi: Self = serde_json::from_str(metin).map_err(|h| h.to_string())?;
         yapi.dogrula()?;
         Ok(yapi)
     }

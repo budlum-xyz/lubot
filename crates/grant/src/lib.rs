@@ -102,7 +102,7 @@ impl GrantBook {
 
     /// Issue a grant. Re-issuing after a revocation is allowed and clears the
     /// revocation: the owner is permitted to change their mind.
-    pub fn issue(&mut self, grant: ViewGrant) {
+    pub fn issue(&mut self, grant: &ViewGrant) {
         let key = (grant.key_id.clone(), grant.grantee.clone());
         self.revoked.retain(|r| r != &key);
         self.live.insert(key, grant.expires_at);

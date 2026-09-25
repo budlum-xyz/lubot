@@ -2,8 +2,8 @@
   "bootstrap": 1,
   "corpus": 81673,
   "exam": 12,
-  "gates": 86,
-  "pedantic": 0,
-  "tests": 671,
+  "gates": 87,
+  "pedantic": 252,
+  "tests": 735,
   "tokens": 14185482
 }

@@ -1,0 +1,50 @@
+# Dependency updates are a security control, not a convenience: the most
+# common way a known-vulnerable version stays in a repository is that nobody
+# opens the bump. Each ecosystem is grouped so the noise is one pull request
+# rather than twenty, and each is capped so the queue stays reviewable.
+#
+# The cool-down (`cooldown`) is deliberate: a freshly published version is the
+# moment a compromised release is most likely to be installed, and waiting
+# three days costs nothing for a weekly cadence.
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:11"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      cargo-patch:
+        patterns: ["*"]
+        update-types: [patch]
+      cargo-minor:
+        patterns: ["*"]
+        update-types: [minor]
+    labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "cargo"
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:41"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "ci"
+      include: scope

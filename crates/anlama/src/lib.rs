@@ -348,12 +348,26 @@ impl Calibration {
     ///
     /// A confidence outside 0..=1 is not recorded, because there is no bucket for
     /// it and silently clamping it would put a nonsense claim in a real bucket.
+    // The bucket arithmetic is float on purpose - the confidence *is* a
+    // probability - and the bucket index is a bounded count of at most ten, so
+    // the conversions cannot lose anything that exists. The lint is silenced
+    // here rather than crate-wide, because every other conversion in this file
+    // should still be looked at.
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     pub fn record(&mut self, outcome: Outcome) {
         if !(0.0..=1.0).contains(&outcome.confidence) {
             return;
         }
-        let index = ((outcome.confidence * CALIBRATION_BUCKETS as f64) as usize)
-            .min(CALIBRATION_BUCKETS - 1);
+        // The cast is bounded before it happens rather than clamped after: a
+        // confidence of exactly 1.0 would otherwise land one bucket past the
+        // end, and `as usize` on a value known to be in range is the honest
+        // way to say the index is a bucket number.
+        let index = (outcome.confidence * CALIBRATION_BUCKETS as f64).floor() as usize;
+        let index = index.min(CALIBRATION_BUCKETS - 1);
         let slot = &mut self.buckets[index];
         slot.0 += if outcome.correct { 1.0 } else { 0.0 };
         slot.1 = slot.1.saturating_add(1);
@@ -372,13 +386,23 @@ impl Calibration {
     /// classifier claiming 0.95 in a bucket where it is right 0.5 of the time is
     /// off by 0.45, and no single classification reveals that.
     #[must_use]
+    #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
     pub fn gaps(&self) -> Vec<BucketReport> {
         self.buckets
             .iter()
             .enumerate()
             .map(|(index, (correct, total))| {
-                let low = index as f64 / CALIBRATION_BUCKETS as f64;
-                let claimed = (low + (index as f64 + 1.0) / CALIBRATION_BUCKETS as f64) / 2.0;
+                // Conversions to f64 are for reporting only; the bucket counts
+                // themselves stay integers, so no precision is lost where it
+                // would matter.
+                let buckets = CALIBRATION_BUCKETS as f64;
+                let index_f = index as f64;
+                let low = index_f / buckets;
+                // The midpoint of the bucket, written as a midpoint: the two
+                // edges averaged, not `low + 0.5 / buckets`, which is only the
+                // same while the bucket width is exactly one over the count.
+                let ust = (index_f + 1.0) / buckets;
+                let claimed = low.midpoint(ust);
                 let observed = if *total == 0 {
                     0.0
                 } else {
