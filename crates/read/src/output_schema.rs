@@ -10,7 +10,7 @@
 //! 1. strict UTF-8 (no replacement of undecodable bytes);
 //! 2. non-empty after trimming;
 //! 3. heading hierarchy does not skip a level while descending;
-//! 4. code fences are balanced (CommonMark toggling);
+//! 4. code fences are balanced (`CommonMark` toggling);
 //! 5. tables are well formed: separator row after the header, consistent
 //!    column count.
 //!
@@ -84,8 +84,8 @@ fn is_separator_row(line: &str) -> bool {
 /// The fence to wrap `text` in so it stays one code block.
 ///
 /// A passage being quoted may itself contain fence lines - reading a document
-/// about code means reading ```-lines - and CommonMark closes a fence only with
-/// a run at least as long as the opener. Choosing the wrapper from the content
+/// about code means reading fence lines - and `CommonMark` closes a fence only
+/// with a run at least as long as the opener. Choosing the wrapper from the content
 /// keeps the quotation faithful: nothing inside is rewritten, the fence simply
 /// grows around it.
 #[must_use]

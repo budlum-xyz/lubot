@@ -1,0 +1,61 @@
+# Dependency policy, enforced by `cargo deny check` in CI.
+#
+# Every entry here is a decision, not a default: a licence is allowed because
+# this repository's licence permits it, an advisory is ignored only with a
+# reason that names what holds the vulnerable version back, and a source is
+# allowed only if the crates in it can be reviewed.
+
+[graph]
+# The workspace's own path dependencies are not third-party and are not
+# decisions about the outside world.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+]
+
+[advisories]
+vulnerability = "deny"
+unmaintained = "workspace"
+unsound = "deny"
+yanked = "deny"
+notice = "warn"
+# Rejected with a reason rather than muted silently. Duplicates are rejected too:
+# a crate present twice can mean two different vulnerability profiles both ship.
+ignore = []
+
+[licenses]
+# The set this project can ship under. Copyleft licences are refused here for
+# the same reason `crates/read` refuses unlicensed sources: a dependency whose
+# terms are not settled is not admitted.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "CC0-1.0",
+    "0BSD",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+unlicensed = "deny"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Crates banned by name, with the reason kept next to the ban.
+deny = []
+# Sockets to the outside world are not built into this workspace's product
+# crates; the ones that exist are named here so a new one is a deliberate act.
+# (Empty until a crate actually needs a network client.)
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

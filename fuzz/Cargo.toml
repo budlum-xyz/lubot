@@ -1,0 +1,37 @@
+# The fuzz targets live outside the workspace on purpose: `libfuzzer-sys` needs
+# a nightly toolchain and a sanitizer runtime, and `cargo test --workspace` must
+# keep working on the pinned stable toolchain without them. The `[workspace]`
+# table below is what detaches this directory from the parent workspace.
+[package]
+name = "lubot-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.lubot-kodlayici]
+path = "../crates/kodlayici"
+
+[[bin]]
+name = "baslik_oku"
+path = "fuzz_targets/baslik_oku.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "yapilandirma_oku"
+path = "fuzz_targets/yapilandirma_oku.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+
+[profile.release]
+debug = 1

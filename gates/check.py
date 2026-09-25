@@ -2375,6 +2375,224 @@ def selftest_doc_links_resolve() -> None:
     assert re.search(r"(?<![A-Za-z0-9_])Gone(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
 
 
+
+# --------------------------------------------------------------------------
+# gate: the security workflows are hardened, and the hardening is checked here
+# --------------------------------------------------------------------------
+# A workflow is code that runs with a token, on a machine that can reach the
+# network, triggered by events an outside contributor can cause. The properties
+# below are the ones whose absence has been used to attack real repositories:
+# a tag-pinned action whose tag was repointed, a workflow with no `permissions`
+# block and therefore the default token, `pull_request_target` checking out the
+# pull request's own head, credentials left in the checkout, a job with no
+# timeout that can hang a runner for six hours.
+#
+# The check is textual on purpose: PyYAML is available on GitHub's runners but
+# not guaranteed anywhere else, and a gate that refuses to run when a module is
+# missing is a gate that silently stops protecting. The shape of these files is
+# constrained enough (two-space indentation, one key per line) that a line-wise
+# reader is exact here - and the self-test proves it catches each violation.
+
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
+
+# Actions that are first-party or that the repository has decided to trust by
+# name, and which may therefore be written with a major-version tag. Everything
+# else must be a 40-character commit.
+WORKFLOW_TAG_ALLOWED = {
+    "actions/checkout",
+    "actions/upload-artifact",
+    "actions/download-artifact",
+    "actions/attest-build-provenance",
+    "actions/dependency-review-action",
+    "github/codeql-action/init",
+    "github/codeql-action/analyze",
+    "github/codeql-action/autogenerate",
+    "github/codeql-action/upload-sarif",
+    "ossf/scorecard-action",
+}
+
+# Jobs that are allowed to write something, with the reason they are.
+WORKFLOW_WRITE_ALLOWED = {
+    "security-events: write",
+    "id-token: write",
+    "attestations: write",
+    "issues: write",
+    "pull-requests: write",
+    "contents: write",
+}
+
+
+def _workflow_files() -> list[Path]:
+    return sorted(WORKFLOW_DIR.glob("*.yml")) + sorted(WORKFLOW_DIR.glob("*.yaml"))
+
+
+def _workflow_findings(text: str, ad: str) -> list[str]:
+    """Every hardening rule, as a list of complaints about one workflow."""
+    bulgular: list[str] = []
+    satirlar = text.splitlines()
+
+    if "permissions:" not in text:
+        bulgular.append(f"{ad}: no permissions block, so the token is the default one")
+    if "pull_request_target" in text:
+        bulgular.append(f"{ad}: pull_request_target runs with a write token on untrusted input")
+    if "persist-credentials: false" not in text and "actions/checkout" in text:
+        bulgular.append(f"{ad}: checkout keeps the credential in .git/config")
+
+    # Every `uses:` either a commit or an allowlisted first-party action.
+    # Comments are dropped first: this file's own prose mentions `uses:` and a
+    # check that reads its own documentation as code complains about nothing.
+    for satir in satirlar:
+        kod = satir.split("#", 1)[0]
+        eslesme = re.search(r"uses:\s*([^\s]+)", kod)
+        if not eslesme:
+            continue
+        hedef = eslesme.group(1)
+        if hedef.startswith("./"):
+            continue
+        if "@" not in hedef:
+            bulgular.append(f"{ad}: `{hedef}` has no ref at all")
+            continue
+        yol, _, ref = hedef.rpartition("@")
+        # A first-party action may carry a released major version, because a
+        # major tag is the contract those actions publish. It may not carry a
+        # branch: `@main` is a moving target by construction.
+        birinci_taraf = yol in WORKFLOW_TAG_ALLOWED
+        if birinci_taraf and re.fullmatch(r"v\d+(\.\d+)*", ref):
+            continue
+        if birinci_taraf and ref in {"main", "master", "HEAD"}:
+            bulgular.append(f"{ad}: `{yol}` tracks the `{ref}` branch, not a release")
+            continue
+        if not re.fullmatch(r"[0-9a-f]{40}", ref):
+            bulgular.append(
+                f"{ad}: `{yol}` is pinned to `{ref}`, which can be repointed; "
+                "use a 40-character commit"
+            )
+
+    # Each job needs a timeout: the default is six hours of a runner. Only the
+    # section after `jobs:` counts - the trigger names under `on:` are indented
+    # the same way and are not jobs.
+    _, _, govde = text.partition("\njobs:")
+    isler = re.findall(r"^  ([a-z][a-z0-9_-]*):\s*$", govde, re.MULTILINE)
+    for isim in isler:
+        blok = govde.split(f"\n  {isim}:", 1)[1]
+        son = re.search(r"\n  [a-z][a-z0-9_-]*:\s*$", blok, re.MULTILINE)
+        if son:
+            blok = blok[: son.start()]
+        if "timeout-minutes:" not in blok:
+            bulgular.append(f"{ad}: job `{isim}` has no timeout-minutes")
+
+    # `write` permissions only from the list this repository has decided about,
+    # and only inside a job rather than at the top of the file.
+    ust = text.split("\njobs:", 1)[0]
+    for satir in ust.splitlines():
+        if satir.startswith("  ") and ": write" in satir:
+            bulgular.append(f"{ad}: write permission `{satir.strip()}` at the top level")
+    for satir in satirlar:
+        temiz = satir.strip()
+        if temiz.endswith(": write") and temiz not in WORKFLOW_WRITE_ALLOWED:
+            bulgular.append(f"{ad}: unlisted write permission `{temiz}`")
+
+    # `run:` steps must not interpolate the event payload into a shell: that is
+    # the classic template-injection route from an issue title to a command.
+    for satir in satirlar:
+        if satir.strip().startswith("#"):
+            continue
+        if "${{" in satir and ("github.event." in satir or "github.head_ref" in satir):
+            bulgular.append(f"{ad}: `${{{{ ... }}}}` from the event payload next to a shell: {satir.strip()}")
+
+    return bulgular
+
+
+def gate_guvenlik_workflowlari() -> str:
+    """Every workflow is parsed, hardened and counted."""
+    dosyalar = _workflow_files()
+    if not dosyalar:
+        raise SystemExit("no workflows found: .github/workflows is empty")
+    bulgular: list[str] = []
+    isler = 0
+    for yol in dosyalar:
+        text = yol.read_text(encoding="utf-8")
+        if "jobs:" not in text:
+            bulgular.append(f"{yol.name}: no jobs")
+        isler += len(re.findall(r"^  ([a-z][a-z0-9_-]*):\s*$", text, re.MULTILINE))
+        bulgular.extend(_workflow_findings(text, yol.name))
+    # The scanning workflows must be scheduled, not only triggered by a push:
+    # an advisory published after the last commit is the normal case.
+    zamanli = [y for y in dosyalar if re.search(r"cron:", y.read_text(encoding="utf-8"))]
+    if len(zamanli) < 2:
+        bulgular.append("fewer than two workflows run on a schedule")
+    if bulgular:
+        raise SystemExit("; ".join(bulgular))
+    return f"{len(dosyalar)} workflows, {isler} jobs, {len(zamanli)} scheduled, all hardened"
+
+
+def selftest_guvenlik_workflowlari() -> None:
+    iyi = """name: X
+on: [push]
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+"""
+    assert _workflow_findings(iyi, "iyi.yml") == [], _workflow_findings(iyi, "iyi.yml")
+
+    # A third-party action written with a tag is the tj-actions shape: the tag
+    # is the attacker's, and it can be moved after the review.
+    tagli = iyi.replace(
+        "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
+        "someone/unknown-action@v1",
+    )
+    assert any("repointed" in b for b in _workflow_findings(tagli, "t.yml")), "third-party tag must be caught"
+    # A first-party action may use a major tag, but never a branch.
+    birinci = iyi.replace("08c6903cd8c0fde910a37f88322edcfb5dd907a8", "v5.0.0")
+    assert _workflow_findings(birinci, "b.yml") == [], _workflow_findings(birinci, "b.yml")
+    dal = iyi.replace("08c6903cd8c0fde910a37f88322edcfb5dd907a8", "main")
+    assert any("branch" in b for b in _workflow_findings(dal, "d.yml")), "branch tracking must be caught"
+
+    izinsiz = iyi.replace("permissions:\n  contents: read\n", "")
+    assert any("permissions block" in b for b in _workflow_findings(izinsiz, "p.yml"))
+
+    hedef = iyi.replace("on: [push]", "on: [pull_request_target]")
+    assert any("pull_request_target" in b for b in _workflow_findings(hedef, "h.yml"))
+
+    kimlik = iyi.replace("persist-credentials: false", "persist-credentials: true")
+    assert any("credential in .git/config" in b for b in _workflow_findings(kimlik, "k.yml"))
+
+    zamanasiz = iyi.replace("    timeout-minutes: 5\n", "")
+    assert any("timeout-minutes" in b for b in _workflow_findings(zamanasiz, "z.yml"))
+
+    yazma = iyi.replace("permissions:\n  contents: read", "permissions:\n  contents: write")
+    assert any("write permission" in b for b in _workflow_findings(yazma, "w.yml"))
+
+    # The trigger names under `on:` are not jobs and must not be demanded a
+    # timeout; the first version of this gate demanded one for `push`.
+    tetikleyicili = iyi.replace("on: [push]", "on:\n  push:\n  schedule:\n    - cron: \"0 3 * * *\"")
+    assert _workflow_findings(tetikleyicili, "t2.yml") == [], _workflow_findings(tetikleyicili, "t2.yml")
+
+    # Prose that mentions `uses:` in a comment is not a use.
+    yorumlu = iyi.replace(
+        "      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0",
+        "      # a new `uses:` written with @v4 fails the build\n"
+        "      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0",
+    )
+    assert _workflow_findings(yorumlu, "y2.yml") == [], _workflow_findings(yorumlu, "y2.yml")
+
+    enjeksiyon = iyi + "      - run: echo ${{ github.event.issue.title }}\n"
+    assert any("shell" in b for b in _workflow_findings(enjeksiyon, "e.yml"))
+
+    # The allowlist must not swallow a third-party action written with a tag.
+    yabanci = iyi.replace(
+        "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
+        "someone/unknown-action@v1",
+    )
+    assert any("repointed" in b for b in _workflow_findings(yabanci, "y.yml")), "unknown tag must be refused"
+
 # --------------------------------------------------------------------------
 # gate: no boolean compared to a literal
 # --------------------------------------------------------------------------
@@ -6287,6 +6505,7 @@ GATES_EXTRA = {
     "inference-cache-agrees": (gate_inference_cache_agrees, selftest_inference_cache_agrees),
     "training-run-is-measured": (gate_training_run_is_measured, selftest_training_run_is_measured),
     "reranker-is-measured": (gate_reranker_is_measured, selftest_reranker_is_measured),
+    "guvenlik-workflowlari": (gate_guvenlik_workflowlari, selftest_guvenlik_workflowlari),
 }
 
 

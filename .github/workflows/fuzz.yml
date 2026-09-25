@@ -1,0 +1,85 @@
+name: Fuzz
+
+# The checkpoint reader takes bytes that came from somewhere else, so its input
+# is the definition of untrusted. This runs a bounded session (not a
+# never-ending fuzzer, which a hosted runner cannot offer) over the header
+# parser, the part-aware reader and the configuration reader.
+#
+# The seed corpus is committed, so a run starts from the shapes that already
+# exist rather than from nothing; a crash writes its input back as an artifact
+# and as a comment on the issue the workflow opens.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * 6"
+  pull_request:
+    paths:
+      - "crates/kodlayici/**"
+      - "fuzz/**"
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz the reader (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [baslik_oku, yapilandirma_oku]
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install nightly (cargo-fuzz needs the sanitizer runtimes)
+        run: |
+          set -euo pipefail
+          rustup toolchain install nightly --profile minimal
+          rustup default nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked --version 0.13.2
+
+      - name: Fuzz for ten minutes per target
+        run: |
+          set -euo pipefail
+          cargo fuzz run ${{ matrix.target }} -- -max_total_time=600 -rss_limit_mb=2048
+
+      - name: Keep any crashing input
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          retention-days: 90
+
+  regression:
+    name: The fuzz seeds are replayed as tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+      # A crashing input that is fixed must stay fixed: the seeds are part of
+      # the suite, so this is the cheapest fuzz regression there is.
+      - name: Replay the committed seeds
+        run: cargo test -p lubot-kodlayici -- --nocapture fuzz_seed

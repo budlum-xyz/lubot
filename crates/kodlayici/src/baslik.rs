@@ -110,9 +110,32 @@ pub struct ParcaliDosya {
     parcalar: Vec<PathBuf>,
     boyutlar: Vec<u64>,
     toplam: u64,
+    /// The whole artifact when it was handed over as bytes rather than as
+    /// files. `None` on the real path, where the parts are read from disk one
+    /// range at a time; `Some` when a caller already has the image in memory,
+    /// which is what the fuzz targets do - they must not need a filesystem to
+    /// exercise a reader whose input is untrusted bytes.
+    bellek: Option<std::sync::Arc<Vec<u8>>>,
 }
 
 impl ParcaliDosya {
+    /// A reader over one in-memory image.
+    ///
+    /// The bytes are treated exactly as the files would be: the same header
+    /// parse, the same range checks, the same refusals. Nothing about the
+    /// in-memory path is more permissive, because a fuzzer that exercises a
+    /// lenient twin of the real reader proves nothing about the real reader.
+    #[must_use]
+    pub fn bellekten(veri: Vec<u8>) -> Self {
+        let boyut = veri.len() as u64;
+        Self {
+            parcalar: vec![PathBuf::from("<bellek>")],
+            boyutlar: vec![boyut],
+            toplam: boyut,
+            bellek: Some(std::sync::Arc::new(veri)),
+        }
+    }
+
     /// Opens every part in the directory whose name starts with `on_ek`.
     ///
     /// Parts are ordered by name, which is why the packer zero-pads the index:
@@ -153,6 +176,7 @@ impl ParcaliDosya {
         }
         let toplam = boyutlar.iter().sum();
         Ok(Self {
+            bellek: None,
             parcalar,
             boyutlar,
             toplam,
@@ -178,6 +202,14 @@ impl ParcaliDosya {
     pub fn sha256(&self) -> Result<String, BaslikHatasi> {
         use sha2::{Digest, Sha256};
         let mut ozet = Sha256::new();
+        if let Some(veri) = &self.bellek {
+            ozet.update(veri.as_slice());
+            return Ok(ozet
+                .finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect());
+        }
         let mut tampon = vec![0_u8; 1 << 20];
         for parca in &self.parcalar {
             let mut dosya = std::fs::File::open(parca).map_err(|e| BaslikHatasi::Baslik {
@@ -235,7 +267,11 @@ impl ParcaliDosya {
         let mut uzunluk_baytlari = [0_u8; 8];
         self.oku(0, &mut uzunluk_baytlari)?;
         let uzunluk = u64::from_le_bytes(uzunluk_baytlari);
-        Ok(8 + uzunluk)
+        8_u64
+            .checked_add(uzunluk)
+            .ok_or_else(|| BaslikHatasi::Baslik {
+                mesaj: "baslik uzunlugu tasiyor".to_string(),
+            })
     }
 
     /// Reads `hedef.len()` bytes starting at `ofset`, across part boundaries.
@@ -244,11 +280,27 @@ impl ParcaliDosya {
     /// [`BaslikHatasi::AralikDisi`] when the range runs past the end of the
     /// data, or [`BaslikHatasi::Okunamadi`] when a part cannot be read.
     pub fn oku(&self, ofset: u64, hedef: &mut [u8]) -> Result<(), BaslikHatasi> {
-        let son = ofset + hedef.len() as u64;
+        let Some(son) = ofset.checked_add(hedef.len() as u64) else {
+            return Err(BaslikHatasi::AralikDisi {
+                ad: format!("{ofset} + {} tasiyor", hedef.len()),
+            });
+        };
         if son > self.toplam {
             return Err(BaslikHatasi::AralikDisi {
                 ad: format!("{ofset}..{son} (boyut {})", self.toplam),
             });
+        }
+        if let Some(veri) = &self.bellek {
+            // `son <= toplam` was just checked, and `toplam` is the length of
+            // this buffer, so the slice below cannot be out of bounds; the
+            // `get` form keeps that a fact rather than an assumption.
+            let dilim = veri
+                .get(ofset as usize..son as usize)
+                .ok_or_else(|| BaslikHatasi::AralikDisi {
+                    ad: format!("{ofset}..{son}"),
+                })?;
+            hedef.copy_from_slice(dilim);
+            return Ok(());
         }
         let mut yazilan = 0usize;
         let mut kalan_ofset = ofset;
@@ -322,8 +374,16 @@ impl Dizin {
         // allocation), and it has to be small enough that it describes tensors
         // rather than *being* the data. Both are refusals, because a header
         // that does not fit is a file that cannot be read at all.
+        // The addition is checked rather than trusted: a header that declares
+        // `u64::MAX` used to overflow here and panic in debug builds, which the
+        // fuzz seed corpus found on its first run. A reader that panics on a
+        // file it was handed is a reader that can be stopped by a file.
         const EN_BUYUK_BASLIK: u64 = 64 * 1024 * 1024;
-        if uzunluk == 0 || 8 + uzunluk as u64 > dosya.boyut() || uzunluk as u64 > EN_BUYUK_BASLIK {
+        let toplam = 8_u64.checked_add(uzunluk as u64);
+        if uzunluk == 0
+            || toplam.is_none_or(|t| t > dosya.boyut())
+            || uzunluk as u64 > EN_BUYUK_BASLIK
+        {
             return Err(BaslikHatasi::Baslik {
                 mesaj: format!("baslik uzunlugu makul degil: {uzunluk}"),
             });
@@ -337,7 +397,11 @@ impl Dizin {
             serde_json::from_str(&metin).map_err(|h| BaslikHatasi::Baslik {
                 mesaj: h.to_string(),
             })?;
-        let veri_baslangici = 8 + uzunluk as u64;
+        let veri_baslangici = 8_u64
+            .checked_add(uzunluk as u64)
+            .ok_or_else(|| BaslikHatasi::Baslik {
+                mesaj: "baslik uzunlugu tasiyor".to_string(),
+            })?;
         // JSON objects have no order, so the header's *listing* order says
         // nothing about where the bytes are: tensors are checked by their
         // ranges, sorted, not by the order they were written in. Getting this
@@ -359,10 +423,11 @@ impl Dizin {
             })
             .max()
             .unwrap_or(0);
-        if veri_baslangici + gereken > dosya.boyut() {
+        let gereken_toplam = veri_baslangici.checked_add(gereken);
+        if gereken_toplam.is_none_or(|t| t > dosya.boyut()) {
             return Err(BaslikHatasi::ParcaEksik {
                 var: dosya.boyut(),
-                gereken: veri_baslangici + gereken,
+                gereken: gereken_toplam.unwrap_or(u64::MAX),
             });
         }
         let mut tensors: BTreeMap<String, TensorBasligi> = BTreeMap::new();
@@ -481,7 +546,13 @@ impl Dizin {
         };
         let baslangic = baslik.data_offsets[0] + ilk * genislik;
         let mut ham = vec![0_u8; adet * genislik];
-        dosya.oku(self.veri_baslangici + baslangic as u64, &mut ham)?;
+        let mut_sonu = self
+            .veri_baslangici
+            .checked_add(baslangic as u64)
+            .ok_or_else(|| BaslikHatasi::AralikDisi {
+                ad: format!("{ad} ofseti tasiyor"),
+            })?;
+        dosya.oku(mut_sonu, &mut ham)?;
         match baslik.dtype.as_str() {
             "F32" => {
                 let (parcalar, kalan) = ham.as_chunks::<4>();
@@ -524,7 +595,11 @@ impl Dizin {
         })?;
         let mut ham = vec![0_u8; baslik.bayt()];
         dosya.oku(
-            self.veri_baslangici + baslik.data_offsets[0] as u64,
+            self.veri_baslangici
+                .checked_add(baslik.data_offsets[0] as u64)
+                .ok_or_else(|| BaslikHatasi::AralikDisi {
+                    ad: format!("{ad} ofseti tasiyor"),
+                })?,
             &mut ham,
         )?;
         match baslik.dtype.as_str() {
