@@ -30,6 +30,7 @@ use lubot_grant::training::MAX_TRAINING_GRANT_EPOCHS;
 
 pub mod kontrol;
 pub mod kosu;
+pub mod olcum;
 pub mod veri;
 
 /// Relative error above which the backward pass is considered wrong.

@@ -46,7 +46,7 @@ fn usage() -> String {
         "  lubot queue list [--file q.jsonl]",
         "  lubot queue run [--file q.jsonl] [--budget n] [--check cmd] [--audit f] [--outputs f] [--book b] [--watch --poll s --idle n]",
         "  lubot queue log [--file q.jsonl] [--limit n]",
-        "  lubot sohbet --ckpt <f> --sorgu \"...\" [--tohum N] [--sicaklik T] [--top-k K] [--top-p P] [--en-cok N] [--kayit f.json]",
+        "  lubot sohbet --ckpt <f> --sorgu \"...\" [--tohum N] [--sicaklik T] [--top-k K] [--top-p P] [--en-cok N] [--tekrar-cezasi C] [--kac-gram N] [--en-az-jeton N] [--kaydirma yeniden|onbellek] [--kayit f.json]",
         "  lubot ratchet [--set] [--baseline training/ratchet.json]",
         "  lubot envanter [--corpus-dir corpus]",
         "  lubot it -m <msg> --path <p> [--path p2 ...] [--dry-run] [--branch b]",
