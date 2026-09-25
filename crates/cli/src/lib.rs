@@ -39,8 +39,8 @@ pub mod odeme;
 pub mod olcum;
 pub mod queue;
 pub mod ratchet;
-pub mod sohbet;
 pub mod sikistir;
+pub mod sohbet;
 pub mod soru;
 
 use lubot_answer::Answer;
