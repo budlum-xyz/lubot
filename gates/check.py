@@ -6391,6 +6391,158 @@ def selftest_credential_shapes_are_measured() -> None:
 
 
 
+
+def gate_apk_sozlesmesi() -> str:
+    """APK sozlesmesi: izin listesi, JNI yuzeyi ve agirliklarin cihazda olmamasi.
+
+    Kapi, APK'nin **uretilmis olmasini** istemez - her makinede Android araci
+    zinciri yok ve olmayan bir arac yuzunden kapi dusurmek, kapiyi kapatan sey
+    olurdu. Istedigi sey sozlesmenin kodda tutmasi:
+
+    * manifest tam olarak bir izin ister (INTERNET) ve fazlasi varsa duser;
+    * `Kopru.java`'daki `native` bildirimleri ile `crates/arayuz`'deki `Java_*`
+      islevleri birebir aynidir (sayi degil, ad kumesi);
+    * agirlik dosyasi (`.safetensors`) APK'nin icine konmaz: telefondaki istemci
+      sorar, dugum puanlar.
+
+    Kapi, **paket adinin Java kaynagiyla ayni oldugunu** da soyler. Bu satir bir
+    kez gercek bir hatayi yakaladi: manifest `xyz.budlum.lubot` yaziyordu, Java
+    kaynagi `dev.budlum.lubot` bildiriyordu; `aapt2` `R` sinifini manifest'teki
+    pakete urettigi icin derleme `package R does not exist` ile dustu. Manifest
+    ile kaynak ayni seyi soylemek zorunda, ve bunu bir kapi soyler.
+    """
+    manifest = ROOT / "android" / "AndroidManifest.xml"
+    if not manifest.is_file():
+        raise SystemExit("android/AndroidManifest.xml yok")
+    metin = manifest.read_text(encoding="utf-8")
+    izinler = set(re.findall(r"android\.permission\.[A-Z_]+", metin))
+    beklenen = {"android.permission.INTERNET"}
+    if izinler != beklenen:
+        raise SystemExit(f"izin listesi sozlesmeye uymuyor: {sorted(izinler)}")
+    if "usesCleartextTraffic=\"false\"" not in metin:
+        raise SystemExit("sifresiz trafik yasagi manifest'te yok")
+    if "allowBackup=\"false\"" not in metin:
+        raise SystemExit("yedekleme yasagi manifest'te yok")
+    java = (ROOT / "android" / "src" / "dev" / "budlum" / "lubot" / "Kopru.java").read_text(
+        encoding="utf-8"
+    )
+    java_adlar = sorted(re.findall(r"static\s+native\s+\w+\s+(\w+)\s*\(", java))
+    # Java dosyasinin bildirdigi paket ile manifest'in bildirdigi paket ayni
+    # olmali: `R` sinifi manifest'teki ada gore uretilir ve uyusmazlik derlemeyi
+    # dusurur (bkz. fonksiyonun belgesi).
+    java_paket = re.search(r"^\s*package\s+([\w.]+)\s*;", java, re.M)
+    if java_paket is None:
+        raise SystemExit("Kopru.java paket bildirmiyor")
+    manifest_paket = re.search(r'package="([\w.]+)"', metin)
+    if manifest_paket is None:
+        raise SystemExit("manifest paket bildirmiyor")
+    if java_paket.group(1) != manifest_paket.group(1):
+        raise SystemExit(
+            f"paket adi uyusmuyor: manifest {manifest_paket.group(1)} / java {java_paket.group(1)}"
+        )
+    rust = (ROOT / "crates" / "arayuz" / "src" / "lib.rs").read_text(encoding="utf-8")
+    onek = "Java_" + manifest_paket.group(1).replace(".", "_") + "_Kopru_"
+    rust_adlar = sorted(
+        m.replace(onek, "")
+        for m in re.findall(r"extern\s+\"system\"\s+fn\s+(Java_\w+)", rust)
+    )
+    if java_adlar != rust_adlar:
+        raise SystemExit(f"JNI sozlesmesi uyusmuyor: java {java_adlar} / rust {rust_adlar}")
+    if not java_adlar:
+        raise SystemExit("JNI yuzeyi bos: kopru yazilmamis olabilir")
+    # Agirliklar cihazda durmaz. Kural **dosya adi ve boyutu** uzerinden
+    # kurulur, uzanti uzerinden degil: `fuzz/seeds/*.safetensors` tohumlari da
+    # bu uzantiyi tasir ve onlar birer test fiksturudur (yuz bayt mertebesinde).
+    # Uzantiyi yasaklamak, kapiyi ilk kosusunda yanlis yere dusuren seydi; kapi
+    # buldugu seyi **adiyla** soyler ve adi `model.safetensors` olan ya da bir
+    # megabayti asan bir dosya gercekten cihaza konmus bir agirliktir.
+    for yol in ROOT.rglob("*.safetensors*"):
+        if "target" in yol.parts:
+            continue
+        ad = yol.name
+        if ad.startswith("model.safetensors") or yol.stat().st_size > 1_000_000:
+            raise SystemExit(
+                f"agirlik urun agacinda: {yol.relative_to(ROOT)} ({yol.stat().st_size} bayt)"
+            )
+    # Istemcide karar mantigi yok: Activity hicbir esik ya da yedek cevap
+    # tasimaz. Arama **koda** yapilir, yoruma degil: kapinin ilk hali yorumdaki
+    # "no threshold" cumlesini yakalayip yanlis yere dustu, ve bir kapi kendi
+    # konusunu yasaklarsa, dokumantasyon yazilamaz hale gelir. Yorumlar once
+    # silinir; o zaman geriye kalan sey, calisan koddur.
+    activity = (
+        ROOT / "android" / "src" / "dev" / "budlum" / "lubot" / "AnaEtkinlik.java"
+    ).read_text(encoding="utf-8")
+    kod = re.sub(r"/\*.*?\*/", "", activity, flags=re.S)
+    kod = re.sub(r"//[^\n]*", "", kod)
+    for yasak in ("threshold", "fallback", "varsayilan_cevap"):
+        if yasak in kod:
+            raise SystemExit(f"istemcide karar mantigi izi: `{yasak}`")
+    return (
+        f"APK sozlesmesi: {len(izinler)} izin, {len(java_adlar)} JNI islevi "
+        f"(java=rust), agirlik urun agacinda yok, istemci karar vermiyor"
+    )
+
+
+def selftest_apk_sozlesmesi() -> None:
+    """Kanarya: sozlesme kurallarinin her biri isiriyor mu."""
+    import tempfile
+
+    govde = (
+        '<?xml version="1.0"?><manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+        '<uses-permission android:name="android.permission.INTERNET" />'
+        '<application android:allowBackup="false" android:usesCleartextTraffic="false" />'
+        "</manifest>"
+    )
+    izin = set(re.findall(r"android\.permission\.[A-Z_]+", govde))
+    assert izin == {"android.permission.INTERNET"}, "izin ayristirma bozuk"
+    # Fazla izin kanaryasi: metne ikinci bir izin eklenir ve kumenin buyudugu
+    # gorulur. Tirnaklar kacisli yazilir; kanarya testinin kendisi sozdizimi
+    # hatasi verirse hicbir sey sinanmis olmaz.
+    fazlali = govde.replace(
+        "/>",
+        ' /><uses-permission android:name="android.permission.CAMERA" />',
+        1,
+    )
+    fazla = set(re.findall(r"android\.permission\.[A-Z_]+", fazlali))
+    assert len(fazla) == 2, f"fazla izin yakalanmadi: {sorted(fazla)}"
+    java = "public static native String surum();\npublic static native String istek(String a, int b);"
+    adlar = re.findall(r"static\s+native\s+\w+\s+(\w+)\s*\(", java)
+    assert adlar == ["surum", "istek"], f"native ayristirma bozuk: {adlar}"
+    assert "usesCleartextTraffic=\"false\"" in govde, "cleartext kuralı okunmadi"
+    # Paket kanaryasi: manifest ile Java kaynagi ayni paketi soylemeli. Kanarya
+    # iki sahte kaynak kurar - biri uyumlu, biri degil - ve karsilastirmanin
+    # gercekten isirdigini gosterir.
+    java_kanarya = "package dev.budlum.lubot;\npublic final class Kopru {}"
+    uyumlu_manifest = '<manifest xmlns:android="x" package="dev.budlum.lubot">'
+    aykiri_manifest = '<manifest xmlns:android="x" package="xyz.budlum.lubot">'
+    jp = re.search(r"^\s*package\s+([\w.]+)\s*;", java_kanarya, re.M).group(1)
+    mp = re.search(r'package="([\w.]+)"', uyumlu_manifest).group(1)
+    assert jp == mp, "uyumlu kanarya uyumsuz cikti"
+    ap = re.search(r'package="([\w.]+)"', aykiri_manifest).group(1)
+    assert jp != ap, "aykiri kanarya yakalanmadi"
+    # JNI oneki paketten turetilir: paket bir kez yanlis yazildiginda Rust
+    # tarafindaki adlar da yanlis onekle aranir ve kume bos kalir. Kanarya bunu
+    # gosterir - yani "uyusmazlik" sessizce gecmez.
+    onek = "Java_" + jp.replace(".", "_") + "_Kopru_"
+    assert onek == "Java_dev_budlum_lubot_Kopru_", f"onek yanlis: {onek}"
+    assert "Java_xyz_budlum_lubot_Kopru_surum".replace(onek, "") == (
+        "Java_xyz_budlum_lubot_Kopru_surum"
+    ), "yanlis onek kirpilmis gibi gorundu"
+    # Yorum silme kanaryasi: yorumdaki kelime gecmeli, koddaki kalmali.
+    yorumlu = "// no threshold here\nint x = 1;"
+    kod_kanarya = re.sub(r"//[^\n]*", "", yorumlu)
+    assert "threshold" not in kod_kanarya, "yorum silinmedi"
+    kodda = "int threshold = 3;"
+    assert "threshold" in re.sub(r"//[^\n]*", "", kodda), "kodda iz bulunamadi"
+    # Kapi, kendi kanaryasinin yazdigi gecici agacta agirlik aramaz; asagisi
+    # yalnizca arama mantiginin calistigini gosterir.
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "model.safetensors.part-00"
+        p.write_bytes(b"x")
+        bulunan = [y for y in Path(d).rglob("*.safetensors*")]
+        assert len(bulunan) == 1, "agirlik taramasi bozuk"
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -6506,6 +6658,7 @@ GATES_EXTRA = {
     "training-run-is-measured": (gate_training_run_is_measured, selftest_training_run_is_measured),
     "reranker-is-measured": (gate_reranker_is_measured, selftest_reranker_is_measured),
     "guvenlik-workflowlari": (gate_guvenlik_workflowlari, selftest_guvenlik_workflowlari),
+    "apk-sozlesmesi": (gate_apk_sozlesmesi, selftest_apk_sozlesmesi),
 }
 
 

@@ -31,8 +31,7 @@
             android:layout_height="wrap_content"
             android:paddingTop="2dp"
             android:textSize="12sp"
-            android:textColor="@color/yazi_silik"
-            android:text="@string/yukleniyor" />
+            android:textColor="@color/yazi_silik" />
     </LinearLayout>
 
     <View

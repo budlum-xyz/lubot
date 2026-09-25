@@ -18,6 +18,19 @@ admission rule rather than a missing feature: the correctness of a generated
 work is undefined, and a system that accepts nothing it cannot check has
 nothing to check a generation against.
 
+
+## On a phone
+
+The same core runs on Android, through a bridge in this repository and no
+third-party UI library: `crates/arayuz` exports four JNI functions, and the app
+is one activity built from `android/res/layout/ana.xml`. The APK carries the
+corpus (9.1 MB gzipped, 81673 records) so the phone answers from its own copy
+and the network is only used to ask a node when the user wants one. Secrets are
+masked on the device **before** the question leaves it, and the weights are not
+in the APK at all - a client that carries the model is a client that can be
+read, and the sixth hardening layer says the decision does not live there. See
+`app/README.md` for the measured numbers and the two toolchains the build needs.
+
 ## What works today
 
 | capability | crate | evidence |

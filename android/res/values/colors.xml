@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Karanlik palet: gece okunan bir kaynak listesi icin. -->
 <resources>
     <color name="arkaplan">#0D1117</color>
     <color name="yuzey">#161B22</color>
@@ -6,6 +7,7 @@
     <color name="yazi">#E6EDF3</color>
     <color name="yazi_silik">#8B949E</color>
     <color name="balon_kullanici">#1F6FEB</color>
+    <color name="balon_kullanici_yazi">#FFFFFF</color>
     <color name="balon_lubot">#21262D</color>
     <color name="hata_yazi">#F85149</color>
 </resources>
