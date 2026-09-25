@@ -118,3 +118,33 @@ A crate with no entry in `ARCHITECTURE` is reported as unclassified and left out
 of the layer check rather than assumed into a layer, because an assumed layer
 produces violations that mean nothing. It is still checked for cycles, because a
 cycle makes the graph unstartable regardless of which layer anything sits in.
+
+## From-scratch training stack (NN pipeline)
+
+The pipeline crates for the from-scratch run: tokenizer, parameterization,
+architecture, data mixing, distillation, comparison and the decision head.
+They are written, workspace members and tested; the ones the binary does not
+reach yet are named in `gates/unwired.baseline`, which may only shrink. No
+upstream weights, code or data enter any of them (K1/K2): where an outside
+method inspired a design (muP scaling, three-stage transparency practice,
+sub-byte quantization), only the method was taken and is named as such.
+
+| crate | lines | tests | the rule it holds |
+|---|---|---|---|
+| `sozluk` | 548 | 20 | A deterministic BPE tokenizer for this tree: AST-aware code versus text slicing, merge learning from frequencies, encode/decode round-trip and a measured token rate. Same input, same ids, every time. |
+| `bpe-gelismis` | 360 | 17 | The extended vocabulary family on top of the frozen base: fill-in-middle, code-metadata and instruction tokens under Lubot's own names. An upstream token name would be a served upstream name, so none exists. |
+| `mu` | 350 | 15 | Maximal-update parametrization as data: init std and learning-rate scale per parameter group, logit scale `1/d_model`, weight-decay split. Method inspiration only - no code, no numbers imported. |
+| `derin` | 352 | 16 | Deep-and-narrow configurations with weight tying and tensor-less parameter accounting: the spec counts 924.288 parameters for lubot-a1 and refuses a configuration above the measured hardware ceiling (K6). |
+| `transformer` | 474 | 21 | A transformer forward pass written here: RoPE applied to the first quarter of the hidden width with the half-split pairing, attention scale `1/d_k`, LayerNorm, muP embedding and readout scales. Deterministic: two runs agree bit for bit. |
+| `veri` | 423 | 15 | The data mix: real/synthetic/compiler/curriculum strata, each record with its provenance pair, deduplication to zero duplicates and a deterministic held-out split. A record without provenance is refused, not completed. |
+| `kendinden` | 335 | 15 | Self-distillation without an outside teacher: candidates pass a mechanical jury (citation, schema, licence, provenance, confidence floor) or fall into error mining with a reason. A refusal without a reason is refused. |
+| `kapisma` | 351 | 14 | The comparison protocol: the opponent class is declared with numbers, match claims stay on the task axis, and no rival output ever enters corpus or curriculum - the comparison report is the only place it lives. |
+| `karar` | 1417 | 21 | The decision head as its own crate: closed verdict shapes, a doctrine compiled in, a 14-case battery, a SHA-256 verdict ledger and k-of-n agreement over independently initialised heads. No generation surface exists to guard. |
+| `uc-asama` | 443 | 18 | Three named training stages over our own corpus only, with a data bucket per checkpoint: which records trained which step is a kept record, not a memory. Stage proportions are declared, and the transparency report lists every bucket. |
+| `paralel` | 210 | 11 | Parallel and mixed-precision run planning: batch and precision classes with their throughput ratios, so a speed claim names the class it was measured in. |
+| `karma` | 286 | 11 | Cross-stage token accounting: how the real/synthetic/compiler/curriculum strata are interleaved across the three stages, with per-stage token totals that add up to the declared mix. |
+| `sistem` | 263 | 11 | The training system named as components: what exists, what is measured, what is still skeleton - a transparency report the repository can recompute rather than re-assert. |
+| `nicem` | 2697 | 61 | Sub-byte weight quantization from first principles: a binary16 codec checked against all 65536 patterns, in-place Hadamard normalisation, analytic Lloyd-Max codebooks for 1-8 bits and ternary, and bit packing whose inverse is exact. |
+| `tasiyici` | 1725 | 32 | A weight container read in place: a fixed magic, structure verified at open, byte-identical output for identical input, and a depth ladder that refuses a machine that cannot hold step zero rather than pretending depth zero. |
+| `sir` | 623 | 15 | Secrets are masked on the write path, not on the way out: what reaches storage is already masked, so a read path has nothing to leak. |
+| `gunluk` | 439 | 16 | Operator logs parsed into records, passed through `sir` first: a log line that carries a secret shape enters masked or not at all. |

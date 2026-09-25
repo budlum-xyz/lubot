@@ -40,10 +40,12 @@ cross-check tool (`tools/kodlayici_capraz.py`) is not part of the binary.
    provenance, the run loop and the checkpoint format) and `cikarim` (the
    inference surface: score and rank with a trained checkpoint, and never a
    generation surface), `kanaat` (evidence to verdict: a choice, an
-   escalation or a refusal, with a battery compiled into the binary) and
+   escalation or a refusal, with a battery compiled into the binary),
    `kodlayici` (a checkpoint from outside this repository, read and run from
    Rust: the split-file header reader, the configuration, the encoder stack and
-   the decision head, with a tokenizer still to come).
+   the decision head, with a tokenizer still to come), `sir` (secrets masked
+   on the write path, before storage) and `gunluk` (operator logs parsed
+   into records, passed through `sir` first).
 3. **Reading** — `read` (three channels, digest-verified), `index` (BM25
    with line-accurate citations), `grant` (permission settled before bytes),
    `tools` (exact-rational calculator, router), `doc` (PDF and rich
@@ -75,6 +77,25 @@ data-mix declaration, the bootstrap round and the evaluation records under
 corpus only (K1/K2); no third-party weights, code or data enter it. The
 epoch ledger is fail-closed: an expired or exhausted grant refuses to start
 a pass.
+
+The NN pipeline crates live in `crates/` next to the reading loop:
+`sozluk` (the deterministic BPE tokenizer), `bpe-gelismis` (the extended
+vocabulary family: fill-in-middle, code-metadata and instruction tokens),
+`mu` (maximal-update parametrization kept as data), `derin` (deep-and-narrow
+configurations with weight tying and parameter accounting), `transformer`
+(the forward pass written here), `veri` (the data mix and its provenance),
+`olcum` (measurement commands), `kendinden` (self-distillation behind a
+mechanical jury), `kapisma` (the comparison protocol, rival outputs never
+entering the corpus), `karar` (the decision head as its own crate, with its
+verdict ledger), `uc-asama` (three named stages with a data bucket per
+checkpoint), `paralel` (parallel and mixed-precision run planning), `karma`
+(cross-stage token accounting), `sistem` (the training system named as
+components), `nicem` (sub-byte quantization) and `tasiyici` (the in-place
+weight container and its depth ladder). They are workspace members with
+their own tests; the ones the binary does not reach yet are named in
+`gates/unwired.baseline`, a list that may only shrink. This is stated so a
+reader sees the stack as it is - built, not yet fully wired - rather than
+inferring it from silence.
 
 ## Verification is the authority
 

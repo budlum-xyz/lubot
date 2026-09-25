@@ -179,18 +179,18 @@ impl SentetikUretim {
         ];
         for (i, (crate_ad, yetenek, aciklama)) in yetenekler.iter().enumerate() {
             let kaynak = Kaynak {
-                asset_id: format!("asset-{:04}", i),
-                content_id: format!("content-{:04}", i),
+                asset_id: format!("asset-{i:04}"),
+                content_id: format!("content-{i:04}"),
                 licence: "PolyForm-Shield-1.0.0".to_string(),
                 attribution: "lubot (kendi eser)".to_string(),
                 tur: KayitTuru::Sentetik,
             };
             kayitlar.push(Kayit {
-                id: format!("sentetik-yetenek-{}", i),
-                metin: format!("Yetenek tablosu: {} | {} | {}", crate_ad, yetenek, aciklama),
+                id: format!("sentetik-yetenek-{i}"),
+                metin: format!("Yetenek tablosu: {crate_ad} | {yetenek} | {aciklama}"),
                 tur: KayitTuru::Sentetik,
                 kaynak,
-                digest: format!("digest-{:04}", i),
+                digest: format!("digest-{i:04}"),
                 kind: "api".to_string(),
             });
         }
@@ -207,18 +207,18 @@ impl SentetikUretim {
         ];
         for (i, (gate, aciklama)) in gates.iter().enumerate() {
             let kaynak = Kaynak {
-                asset_id: format!("gate-asset-{:04}", i),
-                content_id: format!("gate-content-{:04}", i),
+                asset_id: format!("gate-asset-{i:04}"),
+                content_id: format!("gate-content-{i:04}"),
                 licence: "PolyForm-Shield-1.0.0".to_string(),
                 attribution: "lubot gates".to_string(),
                 tur: KayitTuru::Sentetik,
             };
             kayitlar.push(Kayit {
-                id: format!("sentetik-gate-{}", i),
-                metin: format!("Gate: {} — {}", gate, aciklama),
+                id: format!("sentetik-gate-{i}"),
+                metin: format!("Gate: {gate} — {aciklama}"),
                 tur: KayitTuru::Sentetik,
                 kaynak,
-                digest: format!("gate-digest-{:04}", i),
+                digest: format!("gate-digest-{i:04}"),
                 kind: "behaviour".to_string(),
             });
         }
@@ -247,18 +247,18 @@ impl DerleyiciHakem {
         for (i, (kod, gecerli)) in ornekler.iter().enumerate() {
             if *gecerli && Self::dogrula(kod) {
                 let kaynak = Kaynak {
-                    asset_id: format!("compiler-asset-{}", i),
-                    content_id: format!("compiler-content-{}", i),
+                    asset_id: format!("compiler-asset-{i}"),
+                    content_id: format!("compiler-content-{i}"),
                     licence: "PolyForm-Shield-1.0.0".to_string(),
                     attribution: "lubot derleyici hakem".to_string(),
                     tur: KayitTuru::DerleyiciHakemli,
                 };
                 kayitlar.push(Kayit {
-                    id: format!("derleyici-{}", i),
+                    id: format!("derleyici-{i}"),
                     metin: kod.to_string(),
                     tur: KayitTuru::DerleyiciHakemli,
                     kaynak,
-                    digest: format!("compiler-digest-{}", i),
+                    digest: format!("compiler-digest-{i}"),
                     kind: "doc".to_string(),
                 });
             }
@@ -273,17 +273,17 @@ mod tests {
 
     fn ornek_kayit(id: usize, tur: KayitTuru) -> Kayit {
         Kayit {
-            id: format!("kayit-{}", id),
-            metin: format!("metin {}", id),
+            id: format!("kayit-{id}"),
+            metin: format!("metin {id}"),
             tur,
             kaynak: Kaynak {
-                asset_id: format!("asset-{}", id),
-                content_id: format!("content-{}", id),
+                asset_id: format!("asset-{id}"),
+                content_id: format!("content-{id}"),
                 licence: "PolyForm-Shield-1.0.0".to_string(),
                 attribution: "lubot".to_string(),
                 tur,
             },
-            digest: format!("digest-{}", id),
+            digest: format!("digest-{id}"),
             kind: "doc".to_string(),
         }
     }

@@ -12,3 +12,23 @@
 # (android/derle.sh links liblubot_arayuz.so and the device loads it over JNI).
 # If a Rust-side consumer ever appears, remove this entry: the gate demands it.
 arayuz
+# The NN training-stack crates entered the tree with the 2026-09-25 cross-branch
+# merge (9808e53) without their command wiring. They are listed here while they
+# are being wired, one `lubot <command>` caller at a time, exactly as the gate's
+# own message instructs. This block may only shrink.
+bpe-gelismis
+derin
+kapisma
+karar
+karma
+kendinden
+mu
+nicem
+olcum
+paralel
+sistem
+sozluk
+tasiyici
+transformer
+uc-asama
+veri

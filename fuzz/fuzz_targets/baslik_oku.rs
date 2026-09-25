@@ -26,7 +26,11 @@ fuzz_target!(|veri: &[u8]| {
             let Some(baslik) = baslik else { continue };
             let (bas, son) = (baslik.data_offsets[0], baslik.data_offsets[1]);
             assert!(bas <= son, "{ad}: range is backwards");
-            assert!(son <= boyut, "{ad}: range ends past the artifact");
+            // `boyut()` is u64 and the offsets are usize; widen the offset
+            // instead of narrowing the size, because a narrowing conversion
+            // that panics inside a fuzz target would be a false denial of
+            // service, not a finding.
+            assert!(son as u64 <= boyut, "{ad}: range ends past the artifact");
         }
         // And a tensor that is not there must be a refusal rather than an
         // empty vector, which would be read as a real tensor of length zero.

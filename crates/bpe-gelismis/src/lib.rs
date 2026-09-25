@@ -201,10 +201,7 @@ impl BpeGelismis {
         let prefix = &metin[..orta / 2];
         let middle = &metin[orta / 2..orta + orta / 2];
         let suffix = &metin[orta + orta / 2..];
-        format!(
-            "<fim_prefix>{} <fim_middle>{} <fim_suffix>{} <fim_pad>",
-            prefix, middle, suffix
-        )
+        format!("<fim_prefix>{prefix} <fim_middle>{middle} <fim_suffix>{suffix} <fim_pad>")
     }
 
     #[must_use]

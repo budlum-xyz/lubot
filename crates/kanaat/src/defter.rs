@@ -350,7 +350,7 @@ mod tests {
         }
         let metin = defter.jsonl().unwrap_or_default();
         let ilk_satir = metin.lines().next().unwrap_or_default();
-        let yeni = format!("{ilk_satir}\n{}", metin);
+        let yeni = format!("{ilk_satir}\n{metin}");
         match Defter::oku(&yeni) {
             Err(DefterHatasi::SiraAtlandi { satir }) => assert_eq!(satir, 2),
             digeri => panic!("sira atlamasi bekleniyordu: {digeri:?}"),
