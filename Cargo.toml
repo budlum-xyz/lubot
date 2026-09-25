@@ -11,6 +11,7 @@ members = [
     "crates/doc",
     "crates/sikistir",
     "crates/sir",
+    "crates/gunluk",
     "crates/muhur",
     "crates/usl",
     "crates/esik",
