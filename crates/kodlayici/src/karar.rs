@@ -407,6 +407,9 @@ pub fn puanla(
     isaretler: &[usize],
     tip: usize,
 ) -> Result<Cevap, BaslikHatasi> {
+    // Ucuncu dagitik nokta: karar puanlama, urunun sonucu urettigi yerdir.
+    let _ = lubot_sertlestirme::izler::nokta("kodlayici.puanla");
+
     let d = agirliklar.yapi.hidden_size;
     if gizli.len() != uzunluk * d {
         return Err(boyut("gizli", gizli.len(), uzunluk * d));

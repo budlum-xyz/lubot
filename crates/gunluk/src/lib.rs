@@ -276,6 +276,9 @@ pub enum Satir {
 /// satir atliyorsa, eksik veriyi tam saniyorsun demektir.
 #[must_use]
 pub fn oku(govde: &str) -> (Vec<Satir>, usize) {
+    // Ikinci dagitik nokta: log okuma bir operator isidir ve ayri bir akistir;
+    // tek bir yerde duran kontrol bu akisi kapsamazdi.
+    let _ = lubot_sertlestirme::izler::nokta("gunluk.oku");
     let mut satirlar = Vec::new();
     let mut atilan = 0;
     for satir in govde.lines() {
@@ -402,7 +405,7 @@ mod tests {
         assert_eq!(satirlar.len(), 1);
         match &satirlar[0] {
             Satir::Nginx(s) => {
-                assert!(s.istek.contains(lubot_sir::MASKE));
+                assert!(s.istek.contains(lubot_sir::maske()));
                 assert!(!s.istek.contains("ghp_"));
             }
             Satir::Syslog(_) => panic!("nginx satiri syslog sanildi"),

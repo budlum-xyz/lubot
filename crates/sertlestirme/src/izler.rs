@@ -26,6 +26,7 @@
 //! defeats it - and it is stated rather than papered over.
 
 use std::fs;
+use std::sync::Mutex;
 
 /// Which family of check produced a finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -255,6 +256,60 @@ pub fn derin_kontrol() -> Vec<Bulgu> {
     bulgular
 }
 
+
+// ---------------------------------------------------------------------------
+// Dagitik noktalar
+// ---------------------------------------------------------------------------
+//
+// Bir kontrolu tek yere koymak, tek bir yamayla devre disi birakilabilen bir
+// kontrol koymak demektir. Cozum kontrolu cogaltmak degil, **dagitmak**:
+// urunun kendi is akislarindaki sinir noktalarina ayri ayri yerlestirmek.
+//
+// Her nokta kendi adiyla kaydedilir ve raporda **kac nokta** oldugu yazar.
+// Boylece "dagitik mi" sorusunun cevabi bir iddia degil, bir sayidir: kapi
+// ciktisindaki nokta listesi. Bir yamayla biri kapatilirsa, kalanlar ayni
+// raporda adiyla gorunur.
+static NOKTALAR: Mutex<Vec<(&'static str, usize)>> = Mutex::new(Vec::new());
+
+/// Bir sinir noktasinda hafif kontrolu calistirir ve noktayi kaydeder.
+///
+/// Donen deger o noktada gorulen bulgu sayisidir. Nokta adi cagiranin kendi
+/// adidir (`"gunluk.oku"` gibi); raporda gorunen sey, kontrolun **nerede**
+/// yapildigidir.
+///
+/// # Panics
+/// Kilitten sonra panik yok: kilit zehirlenmisse kayit atlanir ve kontrol yine
+/// yapilir. Bir sertlestirme noktasinin, kilit zehirlendi diye is yapisini
+/// durdurmasi, sertlestirmenin kendisine zarar vermesi olurdu.
+pub fn nokta(ad: &'static str) -> usize {
+    let bulgular = hafif_kontrol();
+    let adet = bulgular.len();
+    if let Ok(mut liste) = NOKTALAR.lock() {
+        if let Some(kayit) = liste.iter_mut().find(|(n, _)| *n == ad) {
+            kayit.1 += 1;
+        } else {
+            liste.push((ad, 1));
+        }
+    }
+    adet
+}
+
+/// O ana kadar calisan noktalarin listesi: `(ad, kac kez)`.
+///
+/// Rapor bunu basar. Bos liste "kontrol yok" demektir ve bu, `0 bulgu`
+/// ciktisindan **farkli** bir cumledir: bulgu yok cunku kontrol calisti ve bir
+/// sey bulmadi; kontrol yok cunku kimse sormadi.
+#[must_use]
+pub fn noktalar() -> Vec<(&'static str, usize)> {
+    NOKTALAR.lock().map_or_else(|_| Vec::new(), |l| l.clone())
+}
+
+/// Kayitli nokta sayisi.
+#[must_use]
+pub fn nokta_sayisi() -> usize {
+    NOKTALAR.lock().map_or(0, |l| l.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,5 +395,31 @@ mod tests {
             assert!(bulgu.agirlik >= 1 && bulgu.agirlik <= 3);
             assert!(!bulgu.aciklama.is_empty());
         }
+    }
+
+    #[test]
+    fn a_point_is_recorded_once_and_counted_after_that() {
+        let ad = "test.nokta.bir";
+        let _ = nokta(ad);
+        let _ = nokta(ad);
+        let liste = noktalar();
+        let kayit = liste.iter().find(|(n, _)| *n == ad);
+        assert!(kayit.is_some(), "nokta kaydedilmedi");
+        assert!(kayit.map_or(0, |(_, c)| *c) >= 2, "sayac artmadi");
+    }
+
+    #[test]
+    fn distinct_points_are_distinct_entries() {
+        let _ = nokta("test.nokta.iki");
+        let _ = nokta("test.nokta.uc");
+        let liste = noktalar();
+        assert!(liste.iter().any(|(n, _)| *n == "test.nokta.iki"));
+        assert!(liste.iter().any(|(n, _)| *n == "test.nokta.uc"));
+    }
+
+    #[test]
+    fn the_point_count_is_a_number_not_a_claim() {
+        let _ = nokta("test.nokta.dort");
+        assert!(nokta_sayisi() >= 1);
     }
 }

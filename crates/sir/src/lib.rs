@@ -35,7 +35,46 @@
 use std::collections::BTreeMap;
 
 /// Maskelenen degerin yerine gecen isaret.
-pub const MASKE: &str = "<SIR:GIZLENDI>";
+///
+/// Sabit, ikilinin icinde **duz metin olarak durmaz**: derleme zamani
+/// gizlenir, ilk kullanimda cozulur ve tek bir yerde tutulur. Sebep, maskeyi
+/// gizlemek degil, tarayicinin *hangi onekleri tanidigini* ikiliden
+/// okuyabilmesini engellemektir; maskeyi bilmek bir saldirgana hicbir sey
+/// kazandirmaz ama taniyicinin sozlugunu bilmek kazandirir.
+#[must_use]
+pub fn maske() -> &'static str {
+    static MASKE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    MASKE.get_or_init(|| {
+        lubot_sertlestirme::gizli_metin!("<SIR:GIZLENDI>", 0x5C).unwrap_or_else(|_| String::new())
+    })
+}
+
+/// Taniyici onekler, gizli tutulur.
+///
+/// Her cagride cozmek yerine bir kez cozulur: `OnceLock`, ilk `maskele`
+/// cagrisinda maliyeti oder ve sonra ayni `&'static str` paylasilir.
+fn onek(no: usize) -> &'static str {
+    static ONEKLER: std::sync::OnceLock<[String; 12]> = std::sync::OnceLock::new();
+    let liste = ONEKLER.get_or_init(|| {
+        use lubot_sertlestirme::gizli_metin as g;
+        let bos = |h: Result<String, _>| h.unwrap_or_else(|_| String::new());
+        [
+            bos(g!("sk-ant-", 0x11)),
+            bos(g!("sk-proj-", 0x22)),
+            bos(g!("sk-svcacct-", 0x33)),
+            bos(g!("sk_live_", 0x44)),
+            bos(g!("AIza", 0x55)),
+            bos(g!("AKIA", 0x66)),
+            bos(g!("ghp_", 0x77)),
+            bos(g!("xoxb-", 0x88)),
+            bos(g!("eyJ", 0x99)),
+            bos(g!("sk-", 0xAA)),
+            bos(g!("sk_test_", 0xAB)),
+            bos(g!("rk_live_", 0xAC)),
+        ]
+    });
+    &liste[no]
+}
 
 /// Adi sirra isaret eden kelimeler; ad eslesmesi bunlara bakmaz, *icerir*
 /// kuralina bakar (`client_secret` da `secret` icerir).
@@ -75,6 +114,35 @@ const SEKILLER: &[(&str, Sekil)] = &[
     ("noktali_jeton", noktali_jeton_mu),
 ];
 
+/// GitHub ailesinin onekleri. Aile genisledikce burada buyur; her uye ayri
+/// gizlenir, cunku birlikte gomulseydi `strings` cikardigi tek dizede hepsi
+/// birden gorunurdu.
+static ONEK_GH: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
+    use lubot_sertlestirme::gizli_metin as g;
+    let bos = |h: Result<String, _>| h.unwrap_or_else(|_| String::new());
+    vec![
+        bos(g!("ghp_", 0xB1)),
+        bos(g!("gho_", 0xB2)),
+        bos(g!("ghu_", 0xB3)),
+        bos(g!("ghs_", 0xB4)),
+        bos(g!("ghr_", 0xB5)),
+        bos(g!("github_pat_", 0xB6)),
+    ]
+});
+
+/// Slack ailesinin onekleri.
+static ONEK_SLACK: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
+    use lubot_sertlestirme::gizli_metin as g;
+    let bos = |h: Result<String, _>| h.unwrap_or_else(|_| String::new());
+    vec![
+        bos(g!("xoxb-", 0xC1)),
+        bos(g!("xoxa-", 0xC2)),
+        bos(g!("xoxp-", 0xC3)),
+        bos(g!("xoxr-", 0xC4)),
+        bos(g!("xoxs-", 0xC5)),
+    ]
+});
+
 /// Yalniz ASCII harf/rakam, `-` ve `_` iceren bir gövde mi.
 fn govde_mi(deger: &str, en_az: usize, on_ek: &str) -> bool {
     deger.len() >= en_az
@@ -85,22 +153,24 @@ fn govde_mi(deger: &str, en_az: usize, on_ek: &str) -> bool {
 }
 
 fn sk_onekli_mi(deger: &str) -> bool {
-    govde_mi(deger, 18, "sk-")
+    govde_mi(deger, 18, onek(9))
 }
 
 fn anthropic_mi(deger: &str) -> bool {
-    govde_mi(deger, 20, "sk-ant-")
+    govde_mi(deger, 20, onek(0))
 }
 
 fn openai_mi(deger: &str) -> bool {
-    govde_mi(deger, 20, "sk-proj-") || govde_mi(deger, 20, "sk-svcacct-")
+    govde_mi(deger, 20, onek(1)) || govde_mi(deger, 20, onek(2))
 }
 
 fn stripe_mi(deger: &str) -> bool {
+    // `sk_test_` ve `rk_live_` ayni ailedendir; ucu de ayri ayri gizlenir ki
+    // tabloyu okuyan biri hangi ailelerin tanindigini tek bakista cikarmasin.
     deger.len() >= 24
-        && (deger.starts_with("sk_live_")
-            || deger.starts_with("sk_test_")
-            || deger.starts_with("rk_live_"))
+        && (deger.starts_with(onek(3))
+            || deger.starts_with(onek(10))
+            || deger.starts_with(onek(11)))
         && deger.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
@@ -109,7 +179,7 @@ fn stripe_mi(deger: &str) -> bool {
 /// dize neredeyse yoktur.
 fn google_mi(deger: &str) -> bool {
     deger.len() == 39
-        && deger.starts_with("AIza")
+        && deger.starts_with(onek(4))
         && deger
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
@@ -117,7 +187,7 @@ fn google_mi(deger: &str) -> bool {
 
 fn aws_mi(deger: &str) -> bool {
     deger.len() == 20
-        && deger.starts_with("AKIA")
+        && deger.starts_with(onek(5))
         && deger
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
@@ -125,29 +195,20 @@ fn aws_mi(deger: &str) -> bool {
 
 fn github_mi(deger: &str) -> bool {
     deger.len() >= 22
-        && (deger.starts_with("ghp_")
-            || deger.starts_with("gho_")
-            || deger.starts_with("ghu_")
-            || deger.starts_with("ghs_")
-            || deger.starts_with("ghr_")
-            || deger.starts_with("github_pat_"))
+        && ONEK_GH.iter().any(|o| deger.starts_with(o.as_str()))
         && deger.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 fn slack_mi(deger: &str) -> bool {
     deger.len() >= 18
-        && (deger.starts_with("xoxb-")
-            || deger.starts_with("xoxa-")
-            || deger.starts_with("xoxp-")
-            || deger.starts_with("xoxr-")
-            || deger.starts_with("xoxs-"))
+        && ONEK_SLACK.iter().any(|o| deger.starts_with(o.as_str()))
 }
 
 /// Uc parcasi nokta ile ayrilmis, basligi `eyJ` ile baslayan jeton.
 fn jwt_mi(deger: &str) -> bool {
     let parcalar: Vec<&str> = deger.split('.').collect();
     parcalar.len() == 3
-        && parcalar[0].starts_with("eyJ")
+        && parcalar[0].starts_with(onek(8))
         && parcalar
             .iter()
             .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
@@ -266,13 +327,13 @@ fn ad_degeri_maskesi(satir: &str, rapor: &mut Rapor) -> String {
         .map_or(0, |(i, _)| i + 1);
     let kuyruk = &govde[deger_sonu..];
     let deger = &govde[..deger_sonu];
-    if deger.is_empty() || deger.starts_with(MASKE) {
+    if deger.is_empty() || deger.starts_with(maske()) {
         return satir.to_string();
     }
     rapor.ekle("ad_degeri");
     let ayirici = &satir[pos..pos + 1];
     let tirnak_str = tirnak.map_or("", |_| "\"");
-    format!("{ad}{ayirici}{bosluk}{tirnak_str}{MASKE}{tirnak_str}{kuyruk}")
+    format!("{ad}{ayirici}{bosluk}{tirnak_str}{}{tirnak_str}{kuyruk}", maske())
 }
 
 /// Serbest metinde taninan sekilleri maskeler. Kelime sinirlari korunur: bir
@@ -291,7 +352,7 @@ fn sekil_maskesi(satir: &str, rapor: &mut Rapor) -> String {
         {
             Some(tur) => {
                 rapor.ekle(tur);
-                cikti.push_str(MASKE);
+                cikti.push_str(maske());
             }
             None => cikti.push_str(simdiki),
         }
@@ -312,6 +373,10 @@ fn sekil_maskesi(satir: &str, rapor: &mut Rapor) -> String {
 /// Metni temizler: satir sayisi ve kod iskeleti korunur.
 #[must_use]
 pub fn maskele(metin: &str) -> Sonuc {
+    // Dagitik kontrol noktasi: metin temizleme, urune giren her seyin gectigi
+    // yerdir; buraya konan kontrol, tek bir yamayla kapatilacak bir nokta
+    // degil, akisin kendisinde duran bir noktadir.
+    let _ = lubot_sertlestirme::izler::nokta("sir.maskele");
     let mut rapor = Rapor::default();
     let satirlar: Vec<String> = metin
         .lines()
@@ -326,13 +391,75 @@ pub fn maskele(metin: &str) -> Sonuc {
     }
 }
 
+/// Bir onekin hangi aileye ait oldugu.
+///
+/// Sinif, urunun baska yerlerindeki tarayicilara **onek metnini yazmadan**
+/// kural uygulama imkani verir: cagiran "GitHub klasik ailesi" der, gereken
+/// uzunlugu kendi bilir, onegi buradan alir. Boylece ikinci bir tablo olusmaz
+/// ve `strings` hicbir oneki gormez.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnekSinifi {
+    /// `sk-` ile baslayan model servisi anahtarlari (genel).
+    ModelApi,
+    /// Anthropic ailesi.
+    Anthropic,
+    /// OpenAI kapsamli anahtarlar.
+    OpenAi,
+    /// Stripe ailesi.
+    Stripe,
+    /// Google API anahtari.
+    Google,
+    /// AWS erisim anahtari kimligi.
+    Aws,
+    /// GitHub ailelerinin tamami (klasik ve ince taneli).
+    GitHub,
+    /// Slack ailelerinin tamami.
+    Slack,
+    /// JWT basligi.
+    Jwt,
+}
+
+/// Taninan onekler ve siniflari: **tek kaynak**.
+#[must_use]
+pub fn taninan_onekler_sinifli() -> Vec<(&'static str, OnekSinifi)> {
+    let mut liste: Vec<(&'static str, OnekSinifi)> = vec![
+        (onek(9), OnekSinifi::ModelApi),
+        (onek(0), OnekSinifi::Anthropic),
+        (onek(1), OnekSinifi::OpenAi),
+        (onek(2), OnekSinifi::OpenAi),
+        (onek(3), OnekSinifi::Stripe),
+        (onek(10), OnekSinifi::Stripe),
+        (onek(11), OnekSinifi::Stripe),
+        (onek(4), OnekSinifi::Google),
+        (onek(5), OnekSinifi::Aws),
+        (onek(8), OnekSinifi::Jwt),
+    ];
+    liste.extend(ONEK_GH.iter().map(|o| (o.as_str(), OnekSinifi::GitHub)));
+    liste.extend(ONEK_SLACK.iter().map(|o| (o.as_str(), OnekSinifi::Slack)));
+    liste
+}
+
+/// Taninan oneklerin tamami: **tek kaynak**.
+///
+/// Urunun baska bir yerinde sir taniyan bir kod varsa oneklerini buradan
+/// almali. Iki ayri tablo, iki ayri gercek demektir: biri guncellenip digeri
+/// unutuldugunda tarayicilardan biri sessizce korlesir. Liste gizli
+/// sabitlerden uretilir, yani `strings` cikarmaz.
+#[must_use]
+pub fn taninan_onekler() -> Vec<String> {
+    let mut liste: Vec<String> = (0..12).map(|i| onek(i).to_string()).collect();
+    liste.extend(ONEK_GH.iter().cloned());
+    liste.extend(ONEK_SLACK.iter().cloned());
+    liste
+}
+
 /// Bir deger sirra benziyor mu. Ad kalibi ya da sekil kalibi yeter; maskelenmis
 /// bir deger `false` doner, cunku zaten temizdir ve yeniden maskelemek bilgi
 /// kaybi olur.
 #[must_use]
 pub fn sirli_mi(deger: &str) -> bool {
     let kucuk = deger.to_lowercase();
-    if kucuk.contains(&MASKE.to_lowercase()) {
+    if kucuk.contains(&maske().to_lowercase()) {
         return false;
     }
     if SIR_ADLARI.iter().any(|k| kucuk.contains(k)) {
@@ -355,7 +482,7 @@ mod tests {
     fn ad_sirra_isaret_ediyorsa_deger_maskelenir() {
         let sir = ornek_sk();
         let s = maskele(&format!("api_key: {sir}"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains(&sir));
         assert!(s.rapor().degisti());
     }
@@ -381,7 +508,7 @@ mod tests {
     fn github_jetonu_maskelenir() {
         let sir = format!("ghp_{}", "abcdefghijklmnopqrstuvwxyz123456");
         let s = maskele(&format!("token={sir}"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains("ghp_"));
     }
 
@@ -389,13 +516,13 @@ mod tests {
     fn jwt_maskelenir() {
         let jwt = format!("eyJ{}.eyJ{}.{}", "hbGciOiJIUzI1NiJ9", "zdWIiOiIxIn0", "imza");
         let s = maskele(&format!("auth: {jwt}"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains("eyJhbGciOiJIUzI1NiJ9"));
     }
 
     #[test]
     fn maske_sonrasi_metin_bir_daha_degismez() {
-        let girdi = format!("password = {MASKE}");
+        let girdi = format!("password = {}", maske());
         let s = maskele(&girdi);
         assert_eq!(s.metin(), girdi);
         assert!(!s.rapor().degisti());
@@ -406,7 +533,7 @@ mod tests {
         let anahtar = format!("AIza{}", "x".repeat(35));
         assert_eq!(anahtar.len(), 39);
         let s = maskele(&format!("not: {anahtar} burada"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains(&anahtar));
     }
 
@@ -414,7 +541,7 @@ mod tests {
     fn anthropic_anahtari_serbest_metinde_maskelenir() {
         let anahtar = format!("sk-ant-api03-{}", "abcdefghijklmnopqrstuv");
         let s = maskele(&format!("credential {anahtar} eklendi"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains(&anahtar));
     }
 
@@ -422,14 +549,14 @@ mod tests {
     fn openai_kapsamli_anahtar_maskelenir() {
         let anahtar = format!("sk-proj-{}", "abcdefghijklmnopqrstuv");
         let s = maskele(&format!("{anahtar} kullaniliyor"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
     }
 
     #[test]
     fn stripe_canli_anahtar_maskelenir() {
         let anahtar = format!("sk_live_{}", "abcdefghijklmnopqrstuvwx");
         let s = maskele(&format!("{anahtar} tahsilat icin"));
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
     }
 
     #[test]
@@ -450,17 +577,17 @@ mod tests {
         let sir = ornek_sk();
         assert!(sirli_mi(&sir));
         assert!(sirli_mi("parola ipucu"));
-        assert!(!sirli_mi(&format!("x {MASKE} y")));
+        assert!(!sirli_mi(&format!("x {} y", maske())));
         assert!(!sirli_mi("merhaba dunya"));
     }
 
     #[test]
     fn turkce_adlar_da_yakalanir() {
         let s = maskele("sifre: cok-gizli-bir-deger");
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains("cok-gizli-bir-deger"));
         let s = maskele("parola = \"a1b2c3\"");
-        assert!(s.metin().contains(MASKE));
+        assert!(s.metin().contains(maske()));
     }
 
     #[test]

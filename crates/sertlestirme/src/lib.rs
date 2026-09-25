@@ -40,12 +40,11 @@
 //! `lubot-yerel/SERTLESTIRME-OLCUM.md`. A hardening claim that was never
 //! measured is a claim; this crate exists to keep the two apart.
 
-mod metin;
 
 pub mod butunluk;
 pub mod izler;
 pub mod kapi;
+pub mod metin;
 
 pub use izler::{Bulgu, Katman};
 pub use kapi::{Kip, Rapor};
-pub(crate) use metin::gizli_metin;

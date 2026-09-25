@@ -14,13 +14,18 @@
 //! interesting words - and force the reader to understand the code instead.
 //! Anything that must stay secret does not belong in a client binary at all.
 //!
-//! Both directions are crate-internal: the only public door is the
-//! [`gizli_metin!`] macro. Handing out the decoder would hand out the one thing
-//! this module exists to keep out of a plain read.
+//! Both directions are available to the workspace and nothing more: the
+//! [`gizli_metin!`] macro is exported, and [`gizle_dilim`] / [`coz`] are public
+//! because a macro that crosses a crate boundary cannot reach a private item.
+//! The decoder was never the thing being protected - the macro uses it at every
+//! call site - and pretending otherwise would only have kept the *other* crates
+//! from hiding their own constants, which is the point of the layer. What the
+//! layer buys is stated above and has not changed: `strings` no longer finds the
+//! constant, so the reader has to understand the code instead of searching it.
 
 /// Why a hidden string could not be recovered.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CozHatasi {
+pub enum CozHatasi {
     /// The bytes are not valid UTF-8 after decoding, which means the key or the
     /// buffer is wrong rather than merely unreadable.
     GecersizUtf8(String),
@@ -41,7 +46,7 @@ pub(crate) enum CozHatasi {
 /// Compile-time evaluation fails if the slice is shorter than `N`, which can
 /// only happen if the caller lies about the type. No runtime panic exists.
 #[must_use]
-pub(crate) const fn gizle_dilim<const N: usize>(duz: &[u8], anahtar: u8) -> [u8; N] {
+pub const fn gizle_dilim<const N: usize>(duz: &[u8], anahtar: u8) -> [u8; N] {
     let mut cikti = [0_u8; N];
     let mut sira = 0;
     while sira < N {
@@ -55,7 +60,7 @@ pub(crate) const fn gizle_dilim<const N: usize>(duz: &[u8], anahtar: u8) -> [u8;
 ///
 /// # Errors
 /// [`CozHatasi::GecersizUtf8`] when the decoded bytes are not valid UTF-8.
-pub(crate) fn coz(kod: &[u8], anahtar: u8) -> Result<String, CozHatasi> {
+pub fn coz(kod: &[u8], anahtar: u8) -> Result<String, CozHatasi> {
     let duz: Vec<u8> = kod
         .iter()
         .enumerate()
@@ -69,6 +74,7 @@ pub(crate) fn coz(kod: &[u8], anahtar: u8) -> Result<String, CozHatasi> {
 /// The macro is the only public door: `gizli_metin!("...", 0x5C)` yields a
 /// `Result<String, CozHatasi>` that is already decoded, so the plain text never
 /// exists as a compile-time constant.
+#[macro_export]
 macro_rules! gizli_metin {
     ($metin:literal, $anahtar:literal) => {{
         const KOD: [u8; $metin.len()] = $crate::metin::gizle_dilim($metin.as_bytes(), $anahtar);
@@ -76,7 +82,10 @@ macro_rules! gizli_metin {
     }};
 }
 
-pub(crate) use gizli_metin;
+// `#[macro_export]` puts the macro at the crate root, so this crate's own call
+// sites reach it as `crate::gizli_metin!` and outside callers as
+// `lubot_sertlestirme::gizli_metin!`. Both spellings resolve to this one
+// definition; there is no second copy to drift.
 
 #[cfg(test)]
 mod tests {
@@ -100,7 +109,7 @@ mod tests {
 
     #[test]
     fn the_macro_recovers_its_literal() {
-        let metin = gizli_metin!("kalici hata", 0x3C).unwrap_or_default();
+        let metin = crate::gizli_metin!("kalici hata", 0x3C).unwrap_or_default();
         assert_eq!(metin, "kalici hata");
     }
 

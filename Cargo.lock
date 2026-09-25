@@ -507,6 +507,7 @@ dependencies = [
 name = "lubot-gunluk"
 version = "0.1.0"
 dependencies = [
+ "lubot-sertlestirme",
  "lubot-sir",
 ]
 
@@ -568,6 +569,7 @@ version = "0.1.0"
 name = "lubot-kodlayici"
 version = "0.1.0"
 dependencies = [
+ "lubot-sertlestirme",
  "serde",
  "serde_json",
  "sha2",
@@ -634,6 +636,9 @@ dependencies = [
 [[package]]
 name = "lubot-sir"
 version = "0.1.0"
+dependencies = [
+ "lubot-sertlestirme",
+]
 
 [[package]]
 name = "lubot-sistem"
@@ -667,6 +672,7 @@ name = "lubot-tools"
 version = "0.1.0"
 dependencies = [
  "lubot-read",
+ "lubot-sir",
  "serde",
  "serde_json",
 ]
