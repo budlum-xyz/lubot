@@ -16,7 +16,7 @@
 
 use std::path::Path;
 
-use lubot_cikarim::cezalar::{CezaHatasi, Cezalar};
+use lubot_cikarim::cezalar::{CezaHatasi, CezaRaporu, Cezalar};
 use lubot_cikarim::ornekleyici::{Ayarlar, OrnekHatasi};
 use lubot_cikarim::uretim::{Durma, KaydirmaModu, Uretic, UretimAyari, UretimHatasi, UretimRaporu};
 use lubot_cikarim::{Cikarim, CikarimHatasi};
@@ -140,7 +140,12 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
             KaydirmaModu::OnbellektenDus => "onbellekten-dus (yaklasim)",
         },
         yeniden_kurma = rapor.yeniden_kurma,
-        ceza = rapor.ceza.ozet(),
+        ceza = {
+            // Rapor tipi adiyla okunur: "ceza" satirini yazan ile onu ureten
+            // ayni sozlesmeye bakmali, araya bir kopya girmemeli.
+            let ceza_raporu: &CezaRaporu = &rapor.ceza;
+            ceza_raporu.ozet()
+        },
     );
     crate::validate_output(md.as_bytes(), "sohbet")?;
     print!("{md}");
