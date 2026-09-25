@@ -617,16 +617,44 @@ fn dogrula(
             Some(crate::kernel32::Parametreler32::indir(parametreler))
         }
     };
-    for pencere in dogrulama {
+    // Dogrulama yalnizca kaybi sorar: geri gecis yok, gradyan ayrilmaz. Ayni
+    // pencere sirasi korunarak is parcasiara bolunur (bkz. `yigin_gradyanlari`),
+    // boylece toplama sirasi da degismez.
+    let kayip_hesapla = |pencere: &crate::PaketPencere| {
         let (girdi, hedef, kaynak) = pencere_hedefleri(pencere);
         let kayip = match &indirilmis {
-            None => ileri_ve_geri_paket(ayar.spec, parametreler, &girdi, &hedef, &kaynak).0,
-            Some(p32) => f64::from(
-                crate::kernel32::ileri_ve_geri_paket_32(ayar.spec, p32, &girdi, &hedef, &kaynak).0,
-            ),
+            None => crate::kayip_ileri(ayar.spec, parametreler, &girdi, &hedef, &kaynak),
+            Some(p32) => f64::from(p32.kayip_ileri(ayar.spec, &girdi, &hedef, &kaynak)),
         };
-        toplam_kayip += kayip * girdi.len() as f64;
-        toplam_jeton += girdi.len();
+        // Kayip pozisyon basina ortalamadir; jetonla agirliklanir ki kisa
+        // pencere uzun pencereyi bastirmasin.
+        (kayip, girdi.len())
+    };
+    let iplik = iplik_sayisi(ayar);
+    let olcumler: Vec<(f64, usize)> = if iplik <= 1 || dogrulama.len() <= 1 {
+        dogrulama.iter().map(kayip_hesapla).collect()
+    } else {
+        let parca = dogrulama.len().div_ceil(iplik);
+        let bloklar: Vec<&[crate::PaketPencere]> = dogrulama.chunks(parca.max(1)).collect();
+        std::thread::scope(|kapsam| {
+            let tutamaclar: Vec<_> = bloklar
+                .iter()
+                .map(|blok| {
+                    kapsam.spawn(move || blok.iter().map(kayip_hesapla).collect::<Vec<_>>())
+                })
+                .collect();
+            let mut hepsi = Vec::with_capacity(dogrulama.len());
+            for tutamac in tutamaclar {
+                if let Ok(parca) = tutamac.join() {
+                    hepsi.extend(parca);
+                }
+            }
+            hepsi
+        })
+    };
+    for (kayip, jeton) in olcumler {
+        toplam_kayip += kayip * jeton as f64;
+        toplam_jeton += jeton;
     }
     DogrulamaKaydi {
         adim,

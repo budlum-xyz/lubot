@@ -216,8 +216,32 @@ impl Parametreler32 {
         hedef: &[usize],
         kaynak: &[u32],
     ) -> f32 {
-        let (kayip, _) = ileri_ve_geri_paket_32(spec, self, girdi, hedef, kaynak);
-        kayip
+        // f64 tarafiyla ayni yol, ayni sira: ileri, son LayerNorm, bagli
+        // readout ve 1/d olcegi, sonunda ayni `toplam / t`. Geri gecis yok.
+        assert_eq!(kaynak.len(), girdi.len(), "kaynak girdiyle ayni uzunlukta");
+        let d = spec.d_model;
+        let t = girdi.len();
+        let mut x = vec![0.0f32; t * d];
+        for (i, tok) in girdi.iter().enumerate() {
+            x[i * d..(i + 1) * d].copy_from_slice(&self.embedding[tok * d..(tok + 1) * d]);
+        }
+        for l in 0..spec.n_layers {
+            let (y, _) = katman_ileri32(spec, self, l, &x, kaynak);
+            x = y;
+        }
+        let (xn, _, _) = ln_ileri32(&x, d, t, &self.lnf_olcek, &self.lnf_sapma);
+        let olcek = 1.0 / (d as f32);
+        let mut toplam = 0.0f32;
+        for i in 0..t {
+            let mut logits = vec![0.0f32; spec.vocab];
+            let satir_xn = &xn[i * d..(i + 1) * d];
+            for (v, logit) in logits.iter_mut().enumerate() {
+                let satir = &self.embedding[v * d..(v + 1) * d];
+                *logit = satir.iter().zip(satir_xn).map(|(a, b)| a * b).sum::<f32>() * olcek;
+            }
+            toplam += softmax_ce32(&logits, hedef[i]).0;
+        }
+        toplam / (t as f32)
     }
 }
 
@@ -1040,5 +1064,23 @@ mod testler {
             t32 / 3.0 * 1000.0,
             t64 / t32
         );
+    }
+
+    /// f32 tarafinda da ileri-yalniz yol, geri gecisli yolun kaybiyla ayni
+    /// olmali (f32 icinde birebir, cunku ayni islem sirasi).
+    #[test]
+    fn f32_kayip_ileri_geri_gecisli_yolla_ayni() {
+        let spec = kucuk_spec();
+        let p = Parametreler32::indir(&crate::Parametreler::belirgin_doldur(spec, 6));
+        let kayit: Vec<usize> = (0..spec.max_seq_len)
+            .map(|i| (i * 6 + 2) % spec.vocab)
+            .collect();
+        let n = kayit.len() - 1;
+        let girdi = &kayit[..n];
+        let hedef = &kayit[1..];
+        let kaynak = vec![0u32; n];
+        let sade = p.kayip_ileri(spec, girdi, hedef, &kaynak);
+        let (tam, _) = ileri_ve_geri_paket_32(spec, &p, girdi, hedef, &kaynak);
+        assert_eq!(sade, tam, "f32 ileri-yalniz yol ayristi: {sade} vs {tam}");
     }
 }

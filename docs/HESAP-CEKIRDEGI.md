@@ -103,11 +103,28 @@ lubot egitim-kosu ... --iplik 0                # makineye sor (varsayılan)
   `--yigin` de yükselmek zorundadır; aksi hâlde iş parçası sayısı pencere
   sayısına takılır.
 
+## 4b. Doğrulama: geri geçiş yok, iplik var
+
+Doğrulama tek bir soru sorar — "model eğitmediği metne ne kadar şaşırıyor" — ama
+tam geçiş bunu yanıtlarken geri geçişin ihtiyaç duyduğu bütün ara bellekleri
+kurup atıyordu. Artık iki değişiklik var:
+
+* **İleri-yalnız kayıp** (`kayip_ileri`, f64 ve f32): aynı ileri yol, aynı bağlı
+  readout, aynı `1/d` ölçeği, aynı `toplam / t`. Ölçüldü: 256 jetonluk bağlamda
+  tam geçiş 18147 ms, ileri-yalnız 6137 ms = **2,96x** ucuz.
+* **İplikler doğrulamaya da girdi**: aynı pencere sırası korunarak bölünüyor.
+
+İddia değil ölçüm: `kayip_ileri_ileri_ve_geri_ile_ayni_sayiyi_verir` (f64) ve
+`f32_kayip_ileri_geri_gecisli_yolla_ayni` (f32) iki yolun kaybını **birebir**
+karşılaştırır. Ayrışırsa test düşer; "doğrulama iyi" cümlesi başka bir sayıdan
+gelmeye başlayamaz.
+
 ## 5. Sırada ne var (iddia değil, plan)
 
 Ölçülen darboğaz hesap değil: 6 adım 325 saniye sürüyor ve bunun neredeyse
 tamamı matris çarpımlarında geçiyor. Sıradaki gerçek kazanç yerleri:
 
-1. Vektörleşmiş matris çarpımı (`f32x8` benzeri bloklama).
+1. Vektörleşmiş matris çarpımı (`f32x8` benzeri bloklama) — f32'nin 1,08x'te
+   kalmasının tek sebebi bu ve yapılmadı.
 2. Paketleme kapsaması zaten %99,9999; veri tarafında kazanç yok.
-3. Doğrulama geçişini de iş parçalarına bölmek (şu an tek iplikli).
+3. ~~Doğrulama geçişini de iş parçalarına bölmek~~ yapıldı (bkz. 4b).

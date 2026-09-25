@@ -882,6 +882,54 @@ fn gelu_turev(z: f64) -> f64 {
     0.5 * (1.0 + t) + 0.5 * z * dt
 }
 
+/// The loss, forward only: no backward pass, no gradient allocation.
+///
+/// Validation asks one question - "how surprised is the model by text it did
+/// not train on" - and the full pass answers it while building every cache the
+/// backward pass needs and then throwing them away. This walks the same forward
+/// route (same layer order, same mask, same tied readout and the same 1/d
+/// scale, the same `toplam / t`) so its number is **bit-identical** to the one
+/// the training path reports; `kayip_ileri_ileri_ve_geri_ile_ayni_sayiyi_verir`
+/// asserts exactly that. If the two paths ever drift apart, that test fails.
+#[must_use]
+#[allow(clippy::cast_precision_loss)]
+pub fn kayip_ileri(
+    spec: Spec,
+    p: &Parametreler,
+    girdi: &[usize],
+    hedef: &[usize],
+    kaynak: &[u32],
+) -> f64 {
+    assert_eq!(
+        kaynak.len(),
+        girdi.len(),
+        "kaynak vektoru girdiyle ayni uzunlukta olmali"
+    );
+    let d = spec.d_model;
+    let t = girdi.len();
+    let mut x = vec![0.0f64; t * d];
+    for (i, tok) in girdi.iter().enumerate() {
+        x[i * d..(i + 1) * d].copy_from_slice(&p.embedding[tok * d..(tok + 1) * d]);
+    }
+    for l in 0..spec.n_layers {
+        let (y, _) = katman_ileri(spec, p, l, &x, kaynak);
+        x = y;
+    }
+    let (xn, _, _) = layer_norm_ileri(&x, d, t, &p.lnf_olcek, &p.lnf_sapma);
+    let olcek = 1.0 / (d as f64);
+    let mut toplam_kayip = 0.0;
+    for i in 0..t {
+        let mut logits = vec![0.0f64; spec.vocab];
+        let xn_satir = &xn[i * d..(i + 1) * d];
+        for (v, logit) in logits.iter_mut().enumerate() {
+            let satir = &p.embedding[v * d..(v + 1) * d];
+            *logit = satir.iter().zip(xn_satir).map(|(a, b)| a * b).sum::<f64>() * olcek;
+        }
+        toplam_kayip += softmax_ce(&logits, hedef[i]).0;
+    }
+    toplam_kayip / (t as f64)
+}
+
 /// One epoch budget check: the ceiling belongs to the grant crate.
 ///
 /// # Errors
@@ -1964,5 +2012,60 @@ mod tests {
         assert!(Adamw::yeni(10, f64::NAN, 0.1).is_err());
         assert!(Adamw::yeni(10, 1e-3, 1.0).is_err());
         assert!(Adamw::yeni(10, 1e-3, 0.1).is_ok());
+    }
+
+    /// Ileri-yalniz yol, egitim yolunun ayni sayisini vermeli: dogrulama
+    /// egrisiyle egitim egrisi ayni seyi olcmeli, yoksa "dogrulama iyi"
+    /// cumlesi baska bir sayidan gelir.
+    #[test]
+    fn kayip_ileri_ileri_ve_geri_ile_ayni_sayiyi_verir() {
+        let spec = kucuk_spec();
+        let p = Parametreler::belirgin_doldur(spec, 13);
+        let kayit: Vec<usize> = (0..spec.max_seq_len)
+            .map(|i| (i * 4 + 1) % spec.vocab)
+            .collect();
+        let n = kayit.len() - 1;
+        let girdi = &kayit[..n];
+        let hedef = &kayit[1..];
+        let kaynak: Vec<u32> = (0..n).map(|i| u32::from(i >= n / 2)).collect();
+        let sade = kayip_ileri(spec, &p, girdi, hedef, &kaynak);
+        let (tam, _) = ileri_ve_geri_paket(spec, &p, girdi, hedef, &kaynak);
+        assert_eq!(sade, tam, "ileri-yalniz yol ayristi: {sade} vs {tam}");
+        // Geri gecis yok: ileri-yalniz yol hicbir sey degistirmemeli.
+        let (tam2, _) = ileri_ve_geri_paket(spec, &p, girdi, hedef, &kaynak);
+        assert_eq!(tam, tam2);
+    }
+
+    /// Dogrulamanin maliyeti, tam gecisin maliyetiyle olculur: ileri-yalniz
+    /// yolun gerekcesi "daha ucuz" cumlesi degil, olculen orandir.
+    #[test]
+    #[ignore = "olcum: --ignored ile kosar"]
+    #[allow(clippy::cast_precision_loss)]
+    fn dogrulama_maliyeti_olcumu() {
+        let spec = Spec::lubot_a1();
+        let p = Parametreler::mup_init(spec, 5, INIT_STD_EMBEDDING);
+        let kayit: Vec<usize> = (0..spec.max_seq_len)
+            .map(|i| (i * 7 + 3) % spec.vocab)
+            .collect();
+        let n = kayit.len() - 1;
+        let girdi = &kayit[..n];
+        let hedef = &kayit[1..];
+        let kaynak = vec![0u32; n];
+        let mut tam = 0.0f64;
+        let mut sade = 0.0f64;
+        for _ in 0..2 {
+            let s = std::time::Instant::now();
+            let _ = ileri_ve_geri_paket(spec, &p, girdi, hedef, &kaynak);
+            tam += s.elapsed().as_secs_f64();
+            let s = std::time::Instant::now();
+            let _ = kayip_ileri(spec, &p, girdi, hedef, &kaynak);
+            sade += s.elapsed().as_secs_f64();
+        }
+        println!(
+            "tam {:?} ms, ileri-yalniz {:?} ms, oran {:.2}x",
+            tam / 2.0 * 1000.0,
+            sade / 2.0 * 1000.0,
+            tam / sade
+        );
     }
 }
