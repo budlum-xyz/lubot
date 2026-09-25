@@ -1013,6 +1013,10 @@ pub fn cmd_egitim_karsilastir(args: &[String]) -> Result<(), String> {
     let (k32, g32) =
         lubot_egitim::kernel32::ileri_ve_geri_paket_32(spec, &p32, &girdi, &hedef, &kaynak);
     let g32_f64 = g32.geri_f64();
+    // Ileri-yalniz yol da bu pencerede olculur: dogrulama egrisinin
+    // dayandigi sayi, egitim yolunun sayisiyla ayni mi?
+    let sade_f64 = lubot_egitim::kayip_ileri(spec, &parametreler, &girdi, &hedef, &kaynak);
+    let sade_f32 = f64::from(p32.kayip_ileri(spec, &girdi, &hedef, &kaynak));
     let tensors: Vec<(&str, &Vec<f64>, &Vec<f64>)> = vec![
         ("embedding", &g64.embedding, &g32_f64.embedding),
         ("wq", &g64.wq, &g32_f64.wq),
@@ -1068,6 +1072,10 @@ pub fn cmd_egitim_karsilastir(args: &[String]) -> Result<(), String> {
     md.push_str(&format!(
         "| kayip farki | {:.3e} |\n",
         (k64 - f64::from(k32)).abs()
+    ));
+    md.push_str(&format!(
+        "| ileri-yalniz kayip | f64 {sade_f64:.6}, f32 {sade_f32:.6} (egitim yoluyla fark {:.3e}) |\n",
+        (k64 - sade_f64).abs().max((f64::from(k32) - sade_f32).abs())
     ));
     md.push_str(&format!(
         "| en kotu tensorsel oran | {en_kotu:.3e} ({en_kotu_ad}) |\n\n"
