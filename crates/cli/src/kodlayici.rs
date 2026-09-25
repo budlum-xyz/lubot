@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 
 use lubot_kodlayici::baslik::{Dizin, ParcaliDosya};
 use lubot_kodlayici::blok::{kodla, kullanilan_adlar, ortalama_havuz, Agirliklar, PencereKurali};
-use lubot_kodlayici::karar::{kullanilan_adlar as kafa_adlari, puanla, tip_indeksi, KararAgirliklari, KararYapisi, TIPLER};
+use lubot_kodlayici::karar::{
+    kullanilan_adlar as kafa_adlari, puanla, tip_indeksi, KararAgirliklari, KararYapisi, TIPLER,
+};
 use lubot_kodlayici::yapilandirma::{KafaYapisi, KodlayiciYapisi};
 
 /// Dispatches the `kodlayici` subcommands.
@@ -74,10 +76,20 @@ fn envanter(args: &[String]) -> Result<(), String> {
     c.push_str("| yapi | deger |\n|---|---|\n");
     c.push_str(&format!("| katman | {} |\n", yapi.num_hidden_layers));
     c.push_str(&format!("| gizli | {} |\n", yapi.hidden_size));
-    c.push_str(&format!("| kafa | {} x {} |\n", yapi.num_attention_heads, yapi.kafa_genisligi()));
+    c.push_str(&format!(
+        "| kafa | {} x {} |\n",
+        yapi.num_attention_heads,
+        yapi.kafa_genisligi()
+    ));
     c.push_str(&format!("| sozluk | {} |\n", yapi.vocab_size));
-    c.push_str(&format!("| pencere | {} ({:?}) |\n", yapi.local_attention, yapi.pencere_kurali));
-    c.push_str(&format!("| theta | {} |\n", yapi.theta(lubot_kodlayici::KatmanTuru::FullAttention)));
+    c.push_str(&format!(
+        "| pencere | {} ({:?}) |\n",
+        yapi.local_attention, yapi.pencere_kurali
+    ));
+    c.push_str(&format!(
+        "| theta | {} |\n",
+        yapi.theta(lubot_kodlayici::KatmanTuru::FullAttention)
+    ));
     let tam = yapi
         .layer_types
         .iter()
@@ -98,7 +110,10 @@ fn envanter(args: &[String]) -> Result<(), String> {
                 if let Some(maliyet) = kafa.escalate_maliyeti() {
                     c.push_str(&format!("| escalate maliyeti | {maliyet} |\n"));
                 }
-                c.push_str(&format!("| yanlis aksiyon maliyeti | {} |\n", kafa.cost_wrong_act));
+                c.push_str(&format!(
+                    "| yanlis aksiyon maliyeti | {} |\n",
+                    kafa.cost_wrong_act
+                ));
                 if let Some(esik) = kafa.esik_dogruluk() {
                     c.push_str(&format!(
                         "| basabas dogruluk | {esik:.4} (bu esigin ustunde aksiyon, altinda escalate) |\n"
@@ -121,10 +136,21 @@ fn envanter(args: &[String]) -> Result<(), String> {
         .filter(|ad| !beklenen.iter().any(|b| b == ad))
         .map(str::to_string)
         .collect();
-    c.push_str(&format!("\n- okunan tensor: {}\n", dizin.uzunluk() - kullanilmayan.len()));
+    c.push_str(&format!(
+        "\n- okunan tensor: {}\n",
+        dizin.uzunluk() - kullanilmayan.len()
+    ));
     c.push_str(&format!("- okunmayan tensor: {}\n", kullanilmayan.len()));
     if !kullanilmayan.is_empty() {
-        c.push_str(&format!("- ornek: {}\n", kullanilmayan.iter().take(8).cloned().collect::<Vec<_>>().join(", ")));
+        c.push_str(&format!(
+            "- ornek: {}\n",
+            kullanilmayan
+                .iter()
+                .take(8)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
     print!("{c}");
     Ok(())
@@ -231,7 +257,8 @@ fn kosu(args: &[String]) -> Result<(), String> {
             agirliklar.yapi.hidden_size
         );
     }
-    let havuz = ortalama_havuz(&gizli, agirliklar.yapi.hidden_size).map_err(|h| format!("{h:?}"))?;
+    let havuz =
+        ortalama_havuz(&gizli, agirliklar.yapi.hidden_size).map_err(|h| format!("{h:?}"))?;
 
     let mut c = String::new();
     c.push_str("# Kodlayici kosusu\n\n");
@@ -269,8 +296,8 @@ fn kosu(args: &[String]) -> Result<(), String> {
         let karar = KararYapisi::oku(&paket).map_err(|h| format!("{h:?}"))?;
         let kafa = KararAgirliklari::yukle(&dosya, &dizin, &agirliklar.yapi, &karar)
             .map_err(|h| format!("{h:?}"))?;
-        let cevap = puanla(&kafa, &gizli, jetonlar.len(), &isaretler, tip)
-            .map_err(|h| format!("{h:?}"))?;
+        let cevap =
+            puanla(&kafa, &gizli, jetonlar.len(), &isaretler, tip).map_err(|h| format!("{h:?}"))?;
         c.push_str("# Karar\n\n");
         c.push_str(&format!("- tip: {} ({tip})\n", TIPLER[tip]));
         c.push_str(&format!("- isaret: {isaretler:?}\n"));
@@ -280,21 +307,36 @@ fn kosu(args: &[String]) -> Result<(), String> {
         ));
         c.push_str(&format!("- basabas dogruluk: {:.4}\n\n", karar.basabas));
         c.push_str("| secenek | puan | olasilik |\n|---:|---:|---:|\n");
-        for (sira, (puan, olasilik)) in cevap.puanlar.iter().zip(cevap.olasiliklar.iter()).enumerate() {
+        for (sira, (puan, olasilik)) in cevap
+            .puanlar
+            .iter()
+            .zip(cevap.olasiliklar.iter())
+            .enumerate()
+        {
             c.push_str(&format!("| {sira} | {puan:.6} | {olasilik:.6} |\n"));
         }
         if let Some(secim) = cevap.secim() {
             c.push_str(&format!("\n- secim: {secim}\n"));
         }
-        c.push_str(&format!("- beklenen indeks: {:.6}\n", cevap.beklenen_indeks()));
+        c.push_str(&format!(
+            "- beklenen indeks: {:.6}\n",
+            cevap.beklenen_indeks()
+        ));
         if tip == 2 {
             if let Some(evet) = cevap.evet() {
                 c.push_str(&format!("- noul (evet): {evet:.6}\n"));
             }
         }
-        let en_buyuk = cevap.eylem_olasiliklari.iter().copied().fold(f32::MIN, f32::max);
+        let en_buyuk = cevap
+            .eylem_olasiliklari
+            .iter()
+            .copied()
+            .fold(f32::MIN, f32::max);
         c.push_str(&format!("\n- eylem puanlari: {:?}\n", cevap.eylem_puanlari));
-        c.push_str(&format!("- eylem olasiliklari: {:?}\n", cevap.eylem_olasiliklari));
+        c.push_str(&format!(
+            "- eylem olasiliklari: {:?}\n",
+            cevap.eylem_olasiliklari
+        ));
         c.push_str(&format!("- en yuksek eylem: {en_buyuk:.6}\n"));
         c.push_str(&format!("- ozellikler: {:?}\n", cevap.ozellikler));
         c.push_str(
@@ -351,7 +393,10 @@ mod tests {
         let hata = kosu(&args).unwrap_err();
         assert!(hata.contains("referans"), "{hata}");
         assert!(pencere_kurali(None).is_ok());
-        assert_eq!(pencere_kurali(Some("sol")).unwrap_or(PencereKurali::Simetrik), PencereKurali::SolPencere);
+        assert_eq!(
+            pencere_kurali(Some("sol")).unwrap_or(PencereKurali::Simetrik),
+            PencereKurali::SolPencere
+        );
         assert!(pencere_kurali(Some("yanlis")).is_err());
     }
 

@@ -382,9 +382,8 @@ impl KararAgirliklari {
     pub fn ac(paket: &Path) -> Result<(Self, KodlayiciYapisi), BaslikHatasi> {
         let dosya = ParcaliDosya::ac(paket, "model.safetensors.part-")?;
         let dizin = Dizin::oku(&dosya)?;
-        let yapi = KodlayiciYapisi::oku(&paket.join("encoder").join("config.json")).map_err(
-            |mesaj| BaslikHatasi::Baslik { mesaj },
-        )?;
+        let yapi = KodlayiciYapisi::oku(&paket.join("encoder").join("config.json"))
+            .map_err(|mesaj| BaslikHatasi::Baslik { mesaj })?;
         let karar = KararYapisi::oku(paket)?;
         let a = Self::yukle(&dosya, &dizin, &yapi, &karar)?;
         Ok((a, yapi))
@@ -445,7 +444,12 @@ pub fn puanla(
     let mut ham = Vec::with_capacity(isaretler.len());
     for konum in isaretler {
         let vektor = &durum[konum * d..(konum + 1) * d];
-        ham.push(puanla_vektor(&agirliklar.puanlayici, vektor, d, agirliklar.yapi.layer_norm_eps)?);
+        ham.push(puanla_vektor(
+            &agirliklar.puanlayici,
+            vektor,
+            d,
+            agirliklar.yapi.layer_norm_eps,
+        )?);
     }
 
     // The temperature is applied to the scores, and the softmax is done here
@@ -648,7 +652,11 @@ fn ozellikler(olasiliklar: &[f32]) -> [f32; OZELLIK_SAYISI] {
             ikinci = *p;
         }
     }
-    let ikinci = if olasiliklar.len() < 2 { 0.0 } else { ikinci.max(0.0) };
+    let ikinci = if olasiliklar.len() < 2 {
+        0.0
+    } else {
+        ikinci.max(0.0)
+    };
     #[allow(clippy::cast_precision_loss)]
     let k = olasiliklar.len() as f32;
     let entropi = if olasiliklar.len() < 2 {
