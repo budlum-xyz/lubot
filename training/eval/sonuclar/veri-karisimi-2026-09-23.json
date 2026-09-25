@@ -1,10 +1,11 @@
 {
   "is": "veri-karisimi-beyan-uyumu",
-  "kanit": "training/veri_karisimi.py --dogrula karisimi beyandan yeniden kurar: 2915 satir, katman sayilari {'mufredat': 88, 'derleyici-hakem': 541, 'gercek': 2286, 'sentetik': 0}, paylar {'mufredat': 0.030189, 'derleyici-hakem': 0.185592, 'gercek': 0.78422, 'sentetik': 0.0}, bant ihlali 0.",
+  "kanit": "training/veri_karisimi.py --dogrula karisimi beyandan yeniden kurar: 81187 satir, katman sayilari {'mufredat': 88, 'derleyici-hakem': 558, 'gercek': 2438, 'sentetik': 0, 'kamu-mali': 78103}, paylar {'mufredat': 0.001084, 'derleyici-hakem': 0.006873, 'gercek': 0.030029, 'sentetik': 0.0, 'kamu-mali': 0.962014}, bant ihlali 0.",
   "karisim": {
     "asamalar": {
       "derleyici-hakem": 2,
       "gercek": 3,
+      "kamu-mali": 3,
       "mufredat": 1,
       "sentetik": 4
     },
@@ -13,28 +14,31 @@
         "citation": "crates/tools/src/secrets.rs:72-79",
         "katman": "gercek",
         "satici": "pem",
-        "sira": 2671,
+        "sira": 2751,
         "tur": "private key block"
       }
     ],
     "bant_ihlalleri": [],
     "beyan_surumu": 1,
     "paylar": {
-      "derleyici-hakem": 0.185592,
-      "gercek": 0.78422,
-      "mufredat": 0.030189,
+      "derleyici-hakem": 0.006873,
+      "gercek": 0.030029,
+      "kamu-mali": 0.962014,
+      "mufredat": 0.001084,
       "sentetik": 0.0
     },
     "satir_sayilari": {
-      "derleyici-hakem": 541,
-      "gercek": 2286,
+      "derleyici-hakem": 558,
+      "gercek": 2438,
+      "kamu-mali": 78103,
       "mufredat": 88,
       "sentetik": 0
     },
-    "toplam_satir": 2915,
+    "toplam_satir": 81187,
     "toprakli_katmanlar": [
       "derleyici-hakem",
-      "gercek"
+      "gercek",
+      "kamu-mali"
     ]
   },
   "kaynaklar": {
@@ -42,7 +46,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 5.961
+    "sure_saniye": 19.153
   },
   "kosucu": "betik",
   "not": "sentetik katmani beyan edildi ve bos olculdu: self-instruct (C) egitilmis bir kontrol noktasi gerektirir, henuz yok. Bos beyan koltugu tutar; sablon metnini 'sentetik' diye yazmak olcum degil iddia olurdu.",

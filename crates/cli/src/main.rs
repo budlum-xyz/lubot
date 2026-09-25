@@ -469,10 +469,11 @@ fn cmd_ara(args: &[String]) -> Result<(), String> {
             .find(|m| m.id == hit.item_id)
             .map(|m| m.licence.as_str())
             .unwrap_or("-");
+        let pasaj = hit.text.trim();
+        let cit = lubot_read::output_schema::fence_for(pasaj);
         md.push_str(&format!(
-            "- `{}` (licence `{licence}`)\n\n```\n{}\n```\n\n",
-            hit.citation(),
-            hit.text.trim()
+            "- `{}` (licence `{licence}`)\n\n{cit}\n{pasaj}\n{cit}\n\n",
+            hit.citation()
         ));
     }
     lubot::validate_output(md.as_bytes(), "ara")?;

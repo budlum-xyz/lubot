@@ -92,7 +92,7 @@ impl Ayarlar {
 /// `rand` bağımlılığı yoktur (K1: from-scratch): dağıtımın kendisi kadar
 /// küçük bir akış yeter, ve ölçülebilir olması gerekir.
 #[derive(Debug, Clone)]
-pub struct Rastgele {
+pub(crate) struct Rastgele {
     durum: u64,
 }
 
@@ -126,7 +126,7 @@ impl Rastgele {
 /// # Errors
 /// [`OrnekHatasi::GecersizAyar`], [`OrnekHatasi::BosLogit`],
 /// [`OrnekHatasi::CozulemezLogit`].
-pub fn dagilim(logitler: &[f64], ayar: &Ayarlar) -> Result<Vec<(u32, f64)>, OrnekHatasi> {
+pub(crate) fn dagilim(logitler: &[f64], ayar: &Ayarlar) -> Result<Vec<(u32, f64)>, OrnekHatasi> {
     ayar.dogrula()?;
     if logitler.is_empty() {
         return Err(OrnekHatasi::BosLogit);
@@ -193,7 +193,7 @@ pub fn dagilim(logitler: &[f64], ayar: &Ayarlar) -> Result<Vec<(u32, f64)>, Orne
 /// # Errors
 /// [`OrnekHatasi::BosLogit`] — dağılım boşsa (kurulmuş bir dağılım boş olamaz;
 /// çağıran ham bir vektör geçirdiyse ret edilir).
-pub fn ornekle(dagilim: &[(u32, f64)], rastgele: &mut Rastgele) -> Result<u32, OrnekHatasi> {
+pub(crate) fn ornekle(dagilim: &[(u32, f64)], rastgele: &mut Rastgele) -> Result<u32, OrnekHatasi> {
     if dagilim.is_empty() {
         return Err(OrnekHatasi::BosLogit);
     }
@@ -209,18 +209,15 @@ pub fn ornekle(dagilim: &[(u32, f64)], rastgele: &mut Rastgele) -> Result<u32, O
     Ok(dagilim[dagilim.len() - 1].0)
 }
 
-/// Kısa yol: logitlerden tek jeton.
-///
-/// # Errors
-/// [`dagilim`] ve [`ornekle`]'nin reddettikleri.
-pub fn sec(logitler: &[f64], ayar: &Ayarlar, rastgele: &mut Rastgele) -> Result<u32, OrnekHatasi> {
-    let d = dagilim(logitler, ayar)?;
-    ornekle(&d, rastgele)
-}
-
 #[cfg(test)]
 mod testler {
     use super::*;
+
+    /// Iki adimin kisa yolu; test yazimini kısaltir, uretim yuzeyine girmez
+    /// (kullanilmayan herkese acik kisa yol, kapinin listesine takilirdi).
+    fn sec(logitler: &[f64], ayar: &Ayarlar, rastgele: &mut Rastgele) -> Result<u32, OrnekHatasi> {
+        ornekle(&dagilim(logitler, ayar)?, rastgele)
+    }
 
     fn esit(a: f64, b: f64) {
         assert!((a - b).abs() < 1e-12, "{a} != {b}");

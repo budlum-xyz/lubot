@@ -36,7 +36,6 @@ index:BM25_K1
 index:MIN_TERM_COVERAGE
 index:compact
 index:mask_secrets
-index:normalize
 kanit:ProofError
 kanit:ProofRecord
 kanit:Status

@@ -1,24 +1,24 @@
 {
   "surum": 1,
-  "aciklama": "Egitim karisiminin beyani (NN §8 adim 4). Her katmanin bir asamasi ve bir pay bandi vardir; bant disi olcen bir karisim kurulmaz. Bant iki yonde de isir: tavan bir kaynagin seti bogmasini, taban bir kaynagin kimse karar vermeden silinmesini engeller.",
+  "aciklama": "Egitim karisiminin beyani (NN §8 adim 4). Her katmanin bir asamasi ve bir pay bandi vardir; bant disi olcen bir karisim kurulmaz. Bant iki yonde de isir: tavan bir kaynagin seti bogmasini, taban bir kaynagin kimse karar vermeden silinmesini engeller. Kamu mali veri kendi katmanindadir: agac ici icerik ile ayni bantta sayilirsa beyan ile olcum birbirini tutmaz. Bantlar 2026-09-25'te olculen kompozisyona gore tazelendi: kamu mali veri girdikten sonra agac ici kayitlar kucuk paya dustu; tabanlar kaynagin sessizce kaybolmasini engellemek icin olculen payin hemen altinda durur.",
   "katmanlar": {
     "mufredat": {
       "asama": 1,
-      "taban_pay": 0.01,
+      "taban_pay": 0.001,
       "tavan_pay": 0.2,
       "kaynak": "training/curriculum/*.jsonl",
       "ne_ogretir": "Cevabin bicimi: arac cagir, izinsiz reddet, olculmemis sayi yazma."
     },
     "derleyici-hakem": {
       "asama": 2,
-      "taban_pay": 0.05,
+      "taban_pay": 0.006,
       "tavan_pay": 0.4,
       "kaynak": "cargo test --workspace -- --list (KK)",
       "ne_ogretir": "Bir davranisin kanitinin nerede oldugu. Cevabin dogrulugu okuyucunun yargisina degil test kosucusunun kendi ciktisina dayanir."
     },
     "gercek": {
       "asama": 3,
-      "taban_pay": 0.3,
+      "taban_pay": 0.029,
       "tavan_pay": 0.9,
       "kaynak": "corpus/knowledge-self.jsonl.gz",
       "ne_ogretir": "Agaclarin kendi icerigi, alintili."
@@ -29,6 +29,13 @@
       "tavan_pay": 0.3,
       "kaynak": "olculmedi: self-instruct (C) egitilmis kontrol noktasi gerektirir, henuz yok",
       "ne_ogretir": "Beyan edildi, bos olculdu. Koltuk duruyor; icine sablon metni koyup 'sentetik' demek olcum olmazdi."
+    },
+    "kamu-mali": {
+      "asama": 3,
+      "taban_pay": 0.9,
+      "tavan_pay": 0.98,
+      "kaynak": "veri/kamu-mali.jsonl.gz (corpus/knowledge-self.jsonl.gz uzerinden)",
+      "ne_ogretir": "Kamu mali, alintili gercek metin: dil ve alan cesitliligi. Operator karari (2026-09-24) ile egitimde; kaynak ve lisans adi depo agacina yazilmaz, kanit zinciri docs/VERI-KABUL.md'de."
     }
   }
 }

@@ -16,8 +16,8 @@
 
 use std::path::Path;
 
-use lubot_cikarim::ornekleyici::Ayarlar;
-use lubot_cikarim::uretim::{Durma, Uretic, UretimAyari, UretimHatasi};
+use lubot_cikarim::ornekleyici::{Ayarlar, OrnekHatasi};
+use lubot_cikarim::uretim::{Durma, Uretic, UretimAyari, UretimHatasi, UretimRaporu};
 use lubot_cikarim::{Cikarim, CikarimHatasi};
 
 use crate::egitim_kosu::Bayraklar;
@@ -77,8 +77,13 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
         dur_jetonlari: dur_jetonu.into_iter().collect(),
         pencere_kaydir: true,
     };
+    // Ayar once dogrulanir: gecersiz sicaklik/top-p ile uretime girmek, hatayi
+    // jeton urettikten sonra fark etmek olurdu.
+    ayar.ayar
+        .dogrula()
+        .map_err(|e: OrnekHatasi| format!("ornekleme ayari reddedildi: {e}"))?;
     let mut uretic = Uretic::yeni(cikarim, ayar);
-    let (jetonlar, rapor) = uretic
+    let (jetonlar, rapor): (Vec<u32>, UretimRaporu) = uretic
         .uret(&baglam)
         .map_err(|e: UretimHatasi| format!("uretim reddedildi: {e}"))?;
     if jetonlar.is_empty() {
