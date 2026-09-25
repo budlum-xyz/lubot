@@ -188,6 +188,30 @@ impl KosuRaporu {
         self.adim.saturating_sub(self.ayar.baslangic_adim)
     }
 
+    /// Bu koşunun ölçüm çatısındaki sayıları.
+    ///
+    /// Sayılar koşunun kendi kayıtlarından gelir; burada yeniden hesaplanan
+    /// tek şey oranlar (EMA, jeton/saniye). Jeton/saniye **koşunun tamamının**
+    /// ölçüsüdür: adım başına süre kaydedilmiyor, adım başına süre uydurmak
+    /// da ölçüm değil tahmin olurdu.
+    ///
+    /// # Errors
+    /// [`crate::olcum::OlcumHatasi`] - kayıtlarda sonlu olmayan bir kayıp ya da
+    /// geçersiz bir süre varsa. Sessizce atlanmaz: bozuk bir kayıtla hesaplanan
+    /// ortalama, ölçüm değil karışımdır.
+    pub fn olculer(&self) -> Result<crate::olcum::KosuOlculeri, crate::olcum::OlcumHatasi> {
+        let mut olcum = crate::olcum::KosuOlculeri::yeni();
+        for kayit in &self.egitim_egrisi {
+            olcum.kayip.ekle(kayit.kayip)?;
+        }
+        olcum.adim = self.egitim_egrisi.len() as u64;
+        for kayit in &self.dogrulama_egrisi {
+            olcum.dogrulama.ekle(kayit.kayip)?;
+        }
+        olcum.sayac.ekle(self.jeton, self.sure_ms as f64 / 1000.0)?;
+        Ok(olcum)
+    }
+
     /// The fall from the first loss to the last, as a share of the first.
     #[must_use]
     pub fn dusus_orani(&self) -> Option<f64> {

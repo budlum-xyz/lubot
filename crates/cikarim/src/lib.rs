@@ -32,6 +32,7 @@
 //! speed claim attached, so the check is a measurement with a tolerance and not
 //! a comment saying "equivalent".
 
+pub mod cezalar;
 pub mod ornekleyici;
 pub mod uretim;
 
@@ -134,6 +135,27 @@ impl Onbellek {
             v: vec![Vec::new(); spec.n_layers],
             uzunluk: 0,
         }
+    }
+
+    /// En eski `n` konumu önbellekten düşürür: kayan pencerenin hızlı yolu.
+    ///
+    /// Bu bir **yaklaşımdır** ve adı öyle yazılıdır: düşen konumların ardından
+    /// gelen konumların gizli durumları yeniden hesaplanmaz - onlar daha uzun
+    /// bir pencere görülerek hesaplanmıştı. Kayan pencere bundan sonraki
+    /// dikkat için kısalır, geçmiş için değil. Tam yeniden hesaplayan yol
+    /// [`crate::uretim::KaydirmaModu::YenidenKur`]'dur; hangisinin koştuğu
+    /// üretim raporunda yazılıdır.
+    fn bastan_dus(&mut self, n: usize, d_model: usize) {
+        let n = n.min(self.uzunluk);
+        if n == 0 {
+            return;
+        }
+        for katman in 0..self.k.len() {
+            let kes = (n * d_model).min(self.k[katman].len());
+            self.k[katman].drain(..kes);
+            self.v[katman].drain(..kes);
+        }
+        self.uzunluk -= n;
     }
 }
 

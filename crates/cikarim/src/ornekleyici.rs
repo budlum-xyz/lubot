@@ -126,7 +126,23 @@ impl Rastgele {
 /// # Errors
 /// [`OrnekHatasi::GecersizAyar`], [`OrnekHatasi::BosLogit`],
 /// [`OrnekHatasi::CozulemezLogit`].
-pub(crate) fn dagilim(logitler: &[f64], ayar: &Ayarlar) -> Result<Vec<(u32, f64)>, OrnekHatasi> {
+/// [`dagilim`], artı: yasak jeton listesi.
+///
+/// Yasak, geçerli bir logit üzerine konmuş bir sınırdır (ör. tekrarlanan
+/// n-gram'ın devamı), bu yüzden aday listesinden *çıkarılır*; logit `-inf`
+/// yapılmaz. İkisi ayrı sözleşmedir: sonlu olmayan logit "dağılım kurulamaz"
+/// demektir ve orada durmak doğrudur, yasak ise sınırlı ama kurulabilir bir
+/// dağılımdır.
+///
+/// # Errors
+/// [`OrnekHatasi::BosLogit`], [`OrnekHatasi::CozulemezLogit`] (sonlu olmayan
+/// logit) ve yasağın bütün adayları kapatması durumunda yine
+/// [`OrnekHatasi::CozulemezLogit`].
+pub(crate) fn dagilim_maskele(
+    logitler: &[f64],
+    ayar: &Ayarlar,
+    yasak: &[u32],
+) -> Result<Vec<(u32, f64)>, OrnekHatasi> {
     ayar.dogrula()?;
     if logitler.is_empty() {
         return Err(OrnekHatasi::BosLogit);
@@ -136,21 +152,36 @@ pub(crate) fn dagilim(logitler: &[f64], ayar: &Ayarlar) -> Result<Vec<(u32, f64)
         // yerine ret - sayi uydurmak yerine "bu logitlerle dagilim olmaz".
         return Err(OrnekHatasi::CozulemezLogit);
     }
+    let serbest = |sira: usize| -> bool { !yasak.contains(&(sira as u32)) };
+    if !(0..logitler.len()).any(serbest) {
+        return Err(OrnekHatasi::CozulemezLogit);
+    }
     if ayar.sicaklik == 0.0 {
         // Açgözlü: tek jeton, olasılık 1. Eşitlikte küçük indeks.
-        let mut en_iyi = 0usize;
+        let mut en_iyi: Option<usize> = None;
         for (sira, logit) in logitler.iter().enumerate() {
-            if *logit > logitler[en_iyi] {
-                en_iyi = sira;
+            if !serbest(sira) {
+                continue;
+            }
+            match en_iyi {
+                Some(mevcut) if logitler[mevcut] >= *logit => {}
+                _ => en_iyi = Some(sira),
             }
         }
-        return Ok(vec![(en_iyi as u32, 1.0)]);
+        let sira = en_iyi.ok_or(OrnekHatasi::CozulemezLogit)?;
+        return Ok(vec![(sira as u32, 1.0)]);
     }
     let olcek = 1.0 / ayar.sicaklik;
-    let en_buyuk = logitler.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let en_buyuk = logitler
+        .iter()
+        .enumerate()
+        .filter(|(sira, _)| serbest(*sira))
+        .map(|(_, logit)| *logit)
+        .fold(f64::NEG_INFINITY, f64::max);
     let mut agirlik: Vec<(u32, f64)> = logitler
         .iter()
         .enumerate()
+        .filter(|(sira, _)| serbest(*sira))
         .map(|(sira, logit)| (sira as u32, ((logit - en_buyuk) * olcek).exp()))
         .collect();
     // Eşitlikte küçük indeks önce: sıralama girdilerin fonksiyonu olur.
@@ -215,8 +246,13 @@ mod testler {
 
     /// Iki adimin kisa yolu; test yazimini kısaltir, uretim yuzeyine girmez
     /// (kullanilmayan herkese acik kisa yol, kapinin listesine takilirdi).
+    /// Test yazimini kisaltir: maskesiz dagilim.
+    fn dagilim(logitler: &[f64], ayar: &Ayarlar) -> Result<Vec<(u32, f64)>, OrnekHatasi> {
+        dagilim_maskele(logitler, ayar, &[])
+    }
+
     fn sec(logitler: &[f64], ayar: &Ayarlar, rastgele: &mut Rastgele) -> Result<u32, OrnekHatasi> {
-        ornekle(&dagilim(logitler, ayar)?, rastgele)
+        ornekle(&dagilim_maskele(logitler, ayar, &[])?, rastgele)
     }
 
     fn esit(a: f64, b: f64) {

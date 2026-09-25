@@ -16,8 +16,9 @@
 
 use std::path::Path;
 
+use lubot_cikarim::cezalar::{CezaHatasi, Cezalar};
 use lubot_cikarim::ornekleyici::{Ayarlar, OrnekHatasi};
-use lubot_cikarim::uretim::{Durma, Uretic, UretimAyari, UretimHatasi, UretimRaporu};
+use lubot_cikarim::uretim::{Durma, KaydirmaModu, Uretic, UretimAyari, UretimHatasi, UretimRaporu};
 use lubot_cikarim::{Cikarim, CikarimHatasi};
 
 use crate::egitim_kosu::Bayraklar;
@@ -41,6 +42,12 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
             "--en-cok",
             "--dur-jetonu",
             "--kayit",
+            "--tekrar-cezasi",
+            "--varlik-cezasi",
+            "--siklik-cezasi",
+            "--kac-gram",
+            "--en-az-jeton",
+            "--kaydirma",
         ],
     )?;
     let ckpt = b.zorunlu("--ckpt")?.to_string();
@@ -56,6 +63,26 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
     let en_cok = b.sayi::<usize>("--en-cok")?.unwrap_or(64);
     let dur_jetonu = b.sayi::<u32>("--dur-jetonu")?;
     let kayit_yolu = b.metin("--kayit").map(str::to_string);
+    // Cezalar ve kayan pencere yolu: her biri dogrulanir, sonra rapora gecer.
+    // Sessiz varsayilan yok - kapatilmis her ceza raporda "kapali" gorunur.
+    let ceza = Cezalar {
+        tekrar_cezasi: b.ondalik("--tekrar-cezasi")?.unwrap_or(1.0),
+        varlik_cezasi: b.ondalik("--varlik-cezasi")?.unwrap_or(0.0),
+        siklik_cezasi: b.ondalik("--siklik-cezasi")?.unwrap_or(0.0),
+        kac_gram: b.sayi::<usize>("--kac-gram")?.unwrap_or(0),
+        en_az_jeton: b.sayi::<usize>("--en-az-jeton")?.unwrap_or(0),
+    };
+    ceza.dogrula()
+        .map_err(|e: CezaHatasi| format!("ceza ayari reddedildi: {e}"))?;
+    let kaydirma_modu = match b.metin("--kaydirma") {
+        None | Some("yeniden") => KaydirmaModu::YenidenKur,
+        Some("onbellek") => KaydirmaModu::OnbellektenDus,
+        Some(baska) => {
+            return Err(format!(
+                "--kaydirma `{baska}`: `yeniden` (tam) ya da `onbellek` (yaklasim) olmali"
+            ))
+        }
+    };
 
     let cikarim = Cikarim::yukle(Path::new(&ckpt))
         .map_err(|e: CikarimHatasi| format!("kontrol noktasi yuklenemedi ({ckpt}): {e}"))?;
@@ -76,6 +103,8 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
         en_cok_jeton: en_cok,
         dur_jetonlari: dur_jetonu.into_iter().collect(),
         pencere_kaydir: true,
+        kaydirma_modu,
+        ceza,
     };
     // Ayar once dogrulanir: gecersiz sicaklik/top-p ile uretime girmek, hatayi
     // jeton urettikten sonra fark etmek olurdu.
@@ -99,13 +128,19 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
     // *devam ettirir*, soruyu yanıtlamak üzere eğitilmiş bir asistan değildir.
     // Yanlış başlık, çıktıyı olduğundan yetenekli gösterirdi.
     let md = format!(
-        "# Sohbet\n\n## Girdi\n\n{girdi}\n\n## Uretim\n\n{cevap}\n\n## Olcum\n\n| olcu | deger |\n|---|---|\n| jeton | {jeton} |\n| durma | {durma} |\n| ortalama log-olasilik | {log:.4} |\n| tohum | {tohum} |\n| sicaklik | {sicaklik} |\n| top-k | {top_k} |\n| top-p | {top_p} |\n| pencere kaydirma | {kaydirma} |\n",
+        "# Sohbet\n\n## Girdi\n\n{girdi}\n\n## Uretim\n\n{cevap}\n\n## Olcum\n\n| olcu | deger |\n|---|---|\n| jeton | {jeton} |\n| durma | {durma} |\n| ortalama log-olasilik | {log:.4} |\n| tohum | {tohum} |\n| sicaklik | {sicaklik} |\n| top-k | {top_k} |\n| top-p | {top_p} |\n| pencere kaydirma | {kaydirma} |\n| kaydirma modu | {kaydirma_modu} |\n| onbellek yeniden kurma | {yeniden_kurma} |\n| ceza | {ceza} |\n",
         girdi = govde(&sorgu),
         cevap = govde(&uretilen),
         jeton = rapor.jeton,
         durma = match rapor.durma { Durma::Uzunluk => "uzunluk", Durma::DurJetonu => "dur-jetonu" },
         log = rapor.ortalama_log_olasilik,
         kaydirma = rapor.kaydirma,
+        kaydirma_modu = match rapor.kaydirma_modu {
+            KaydirmaModu::YenidenKur => "yeniden-kur (tam)",
+            KaydirmaModu::OnbellektenDus => "onbellekten-dus (yaklasim)",
+        },
+        yeniden_kurma = rapor.yeniden_kurma,
+        ceza = rapor.ceza.ozet(),
     );
     crate::validate_output(md.as_bytes(), "sohbet")?;
     print!("{md}");
@@ -167,5 +202,35 @@ mod testler {
     fn bayraklar_zorunlu_alanlari_ister() {
         let hata = cmd_sohbet(&[]).expect_err("ckpt olmadan kosmamali");
         assert!(hata.contains("--ckpt"), "beklenen hata: {hata}");
+    }
+
+    #[test]
+    fn gecersiz_kaydirma_modu_ve_ceza_reddedilir() {
+        // Kontrol noktasi okunmadan once ayar reddedilir: kullanici iki kez
+        // kosmasin diye, hata ayarin kendisini adiyla soyler.
+        let hata = cmd_sohbet(&[
+            "--ckpt".into(),
+            "/yok".into(),
+            "--sorgu".into(),
+            "selam".into(),
+            "--kaydirma".into(),
+            "hizli".into(),
+        ])
+        .expect_err("bilinmeyen mod kabul edilmemeli");
+        assert!(hata.contains("--kaydirma"), "beklenen hata: {hata}");
+
+        let hata = cmd_sohbet(&[
+            "--ckpt".into(),
+            "/yok".into(),
+            "--sorgu".into(),
+            "selam".into(),
+            "--tekrar-cezasi".into(),
+            "0.5".into(),
+        ])
+        .expect_err("1.0 alti ceza reddedilmeli");
+        assert!(
+            hata.contains("ceza ayari reddedildi"),
+            "beklenen hata: {hata}"
+        );
     }
 }

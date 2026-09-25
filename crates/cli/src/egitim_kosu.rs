@@ -633,6 +633,13 @@ fn kosu_markdown(
         ayar.yigin, ayar.kirpma, ayar.ogrenme_orani, ayar.agirlik_sonumu
     ));
     md.push_str(&format!("| jeton | {} |\n", rapor.jeton));
+    // Olcum catisi: kayip eğrisinin özeti, karmaşıklık ve hız. Hepsi koşunun
+    // kayitlarindan; hata verirse rapor "olculmedi" yazar, sayi uydurmaz.
+    match rapor.olculer() {
+        Ok(olcum) => md.push_str(&olcum.markdown_satirlari().join("\n")),
+        Err(hata) => md.push_str(&format!("| olcum | olculemedi: {hata} |\n")),
+    }
+    md.push('\n');
     md.push_str(&format!(
         "| kayip | {:.6} -> {:.6} |\n",
         rapor.baslangic_kaybi, rapor.son_kaybi
