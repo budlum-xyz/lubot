@@ -76,6 +76,8 @@ fn usage() -> String {
         "  lubot sikistir --path <f> [--igne desen ...] [--depo dir]",
         "  lubot sikistir --geri-getir <ozet-dosya> [--depo dir]",
         "  lubot ogren --log <f> [--ogren-dir outputs/ogren]",
+        "  lubot kanaat [doktrin|batarya|ver] ...  (kanittan hukum: yerel karar motoru)",
+        "  lubot sertleme [--zorla] [--derin] [--ayrinti] [--beklenen-sha <hex>] [--dosya <yol>]",
         "  lubot karar [doktrin|tek <evet|hayir>:<olasilik>|oyla <evet:0.9,hayir:0.7,...>]",
     ]
     .join("\n")
@@ -135,6 +137,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "odeme" => lubot::odeme::cmd_odeme(rest),
         "sikistir" => lubot::sikistir::cmd_sikistir(rest),
         "karar" => lubot::karar::cmd_karar(rest),
+        "kanaat" => lubot::kanaat::cmd_kanaat(rest),
+        "sertleme" => lubot::sertleme::cmd_sertleme(rest),
         "ogren" => lubot::sikistir::cmd_ogren(rest),
         other => Err(format!("unknown command `{other}`\n{}", usage())),
     }

@@ -34,6 +34,8 @@ lubot-yetenek = { path = "../yetenek" }
 lubot-egitim = { path = "../egitim" }
 lubot-cikarim = { path = "../cikarim" }
 lubot-jeton = { path = "../jeton" }
+lubot-kanaat = { path = "../kanaat" }
+lubot-sertlestirme = { path = "../sertlestirme" }
 
 [lints]
 workspace = true
