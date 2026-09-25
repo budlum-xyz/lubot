@@ -16,12 +16,12 @@ kaynak burasıdır.
   "surum": 1,
   "kararlar": [
     {"id": "K1", "kural": "from-scratch base model; hicbir upstream model isimlendirmesi veya agirlik aktarimi yok"},
-    {"id": "K2", "kural": "egitim verisi yalnizca Lubot'un kendi repo agacindan gelir; hicbir dis veri kaynagi yok"},
+    {"id": "K2", "kural": "egitim verisi (a) Lubot'un kendi repo agacindan ve (b) operatore ait ya da kamu mali sinifinda olan dis kaynaklardan gelir; dis kaynagin lisansi indirmeden once kaynagin kendi kaydindan dogrulanir, alinan her parca revizyon ve ozetle (sha256) damgalanir; verinin ne kaynak ne lisans adi depo agacina yazilir"},
     {"id": "K3", "kural": "buyume yalnizca repo'nun kendi gelisimi ve `doc` komutuyla kabul edilen, record-based provenance'a sahip kayitlar uzerinden olur"},
     {"id": "K4", "kural": "Tier -2 STARK-provable yol yalnizca dogrulama amaclidir; ana egitim planinin parcasi degildir"},
     {"id": "K5", "kural": "operator agreement transition value: zkVM icerik kaniti canli olana kadar 2, sonrasinda 1/1"},
     {"id": "K6", "kural": "egitim, sahibinin kendi donanimiyla sinirlidir; model boyutu donanim kapasitesini asla asamaz"},
-    {"id": "no-generation", "kural": "Lubot no-generation-variant bir modeldir: okuyan, uretmeyen; cikti sema dogrulamali Markdown'dir, yumusatma/fallback yoktur"},
+    {"id": "no-generation", "kural": "Lubot her turden veriyi okuyabilir ve inceleyebilir; kullaniciya sundugu cikti yalnizca sema dogrulamali Markdown'dir. Kullaniciya donuk hicbir yolda yumusatma/fallback yoktur: yapilamayan is acikca reddedilir. Uretilen metin korpusa kayit olamaz; uretim yalnizca kullaniciya donuk yuzeyde olur"},
     {"id": "K7", "kural": "danisma katmani (Jev/Laya) yalnizca OY verir: tut/at karari belirsizlik bandindaysa oy sorulur, esik ve karar kurali kodda kalir, oy yoksa ya da guven esigin altindaysa karar insana gider ve dongu S2 ile durur; danisma katmani olcutu, veriyi, donanimi, degerlendirme tanimini degistiremez, korpusa kayit uretemez"}
   ],
   "dokunulmaz_dosyalar": [

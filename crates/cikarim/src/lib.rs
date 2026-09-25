@@ -3,10 +3,15 @@
 //! This crate is the inference surface. It loads a checkpoint written by
 //! `lubot-egitim`, runs the network forward, and answers two questions:
 //! *how well does this checkpoint predict this text, given that context*, and
-//! *which of these candidates does it prefer*. There is no sampling, no beam,
-//! no decoder loop - nothing here produces text. That is not a limitation of
-//! the implementation; it is the shape the project decided on, and the CLI has
-//! a gate that fails if a generation surface appears.
+//! *which of these candidates does it prefer*. This crate still has no decoder
+//! loop and produces no text: scoring and ranking are its contract, and the CLI
+//! has a gate that fails if a generation surface appears.
+//!
+//! [`ornekleyici`] carries the *distribution* half of sampling as pure
+//! mathematics - temperature, top-k, nucleus, and a deterministic stream - so
+//! that the arithmetic is testable on its own. It holds no loop, no network and
+//! no entry point: turning a distribution into a written answer is a separate
+//! surface with its own decision behind it.
 //!
 //! # The one hard rule: score a token from before it
 //!
@@ -26,6 +31,9 @@
 //! the third opinion. An optimisation that changes the answer is a bug with a
 //! speed claim attached, so the check is a measurement with a tolerance and not
 //! a comment saying "equivalent".
+
+pub mod ornekleyici;
+pub mod uretim;
 
 use std::path::Path;
 
@@ -493,6 +501,31 @@ impl Cikarim {
             }
         }
         cikti
+    }
+
+    /// The full logit vector for one hidden state: the tied readout with the
+    /// spec's `1/d_model` scale.
+    ///
+    /// Scoring only ever needs two numbers (the target's logit and the maximum),
+    /// which is why [`Cikarim::log_olasilik`] walks the vocabulary twice instead
+    /// of materialising it. A sampler needs *all* of them, so this is the one
+    /// place where the 8192-wide row is built - and it is built from the same
+    /// embedding rows, in the same order, with the same scale, so a distribution
+    /// taken from here and a log-probability taken from there cannot disagree.
+    #[must_use]
+    pub fn logitler(&self, gizli: &[f64]) -> Vec<f64> {
+        let d = self.spec.d_model;
+        let olcek = 1.0 / d as f64;
+        let mut logitler = vec![0.0f64; self.spec.vocab];
+        for (v, logit) in logitler.iter_mut().enumerate() {
+            let satir = &self.parametreler.embedding[v * d..v * d + d];
+            let mut toplam = 0.0;
+            for (m, wm) in satir.iter().enumerate() {
+                toplam += wm * gizli[m];
+            }
+            *logit = toplam * olcek;
+        }
+        logitler
     }
 
     /// `log p(hedef | hidden)`: the tied readout with the spec's `1/d_model`

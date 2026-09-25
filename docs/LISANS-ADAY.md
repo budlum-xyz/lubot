@@ -1,5 +1,13 @@
 # Lisansı temiz kaynak adayları — liste ve karar alanları
 
+> **Durum (2026-09-24): KARAR VERİLDİ.** Operatör, kamu malı sınıfındaki dış
+> kaynakların eğitim verisi olarak alınmasını onayladı; anayasa maddesi K2 bu
+> sınıfa açıldı ve izinli lisans kümesine `kamu-mali` eklendi. Karar ve kanıt
+> zinciri `docs/VERI-KABUL.md` içindedir; alım hattı
+> `training/kamu_verisi.py`, korpus inşası `training/corpus_insa.py`.
+> Bu belgenin altındaki değerlendirme, kararın gerekçesini görünür tutmak için
+> yerinde bırakılmıştır.
+
 Madde 27 (Awesome Uncopyright / Public Datasets). K3 gereği korpus **yalnız**
 budlum yüzeyinden beslenir: izinli lisans kümesi dışındaki hiçbir kayıt kapıdan
 girmez. Bu belge yeni kaynak **kabul etmez**; aday listesini ve kararın hangi
@@ -22,15 +30,19 @@ mi, değilse neden girebilir), **K6** (jeton maliyeti bütçeye sığar mı).
 
 ## Karar alanlarının bugünkü değerleri
 
-- **İzinli lisans kümesi**: `crates/tools` içindeki kapalı küme (PolyForm Shield,
-  MIT). Yeni bir lisans girmesi **kod değişikliği** ve kapı güncellemesi ister;
-  belgeyle değişmez.
+- **İzinli lisans kümesi**: kapalı küme (PolyForm Shield, MIT, **kamu-mali**).
+  Yeni bir lisans girmesi **kod değişikliği** ve kapı güncellemesi ister;
+  belgeyle değişmez. `kamu-mali` sınıfı 2026-09-24'te operatör kararıyla eklendi
+  (`training/build_corpus.py` kümenin tek sahibidir).
 - **Korpus katmanı**: self korpusu (bu ağaçtan, CI'da) + operatör tarafında
   yüzey korpusu. Üçüncü bir katman bugün yok.
 - **Jeton bütçesi**: K6/ratchet tarafında ölçülür; dış kaynak eklemek
   `ratchet-holds` altındaki jeton sayısını yükseltir ve `data-mix-is-declared`
   karışımı yeniden beyan ister.
 - **Sentetik veri**: **0** (karar verilmiş; `veri_karisimi.py` bunu ölçer).
+- **Çalışma deseni devri**: ajanın kendi çalışma biçiminden çıkarılan desenler
+  `docs/CALISMA-DESENI.md` içinde; kaynağı kendi eserdir ve korpusa bu
+  ağaçtan girer.
 
 ## Neden bu liste "iş bitmiş" sayılmaz
 

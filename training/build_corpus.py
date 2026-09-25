@@ -51,7 +51,7 @@ from pathlib import Path
 
 SKIP_DIRS = {".git", "target", "node_modules", "corpus", ".github"}
 
-ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0"}
+ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0", "kamu-mali"}
 
 
 def digest(text: str) -> str:
