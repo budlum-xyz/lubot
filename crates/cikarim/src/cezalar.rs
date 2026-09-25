@@ -198,7 +198,7 @@ impl std::error::Error for CezaHatasi {}
 /// konmuş bir sınırdır; ikisini aynı yere yazmak, "bu jeton yasak" ile "bu
 /// logit bozuk" ayrımını silerdi.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CezaSonucu {
+pub(crate) struct CezaSonucu {
     /// Ölçeklenmiş/geriletIlmiş logitler; hepsi sonlu kalır.
     pub logitler: Vec<f64>,
     /// Bu turda örneklenemeyecek jetonlar (n-gram yasağı + durma erteleme).
@@ -215,7 +215,7 @@ pub struct CezaSonucu {
 ///
 /// # Errors
 /// [`CezaHatasi::GecersizCezalar`] ve [`CezaHatasi::BosAday`].
-pub fn uygula(
+pub(crate) fn uygula(
     cezalar: &Cezalar,
     logitler: &[f64],
     gecmis: &[u32],
@@ -363,7 +363,11 @@ mod testler {
         assert!(cikan.iter().all(|l| l.is_finite()), "{cikan:?}");
         assert!(sonuc.yasak.is_empty());
         assert_eq!(sonuc.rapor.cezalanan_jeton, 2);
-        assert!(sonuc.rapor.ozet().contains("2 jeton geriletilmis"), "{}", sonuc.rapor.ozet());
+        assert!(
+            sonuc.rapor.ozet().contains("2 jeton geriletilmis"),
+            "{}",
+            sonuc.rapor.ozet()
+        );
     }
 
     #[test]

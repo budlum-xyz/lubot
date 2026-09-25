@@ -60,12 +60,107 @@ pub struct KosuAyari {
     pub baslangic_konum: usize,
     /// Windows per step: gradients are averaged over their tokens.
     pub yigin: usize,
+    /// The precision the step is computed in. Not a storage detail that
+    /// happens elsewhere: a run that computes in f32 is a run whose numbers
+    /// were rounded every step, so the checkpoint has to record it.
+    pub hassasiyet: crate::kontrol::Hassasiyet,
+    /// How many OS threads may work on one step's windows. `0` means "ask the
+    /// machine" ([`std::thread::available_parallelism`]); `1` forces the plain
+    /// sequential loop. The windows are computed independently and summed in
+    /// window order, so the result does not depend on this number - that is
+    /// asserted by `iplik_sayisi_sonucu_degistirmez` below, and it is the whole
+    /// reason the split is allowed to exist.
+    pub iplik: usize,
     /// Gradient-norm clip. Zero disables clipping, and says so in the report.
     pub kirpma: f64,
     /// Validate every this many steps.
     pub dogrulama_her: u64,
     /// Stop after this many epochs even if the loss is still improving.
     pub epoch_tavani: u32,
+}
+
+/// How many threads one step may use: the setting, or the machine's answer when
+/// the setting is zero.
+#[must_use]
+pub fn iplik_sayisi(ayar: &KosuAyari) -> usize {
+    if ayar.iplik > 0 {
+        return ayar.iplik.min(ayar.yigin.max(1));
+    }
+    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
+
+/// One window's contribution to a step: loss, gradient, and how many tokens it
+/// stood for (the caller weights by this, so a short window cannot shout).
+pub(crate) type PencereGradyan = (f64, Parametreler, usize);
+
+/// A block of windows handed to one worker thread, kept in window order.
+type IsParcasi = Result<Vec<Vec<PencereGradyan>>, KosuHatasi>;
+
+/// One step's windows, each turned into (loss, gradient, tokens), summed later
+/// in window order by the caller.
+///
+/// # Why splitting is safe
+/// A window's loss and gradients do not depend on any other window in the step:
+/// attention never crosses a record boundary, and the step only sums. So the
+/// parallel path computes the same numbers as the sequential one *provided the
+/// caller keeps the order* - which it does, because this function returns the
+/// results in the order it was given them. `topla_ile` is then called in that
+/// same order, so the floating-point summation is literally the same sequence
+/// of additions, bit for bit, whatever the thread count.
+///
+/// # Errors
+/// [`KosuHatasi::IsParcasiDustu`] when a worker thread panicked. A step that
+/// half computed gradients must not be reported as a step, so this is an error
+/// and not a partially filled vector.
+pub(crate) fn yigin_gradyanlari(
+    ayar: &KosuAyari,
+    parametreler: &Parametreler,
+    pencereler: &[(&crate::PaketPencere, usize)],
+) -> Result<Vec<PencereGradyan>, KosuHatasi> {
+    // f32 secildiyse indirme bir kez yapilir: her pencere icin ayrica cevirmek
+    // toplama sirasini degistirmez, yalniz bellegi iki kez dolasir.
+    let indirilmis = match ayar.hassasiyet {
+        crate::kontrol::Hassasiyet::F64 => None,
+        crate::kontrol::Hassasiyet::F32 => {
+            Some(crate::kernel32::Parametreler32::indir(parametreler))
+        }
+    };
+    let isle = |(pencere, jeton): &(&crate::PaketPencere, usize)| {
+        let (girdi, hedef, kaynak) = pencere_hedefleri(pencere);
+        let (kayip, grad) = match &indirilmis {
+            None => ileri_ve_geri_paket(ayar.spec, parametreler, &girdi, &hedef, &kaynak),
+            Some(p32) => {
+                let (k, g) = crate::kernel32::ileri_ve_geri_paket_32(
+                    ayar.spec, p32, &girdi, &hedef, &kaynak,
+                );
+                (f64::from(k), g.geri_f64())
+            }
+        };
+        (kayip, grad, *jeton)
+    };
+    let iplik = iplik_sayisi(ayar);
+    if iplik <= 1 || pencereler.len() <= 1 {
+        return Ok(pencereler.iter().map(isle).collect());
+    }
+    // Bloklar bitisik: her is parcasi kendi sirasini kendi icinde korur,
+    // birlestirme de blok sirasini korur.
+    let parca = pencereler.len().div_ceil(iplik);
+    let bloklar: Vec<&[(&crate::PaketPencere, usize)]> = pencereler.chunks(parca.max(1)).collect();
+    let sonuclar: IsParcasi = std::thread::scope(|kapsam| {
+        let tutamaclar: Vec<_> = bloklar
+            .iter()
+            .map(|blok| kapsam.spawn(move || blok.iter().map(isle).collect::<Vec<_>>()))
+            .collect();
+        let mut cikti = Vec::with_capacity(tutamaclar.len());
+        for tutamac in tutamaclar {
+            match tutamac.join() {
+                Ok(parca) => cikti.push(parca),
+                Err(_) => return Err(KosuHatasi::IsParcasiDustu),
+            }
+        }
+        Ok(cikti)
+    });
+    Ok(sonuclar?.into_iter().flatten().collect())
 }
 
 /// One training step, recorded.
@@ -139,6 +234,9 @@ pub enum KosuHatasi {
     BosEgitim,
     /// No validation windows: a run that cannot be measured is not run.
     BosDogrulama,
+    /// A worker thread died mid-step. The step is refused rather than reported
+    /// with gradients that were only half computed.
+    IsParcasiDustu,
 }
 
 /// What one call produced, enough to checkpoint, resume and compare.
@@ -325,6 +423,7 @@ pub fn egitim_kosu(
     ayar.spec.dogrula().map_err(|_| KosuHatasi::GecersizAyari)?;
     if ayar.toplam_adim == 0
         || ayar.yigin == 0
+        || ayar.iplik > 256
         || ayar.dogrulama_her == 0
         || ayar.pencere_uzunlugu < 2
         || ayar.pencere_uzunlugu > ayar.spec.max_seq_len
@@ -391,17 +490,19 @@ pub fn egitim_kosu(
             let mut toplam_gradyan = parametreler.sifir_gradyan();
             let mut toplam_kayip = 0.0f64;
             let mut toplam_jeton = 0usize;
+            let mut yigin_pencereler: Vec<(&crate::PaketPencere, usize)> =
+                Vec::with_capacity(ayar.yigin);
             for _ in 0..ayar.yigin {
                 if konum >= sira.len() {
                     break;
                 }
                 let pencere = &egitim[sira[konum]];
                 konum += 1;
-                let (girdi, hedef, kaynak) = pencere_hedefleri(pencere);
-                let (kayip, grad) =
-                    ileri_ve_geri_paket(ayar.spec, parametreler, &girdi, &hedef, &kaynak);
-                toplam_kayip += kayip * girdi.len() as f64;
-                toplam_jeton += girdi.len();
+                yigin_pencereler.push((pencere, pencere.kimlikler.len() - 1));
+            }
+            for (kayip, grad, jeton) in yigin_gradyanlari(ayar, parametreler, &yigin_pencereler)? {
+                toplam_kayip += kayip * jeton as f64;
+                toplam_jeton += jeton;
                 toplam_gradyan.topla_ile(&grad);
             }
             if toplam_jeton == 0 {
@@ -510,9 +611,20 @@ fn dogrula(
 ) -> DogrulamaKaydi {
     let mut toplam_kayip = 0.0f64;
     let mut toplam_jeton = 0usize;
+    let indirilmis = match ayar.hassasiyet {
+        crate::kontrol::Hassasiyet::F64 => None,
+        crate::kontrol::Hassasiyet::F32 => {
+            Some(crate::kernel32::Parametreler32::indir(parametreler))
+        }
+    };
     for pencere in dogrulama {
         let (girdi, hedef, kaynak) = pencere_hedefleri(pencere);
-        let (kayip, _) = ileri_ve_geri_paket(ayar.spec, parametreler, &girdi, &hedef, &kaynak);
+        let kayip = match &indirilmis {
+            None => ileri_ve_geri_paket(ayar.spec, parametreler, &girdi, &hedef, &kaynak).0,
+            Some(p32) => f64::from(
+                crate::kernel32::ileri_ve_geri_paket_32(ayar.spec, p32, &girdi, &hedef, &kaynak).0,
+            ),
+        };
         toplam_kayip += kayip * girdi.len() as f64;
         toplam_jeton += girdi.len();
     }
@@ -573,6 +685,8 @@ mod tests {
             baslangic_epoch: 0,
             baslangic_konum: 0,
             yigin: 1,
+            hassasiyet: crate::kontrol::Hassasiyet::F64,
+            iplik: 1,
             kirpma: 1.0,
             dogrulama_her: 2,
             epoch_tavani: 4,
@@ -851,5 +965,160 @@ mod tests {
         assert_eq!(kopya.b1[0], 1.0);
         assert!(!kopya.blok_ata("boyle-bir-blok-yok", vec![1.0]));
         assert!(!kopya.blok_ata("b1", vec![1.0, 2.0]));
+    }
+
+    /// Iplik sayisi bir *uygulama* ayrintisi olmali: sonucu degistirmemeli.
+    /// Bu test ayni yigini bir ve iki iplikle kosar ve gradyanlari bit bit
+    /// karsilastirir; toplama sirasi korundugu icin esitlik tamdir.
+    #[test]
+    fn iplik_sayisi_sonucu_degistirmez() {
+        let spec = kucuk_spec();
+        let p = Parametreler::belirgin_doldur(spec, 21);
+        let pencereler: Vec<crate::PaketPencere> = (0..4)
+            .map(|k| {
+                let kimlikler: Vec<u32> = (0..spec.max_seq_len)
+                    .map(|i| u32::try_from((i * 3 + k) % spec.vocab).unwrap())
+                    .collect();
+                let kaynak = vec![u32::try_from(k).unwrap(); kimlikler.len()];
+                crate::PaketPencere { kimlikler, kaynak }
+            })
+            .collect();
+        let girdiler: Vec<(&crate::PaketPencere, usize)> = pencereler
+            .iter()
+            .map(|w| (w, w.kimlikler.len() - 1))
+            .collect();
+        let tek = KosuAyari {
+            iplik: 1,
+            yigin: 4,
+            ..ayar(spec, 4)
+        };
+        let cok = KosuAyari {
+            iplik: 2,
+            yigin: 4,
+            ..ayar(spec, 4)
+        };
+        let a = yigin_gradyanlari(&tek, &p, &girdiler).expect("tek iplik");
+        let b = yigin_gradyanlari(&cok, &p, &girdiler).expect("iki iplik");
+        assert_eq!(a.len(), b.len());
+        for ((k1, g1, j1), (k2, g2, j2)) in a.iter().zip(b.iter()) {
+            assert_eq!(j1, j2);
+            assert!((k1 - k2).abs() < f64::EPSILON, "kayip ayristi: {k1} {k2}");
+            assert_eq!(g1, g2, "gradyanlar ayristi");
+        }
+    }
+
+    /// Iplik sayisi yigindan fazlasini istemez: 4 pencerede 8 iplik, 4 is
+    /// parcasi demektir (bos is parcasi uretilmez).
+    #[test]
+    fn iplik_sayisi_yiginla_sinirlanir() {
+        let spec = kucuk_spec();
+        let a = KosuAyari {
+            iplik: 8,
+            yigin: 4,
+            ..ayar(spec, 4)
+        };
+        assert_eq!(iplik_sayisi(&a), 4);
+        let b = KosuAyari {
+            iplik: 0,
+            ..ayar(spec, 1)
+        };
+        assert_eq!(
+            iplik_sayisi(&b),
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        );
+    }
+
+    /// Iki hassasiyet iki farkli sayi rejimidir; ayni yone gitmelidirler.
+    /// Bu test "f32 de olur" demiyor: kayiplarin birbirine 1e-3 goreli
+    /// yakinda oldugunu *olcuyor* ve iki kosunun da kaybi dusurdugunu sart
+    /// kosuyor. Ayrisirsa test duser ve o gun f32 secenegi kapatilir.
+    #[test]
+    fn f32_ve_f64_kosulari_ayni_yone_gider() {
+        let spec = kucuk_spec();
+        // 4 adim ve 0,02 ogrenme orani oyuncak bir dizide dusus gostermez;
+        // testin sarti "iki rejim ayni yone gider" oldugu icin dususun
+        // gercekten olustugu bir ayar secilir.
+        let a = KosuAyari {
+            ogrenme_orani: 0.2,
+            dogrulama_her: 100,
+            ..ayar(spec, 12)
+        };
+        let pencereler = |k: u32| {
+            vec![crate::PaketPencere {
+                kimlikler: (0..spec.max_seq_len)
+                    .map(|i| u32::try_from((i * 3 + k as usize) % spec.vocab).unwrap())
+                    .collect(),
+                kaynak: vec![0u32; spec.max_seq_len],
+            }]
+        };
+        let mut egitim = pencereler(0);
+        egitim.extend(pencereler(1));
+        let dogrulama = pencereler(2);
+        let p0 = Parametreler::mup_init(spec, 4, crate::INIT_STD_EMBEDDING);
+        let mut p64 = p0.clone();
+        let mut p32 = p0;
+        let mut o64 =
+            Adamw::yeni(p64.toplam_ogeler(), a.ogrenme_orani, a.agirlik_sonumu).expect("adamw");
+        let mut o32 =
+            Adamw::yeni(p32.toplam_ogeler(), a.ogrenme_orani, a.agirlik_sonumu).expect("adamw");
+        let r64 = egitim_kosu(
+            &KosuAyari {
+                hassasiyet: crate::kontrol::Hassasiyet::F64,
+                ..a.clone()
+            },
+            &egitim,
+            &dogrulama,
+            &mut p64,
+            &mut o64,
+            |_, _| {},
+        )
+        .expect("f64 kosu");
+        let r32 = egitim_kosu(
+            &KosuAyari {
+                hassasiyet: crate::kontrol::Hassasiyet::F32,
+                ..a
+            },
+            &egitim,
+            &dogrulama,
+            &mut p32,
+            &mut o32,
+            |_, _| {},
+        )
+        .expect("f32 kosu");
+        assert!(r64.son_kaybi < r64.baslangic_kaybi, "f64 kosusu dusmedi");
+        assert!(r32.son_kaybi < r32.baslangic_kaybi, "f32 kosusu dusmedi");
+        let goreli = (r64.son_kaybi - r32.son_kaybi).abs() / r64.son_kaybi.abs().max(1e-9);
+        assert!(goreli < 1e-3, "iki hassasiyet ayristi: {goreli}");
+    }
+
+    /// Ayni hassasiyet ve ayni tohum: ayni sayilar. Iki kosu arasinda
+    /// hassasiyet alani eklenmesi bunu degistirmemeli.
+    #[test]
+    fn f32_kosusu_tekrarlanabilir() {
+        let spec = kucuk_spec();
+        let a = KosuAyari {
+            hassasiyet: crate::kontrol::Hassasiyet::F32,
+            ..ayar(spec, 3)
+        };
+        let pencereler: Vec<crate::PaketPencere> = (0..2)
+            .map(|k| crate::PaketPencere {
+                kimlikler: (0..spec.max_seq_len)
+                    .map(|i| u32::try_from((i * 5 + k) % spec.vocab).unwrap())
+                    .collect(),
+                kaynak: vec![0u32; spec.max_seq_len],
+            })
+            .collect();
+        let kos = || {
+            let mut p = Parametreler::mup_init(spec, 8, crate::INIT_STD_EMBEDDING);
+            let mut o =
+                Adamw::yeni(p.toplam_ogeler(), a.ogrenme_orani, a.agirlik_sonumu).expect("adamw");
+            let r =
+                egitim_kosu(&a, &pencereler, &pencereler, &mut p, &mut o, |_, _| {}).expect("kosu");
+            (r.son_kaybi, p.wq)
+        };
+        let (k1, w1) = kos();
+        let (k2, w2) = kos();
+        assert_eq!(k1, k2);
+        assert_eq!(w1, w2);
     }
 }

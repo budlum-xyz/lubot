@@ -963,6 +963,8 @@ mod tests {
             baslangic_epoch: 0,
             baslangic_konum: 0,
             yigin: 1,
+            hassasiyet: Hassasiyet::F64,
+            iplik: 1,
             kirpma: 1.0,
             dogrulama_her: 2,
             epoch_tavani: 2,

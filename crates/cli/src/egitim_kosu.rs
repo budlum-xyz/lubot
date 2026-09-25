@@ -307,6 +307,7 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
             "--adim",
             "--epoch",
             "--yigin",
+            "--iplik",
             "--pencere",
             "--dogrulama-payi",
             "--dogrulama-pencere",
@@ -332,7 +333,6 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
     let sinav_yolu = b.zorunlu("--sinav")?.to_string();
     let rapor_yolu = b.metin("--rapor").map(str::to_string);
     let kayit_yolu = b.metin("--kayit").map(str::to_string);
-    let f32_mi = b.var_mi("--f32");
     let sessiz = b.var_mi("--sessiz");
 
     let sozluk = lubot_jeton::Sozluk::yukle(Path::new(&vocab_yolu))
@@ -379,6 +379,17 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
     let adim = b.sayi::<u64>("--adim")?.unwrap_or(1_500);
     let epoch_tavani = b.sayi::<u32>("--epoch")?.unwrap_or(8);
     let yigin = b.sayi::<usize>("--yigin")?.unwrap_or(2);
+    // 0 = makineye sor. Sonucu degistirmez (toplama sirasi korunur), yalniz
+    // sureyi degistirir; raporda ikisi de yazili.
+    let iplik = b.sayi::<usize>("--iplik")?.unwrap_or(0);
+    // --f32 hem adimin hem kontrol noktasinin hassasiyetidir: f32'de egitilen
+    // bir turun sayilari her adimda yuvarlanmistir, saklama da bunu soyler.
+    let istenen_hassasiyet = if b.var_mi("--f32") {
+        Hassasiyet::F32
+    } else {
+        Hassasiyet::F64
+    };
+    let mut hassasiyet = istenen_hassasiyet;
     let dogrulama_her = b
         .sayi::<u64>("--dogrulama-her")?
         .unwrap_or(BILDIRIM_VARSAYILAN);
@@ -413,6 +424,17 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
                         sozluk.aile()
                     ));
                 }
+                // Devam eden tur, biraktigi hassasiyetle devam eder: f32'de
+                // egitilmis bir kosuyu f64'te surdurmek iki farkli sayi
+                // rejimini tek egriye yazmak olurdu. Celiski susmaz.
+                if k.hassasiyet != istenen_hassasiyet {
+                    return Err(format!(
+                        "kontrol noktasi {} hassasiyetinde ama bu cagri {}: devam eden tur kendi hassasiyetiyle surer",
+                        k.hassasiyet.etiket(),
+                        istenen_hassasiyet.etiket()
+                    ));
+                }
+                hassasiyet = k.hassasiyet;
                 let opt = k.optimizer_yeniden().ok_or_else(|| {
                     "kontrol noktasi optimiser durumu tasimiyor: devam edilemez".to_string()
                 })?;
@@ -449,6 +471,8 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
         baslangic_epoch,
         baslangic_konum,
         yigin,
+        hassasiyet,
+        iplik,
         kirpma,
         dogrulama_her,
         epoch_tavani,
@@ -482,11 +506,6 @@ pub fn cmd_egitim_kosu(args: &[String]) -> Result<(), String> {
     )
     .map_err(|e: KosuHatasi| format!("kosu reddedildi: {e:?}"))?;
 
-    let hassasiyet = if f32_mi {
-        Hassasiyet::F32
-    } else {
-        Hassasiyet::F64
-    };
     let kontrol = Kontrol::kosudan(&rapor, &p, &opt, sozluk.aile(), &ozet, hassasiyet);
     let ckpt_ozeti = kontrol
         .yaz(Path::new(&ckpt_yolu))
@@ -629,14 +648,49 @@ fn kosu_markdown(
         ayar.baslangic_epoch, rapor.epoch, ayar.epoch_tavani
     ));
     md.push_str(&format!(
-        "| yigin | {} pencere/adim; kirpma {:.3}; lr {:.5}; sonum {:.3} |\n",
-        ayar.yigin, ayar.kirpma, ayar.ogrenme_orani, ayar.agirlik_sonumu
+        "| yigin | {} pencere/adim (iplik {}); kirpma {:.3}; lr {:.5}; sonum {:.3}; hesap {} |\n",
+        ayar.yigin,
+        lubot_egitim::kosu::iplik_sayisi(ayar),
+        ayar.kirpma,
+        ayar.ogrenme_orani,
+        ayar.agirlik_sonumu,
+        ayar.hassasiyet.etiket()
     ));
     md.push_str(&format!("| jeton | {} |\n", rapor.jeton));
     // Olcum catisi: kayip eğrisinin özeti, karmaşıklık ve hız. Hepsi koşunun
     // kayitlarindan; hata verirse rapor "olculmedi" yazar, sayi uydurmaz.
-    match rapor.olculer() {
-        Ok(olcum) => md.push_str(&olcum.markdown_satirlari().join("\n")),
+    // Olcum catisi disaridan adiyla cagrilir: turun hizi, EMA'si ve bit/bayt
+    // degeri bu turdan gelir, tahmin edilmez.
+    let olculer: Result<lubot_egitim::olcum::KosuOlculeri, lubot_egitim::olcum::OlcumHatasi> =
+        rapor.olculer();
+    match olculer {
+        Ok(olcum) => {
+            md.push_str(&olcum.markdown_satirlari().join("\n"));
+            let ema: &lubot_egitim::olcum::KayipIstatistigi = &olcum.kayip;
+            md.push_str(&format!(
+                "| EMA | {} |\n",
+                if ema.dolu() {
+                    format!("{:.6}", ema.ema())
+                } else {
+                    "olculmedi".into()
+                }
+            ));
+            let sayac: &lubot_egitim::olcum::JetonSayaci = &olcum.sayac;
+            md.push_str(&format!(
+                "| hiz | {} |\n",
+                match (sayac.jeton_saniye(), sayac.milisaniye_jeton()) {
+                    (Some(js), Some(ms)) => format!("{js:.1} jeton/s ({ms:.3} ms/jeton)"),
+                    _ => "olculmedi".to_string(),
+                }
+            ));
+            if let Some(bpb) = lubot_egitim::olcum::bit_basina_bayt(
+                rapor.son_kaybi,
+                rapor.jeton,
+                olcum.bayt.unwrap_or(0),
+            ) {
+                md.push_str(&format!("| bit/bayt | {bpb:.4} |\n"));
+            }
+        }
         Err(hata) => md.push_str(&format!("| olcum | olculemedi: {hata} |\n")),
     }
     md.push('\n');
@@ -667,6 +721,16 @@ fn kosu_markdown(
         }
     ));
     md.push_str(&format!("| kirpilan adim | {} |\n", rapor.kirpilan_adim));
+    // Perplexity bir kaybin tek basina soylemedigi seyi soyler: 3.85'in
+    // "kac jeton arasinda tereddut" demek oldugunu. Donusum tanimsizsa
+    // "olculmedi" yazilir, sayi uydurulmaz.
+    md.push_str(&format!(
+        "| perplexity | {} |\n",
+        match lubot_egitim::olcum::perplexity(rapor.son_kaybi) {
+            Some(p) => format!("{p:.4}"),
+            None => "olculmedi".to_string(),
+        }
+    ));
     md.push_str(&format!(
         "| sure | {:.1} sn (makineye bagli; ratchet'e girmez) |\n",
         rapor.sure_ms as f64 / 1000.0
@@ -871,6 +935,160 @@ fn cikarim_sirala(args: &[String]) -> Result<(), String> {
     }
     crate::validate_output(md.as_bytes(), "cikarim-sirala")?;
     print!("{md}");
+    Ok(())
+}
+
+/// `lubot egitim-karsilastir` - the two compute kernels, measured against each
+/// other on a real corpus window.
+///
+/// Why this exists as a command and not only as a test: the f32 kernel's
+/// only honest justification is that it agrees with the f64 one, and on a
+/// small synthetic spec that agreement is easy. This runs both kernels on the
+/// window length the spec actually trains with, from a checkpoint or from the
+/// run's own initialisation, and prints the worst relative deviation per
+/// tensor. A machine whose f32 path drifts badly says so here, before a run
+/// is spent on it.
+///
+/// The output is markdown, like every other measurement this project reports.
+pub fn cmd_egitim_karsilastir(args: &[String]) -> Result<(), String> {
+    let b = Bayraklar::ayikla(
+        args,
+        &[
+            "--corpus",
+            "--vocab",
+            "--pencere",
+            "--tohum",
+            "--ckpt",
+            "--rapor",
+            "--sessiz",
+        ],
+    )?;
+    let spec = Spec::lubot_a1();
+    let korpus_yolu = b.zorunlu("--corpus")?.to_string();
+    let vocab_yolu = b
+        .metin("--vocab")
+        .unwrap_or("training/tokenizer/lubot-bpe-v2.json")
+        .to_string();
+    let tohum = b.sayi::<u64>("--tohum")?.unwrap_or(20_260_924);
+    let pencere = match b.sayi::<usize>("--pencere")? {
+        Some(n) => n,
+        None => spec.max_seq_len,
+    };
+    if pencere < 2 || pencere > spec.max_seq_len {
+        return Err(format!(
+            "pencere {pencere} spec ile uyusmuyor (2..={})",
+            spec.max_seq_len
+        ));
+    }
+    let sozluk = lubot_jeton::Sozluk::yukle(Path::new(&vocab_yolu))
+        .map_err(|e| format!("sozluk yuklenemedi {vocab_yolu}: {e}"))?;
+    let kayitlar = korpus_oku(&korpus_yolu, &sozluk)?;
+    let parametreler: Parametreler = match b.metin("--ckpt") {
+        Some(yol) => {
+            Kontrol::yukle(Path::new(yol))
+                .map_err(|e| format!("kontrol noktasi reddedildi: {e}"))?
+                .parametreler
+        }
+        None => Parametreler::mup_init(spec, tohum, INIT_STD_EMBEDDING),
+    };
+    // Pencereyi dolduracak ilk kayit secilir: kisa kayitla olcmek, modelin
+    // gordugu baglami olcmemek olurdu. Kayit kimligi rapora yazilir, boylece
+    // "hangi metinde olctun" sorusu cevapsiz kalmaz.
+    let kayit = kayitlar
+        .iter()
+        .find(|k| k.jetonlar.len() >= pencere)
+        .ok_or_else(|| {
+            let en_uzun = kayitlar.iter().map(|k| k.jetonlar.len()).max().unwrap_or(0);
+            format!("korpusda {pencere} jetonluk kayit yok (en uzun {en_uzun})")
+        })?;
+    let jetonlar = &kayit.jetonlar;
+    let dilim = &jetonlar[..pencere];
+    let girdi: Vec<usize> = dilim[..pencere - 1].iter().map(|j| *j as usize).collect();
+    let hedef: Vec<usize> = dilim[1..].iter().map(|j| *j as usize).collect();
+    let kaynak = vec![0u32; girdi.len()];
+
+    let p32 = lubot_egitim::kernel32::Parametreler32::indir(&parametreler);
+    let (k64, g64) =
+        lubot_egitim::ileri_ve_geri_paket(spec, &parametreler, &girdi, &hedef, &kaynak);
+    let (k32, g32) =
+        lubot_egitim::kernel32::ileri_ve_geri_paket_32(spec, &p32, &girdi, &hedef, &kaynak);
+    let g32_f64 = g32.geri_f64();
+    let tensors: Vec<(&str, &Vec<f64>, &Vec<f64>)> = vec![
+        ("embedding", &g64.embedding, &g32_f64.embedding),
+        ("wq", &g64.wq, &g32_f64.wq),
+        ("wk", &g64.wk, &g32_f64.wk),
+        ("wv", &g64.wv, &g32_f64.wv),
+        ("wo", &g64.wo, &g32_f64.wo),
+        ("w1", &g64.w1, &g32_f64.w1),
+        ("w2", &g64.w2, &g32_f64.w2),
+        ("ln1", &g64.ln1_olcek, &g32_f64.ln1_olcek),
+        ("lnf", &g64.lnf_sapma, &g32_f64.lnf_sapma),
+    ];
+    let mut satirlar = String::new();
+    let mut en_kotu = 0.0f64;
+    let mut en_kotu_ad = "";
+    for (ad, a, c) in tensors {
+        let buyukluk = a.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+        let fark = a
+            .iter()
+            .zip(c.iter())
+            .fold(0.0f64, |m, (x, y)| m.max((x - y).abs()));
+        // Sifira yakin tensorde mutlak taban: goreli oran tek basina
+        // yaniltici olur (1e-12'lik bir gradyanda 1e-15'lik fark %100'dur).
+        let oran = fark / buyukluk.max(1e-6);
+        if oran > en_kotu {
+            en_kotu = oran;
+            en_kotu_ad = ad;
+        }
+        satirlar.push_str(&format!(
+            "| {ad} | {buyukluk:.3e} | {fark:.3e} | {oran:.3e} |\n"
+        ));
+    }
+    let mut md = String::new();
+    md.push_str("# Hesap cekirdegi karsilastirmasi\n\n");
+    md.push_str(
+        "Ayni pencere, ayni parametreler; f64 referans, f32 olculen. Tolerans\n\
+         `gates`teki gibi goreli, sifira yakin tensorde mutlak tabanli.\n\n",
+    );
+    md.push_str("| olcu | deger |\n| --- | --- |\n");
+    md.push_str(&format!("| korpus | `{korpus_yolu}` |\n"));
+    md.push_str(&format!("| pencere | {pencere} jeton |\n"));
+    md.push_str(&format!("| kayit | `{}` |\n", kayit.kimlik));
+    md.push_str(&format!(
+        "| kaynak | {} |\n",
+        if b.metin("--ckpt").is_some() {
+            "kontrol noktasi"
+        } else {
+            "mup init (egitilmemis)"
+        }
+    ));
+    md.push_str(&format!(
+        "| kayip | f64 {k64:.6} | \n| kayip (f32) | {k32:.6} |\n"
+    ));
+    md.push_str(&format!(
+        "| kayip farki | {:.3e} |\n",
+        (k64 - f64::from(k32)).abs()
+    ));
+    md.push_str(&format!(
+        "| en kotu tensorsel oran | {en_kotu:.3e} ({en_kotu_ad}) |\n\n"
+    ));
+    md.push_str("| tensor | buyukluk | fark | oran |\n| --- | --- | --- | --- |\n");
+    md.push_str(&satirlar);
+    md.push_str(&format!(
+        "\n## Karar\n\nEn kotu oran {en_kotu:.3e} ({en_kotu_ad}); tolerans 2e-3. {}\n",
+        if en_kotu < 2e-3 {
+            "Iki cekirdek bu pencerede uyusuyor."
+        } else {
+            "Iki cekirdek bu pencerede AYRISTI: f32 secenegi bu makinede kapatilmali."
+        }
+    ));
+    crate::validate_output(md.as_bytes(), "egitim-karsilastir")?;
+    if !b.var_mi("--sessiz") {
+        print!("{md}");
+    }
+    if let Some(yol) = b.metin("--rapor") {
+        std::fs::write(yol, &md).map_err(|e| format!("rapor yazilamadi: {e}"))?;
+    }
     Ok(())
 }
 
