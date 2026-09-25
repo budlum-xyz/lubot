@@ -10,6 +10,7 @@ members = [
   "crates/cli",
     "crates/doc",
     "crates/sikistir",
+    "crates/sir",
     "crates/muhur",
     "crates/usl",
     "crates/esik",

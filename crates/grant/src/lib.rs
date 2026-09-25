@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn a_live_grant_opens_and_an_expired_one_does_not() {
         let mut book = GrantBook::new();
-        book.issue(grant("dm-1", "reader", 100));
+        book.issue(&grant("dm-1", "reader", 100));
         assert_eq!(
             book.decide("reader", "dm-1", Visibility::Restricted, 99),
             Decision::Granted
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn revocation_is_not_the_same_answer_as_never_granted() {
         let mut book = GrantBook::new();
-        book.issue(grant("dm-1", "reader", 100));
+        book.issue(&grant("dm-1", "reader", 100));
         assert!(book.revoke("dm-1", "reader"));
         assert_eq!(
             book.decide("reader", "dm-1", Visibility::Restricted, 10),
@@ -263,9 +263,9 @@ mod tests {
     #[test]
     fn a_reissued_grant_overrides_the_revocation() {
         let mut book = GrantBook::new();
-        book.issue(grant("dm-1", "reader", 100));
+        book.issue(&grant("dm-1", "reader", 100));
         book.revoke("dm-1", "reader");
-        book.issue(grant("dm-1", "reader", 200));
+        book.issue(&grant("dm-1", "reader", 200));
         assert_eq!(
             book.decide("reader", "dm-1", Visibility::Restricted, 150),
             Decision::Granted
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn a_grant_is_for_one_reader_only() {
         let mut book = GrantBook::new();
-        book.issue(grant("dm-1", "reader", 100));
+        book.issue(&grant("dm-1", "reader", 100));
         assert_eq!(
             book.decide("someone-else", "dm-1", Visibility::Restricted, 10),
             Decision::NoGrant
@@ -287,7 +287,7 @@ mod tests {
         let mut book = GrantBook::new();
         book.decide("a", "p", Visibility::Public, 1);
         book.decide("b", "d", Visibility::Restricted, 2);
-        book.issue(grant("d", "c", 50));
+        book.issue(&grant("d", "c", 50));
         book.decide("c", "d", Visibility::Restricted, 3);
         assert_eq!(book.audit().len(), 3);
         assert_eq!(book.refusals(), 1);
@@ -318,8 +318,8 @@ mod tests {
     #[test]
     fn the_book_exposes_live_and_revoked_for_bookkeeping() {
         let mut book = GrantBook::new();
-        book.issue(grant("dm-1", "reader", 100));
-        book.issue(grant("dm-2", "reader", 200));
+        book.issue(&grant("dm-1", "reader", 100));
+        book.issue(&grant("dm-2", "reader", 200));
         book.revoke("dm-1", "reader");
         let live = book.live();
         let revoked = book.revoked_pairs();

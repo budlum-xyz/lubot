@@ -35,6 +35,7 @@ pub mod egitim_kosu;
 pub mod graph;
 pub mod kanaat;
 pub mod kodlayici;
+pub mod sir;
 pub mod sozluk;
 pub mod karar;
 pub mod kosum;
@@ -375,14 +376,14 @@ impl BookFile {
     pub fn to_book(&self) -> GrantBook {
         let mut book = GrantBook::new();
         for stored in &self.grants {
-            book.issue(ViewGrant {
+            book.issue(&ViewGrant {
                 key_id: stored.key_id.clone(),
                 grantee: stored.grantee.clone(),
                 expires_at: stored.expires_at,
             });
         }
         for (key_id, grantee) in &self.revoked {
-            book.issue(ViewGrant {
+            book.issue(&ViewGrant {
                 key_id: key_id.clone(),
                 grantee: grantee.clone(),
                 expires_at: 0,
@@ -1130,7 +1131,7 @@ mod tests {
         .unwrap();
         assert!(md.starts_with("# Refused"), "{md}");
         assert_eq!(grants.refusals(), 1);
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "8".to_string(),
             grantee: "reader".to_string(),
             expires_at: 100,
@@ -1315,7 +1316,7 @@ mod tests {
         let corpus = load_corpus(std::slice::from_ref(&path)).unwrap();
         let mut grants = GrantBook::default();
         for i in 0..3 {
-            grants.issue(lubot_grant::ViewGrant {
+            grants.issue(&lubot_grant::ViewGrant {
                 key_id: format!("key-{i}"),
                 grantee: "reader".to_string(),
                 expires_at: 9_999_999_999,

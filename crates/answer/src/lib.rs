@@ -260,7 +260,7 @@ mod tests {
         let c = corpus();
         let reader = Reader::new(&c, 2, 3);
         let mut grants = GrantBook::new();
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "dm-1".to_string(),
             grantee: "someone".to_string(),
             expires_at: 100,
@@ -282,7 +282,7 @@ mod tests {
         let c = corpus();
         let reader = Reader::new(&c, 2, 3);
         let mut grants = GrantBook::new();
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "dm-1".to_string(),
             grantee: "someone".to_string(),
             expires_at: 100,
@@ -393,7 +393,7 @@ mod tests {
         .unwrap();
         let reader = Reader::new(&c, 2, 3);
         let mut grants = GrantBook::new();
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "dm-1".to_string(),
             grantee: "someone".to_string(),
             expires_at: 100,
