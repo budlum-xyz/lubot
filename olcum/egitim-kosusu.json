@@ -1,0 +1,53 @@
+{
+  "tarih": "2026-09-25",
+  "spec": "lubot-a1-derin-dar",
+  "params": {
+    "embedding_bagli": 524288,
+    "dikkat": 133120,
+    "mlp": 264704,
+    "layernorm": 2176,
+    "toplam": 924288
+  },
+  "epochs": 2,
+  "batch_size": 4,
+  "lr": 0.001,
+  "weight_decay": 0.1,
+  "lr_table": {
+    "embedding": 0.001,
+    "hidden": 0.001,
+    "readout": 1.5625e-05,
+    "layernorm": 0.001
+  },
+  "losses": [
+    0.0024474401964658075,
+    0.0024269108408833946
+  ],
+  "sure_saniye": 201.65,
+  "hiz": {
+    "ornek_basina_ms": 217.76,
+    "etiket": "olculdu (time.time)"
+  },
+  "duzenlilestirme": {
+    "weight_decay": 0.1,
+    "etiket": "HH: guclu agirlik sonumu, veri-sinirli rejim icin",
+    "tekrar_sayisi": 2,
+    "etkin_kaynak": "926 tekrar, 463 benzersiz (turetildi)"
+  },
+  "muP": {
+    "tablosu": "model_spec.py'de veri olarak tasiniyor (Tensor Programs V + Lingle 2024, yontem ilhami, olculmedi)",
+    "lr_transfer": "base_lr=0.001 hedef genislikte, proxy P'den transfer istenirse α·P/n (formul acik, turetildi)",
+    "logit_scale": "1/d_model (bagli embedding cozumu, isaretli karar, NN-4'te ilk denetlenecek)",
+    "attention_scale": "1/d_k (standart 1/sqrt(d_k) degil)"
+  },
+  "K1_K2": {
+    "K1": "sifirdan egitim, hicbir upstream agirlik kullanilmadi",
+    "K2": "korpus yalnizca kendi agacimiz, dis veri yok",
+    "K6": "model 924288 param, tavan 97565184 altinda (olculdu, bench zinciri)"
+  },
+  "etiketler": {
+    "loss": "olculdu (bu makinede, bu kosuda)",
+    "sure": "olculdu",
+    "params": "turetildi (tensersiz sayim formulu)",
+    "muP_formulleri": "olculmedi (yontem ilhami, dis referans)"
+  }
+}

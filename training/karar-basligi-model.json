@@ -1,0 +1,40 @@
+{
+  "ad": "lubot-karar-basligi-v1",
+  "schema": 1,
+  "doktrin": {
+    "ad": "karar-basligi-doktrini-v1",
+    "kurallar": [
+      "Bir soru dogru cevabi olan bir araca yonlendirilebiliyorsa (hesap, tavan, risk sekli), model'e ulasmadan reddedilmez, araca gider (H).",
+      "Izin karari (grant) aramadan once kesinlesir; izinsiz icerik aranmaz.",
+      "Alintisiz iddia yazilmaz; destek yoksa NotFound veya Refused birinci sinif cevaptir.",
+      "Uretim varyanti yoktur: gorsel/video/muzik/siir uretme istekleri kapsam disi reddedilir.",
+      "Effort tavani 0.5x-10.0x araligindadir; dusuk tavanli operator yuksek talebi kabul edemez.",
+      "Tek operator sonucu yuksek-onem cikti olarak tuketilmez (K5, OPERATOR_THRESHOLD=2).",
+      "Karar deterministiktir: ayni girdi, ayni cikti; hash sirasi veya saate bagli siralama yok.",
+      "Guven esigi altindaki karar yukseltir (insana veya daha buyuk modele), reddetmez."
+    ],
+    "etiket": "olculdu (TRAINING.md K1-K6 + system_prompt.md kurallari)"
+  },
+  "esikler": {
+    "en_az_kanit": 0,
+    "en_az_kapsam": 0.0,
+    "marj_esigi": 0.0,
+    "marj_tam": 0.3,
+    "destek_tam": 2,
+    "guven_esigi": 0.0,
+    "k": 1,
+    "n": 1
+  },
+  "batarya_hash": "78326f926c034ebe562b69406821bace534cdd4abe72b6d0551f415bc3b7d832",
+  "batarya_sayisi": 14,
+  "params": {
+    "toplam": 0,
+    "etiket": "olculmedi (kural tabanli, agirlik yok, NN-6)"
+  },
+  "egitim": {
+    "yontem": "kural tabanli + k-of-n konsensus, 14 vakalik gomulu batarya",
+    "k": 1,
+    "n": 1,
+    "etiket": "olculdu (batarya uzerinde)"
+  }
+}

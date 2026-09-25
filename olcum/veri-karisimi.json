@@ -1,0 +1,112 @@
+{
+  "kaynak": "corpus/knowledge-self.jsonl.gz",
+  "tarih": "2026-09-25",
+  "toplam_kayit": 1140,
+  "gercek": 893,
+  "sentetik": 154,
+  "derleyici_hakemli": 5,
+  "mufredat": 86,
+  "oranlar": {
+    "gercek": 0.7833333333333333,
+    "sentetik": 0.13508771929824562,
+    "derleyici_hakemli": 0.0043859649122807015,
+    "mufredat": 0.07543859649122807
+  },
+  "by_kind": {
+    "synthetic": 154,
+    "curriculum": 86,
+    "negative": 2,
+    "markdown": 101,
+    "doc": 300,
+    "api": 293,
+    "behaviour": 199,
+    "compiler-refereed": 5
+  },
+  "by_subkind": {
+    "system-prompt-refusal": 10,
+    "table-text": 9,
+    "capability-table": 9,
+    "gate-refusal": 42,
+    "gate-canary": 42,
+    "counterfactual": 10,
+    "failure-family": 27,
+    "compile-vs-reject": 5,
+    "multi-hop": 5
+  },
+  "tekillestirme": {
+    "elendi": 0,
+    "kalan": 1140
+  },
+  "eval": {
+    "train": 1026,
+    "eval": 114,
+    "ratio": 0.1
+  },
+  "etiketler": {
+    "gercek_sayisi": "olculdu (corpus builder ciktisi)",
+    "sentetik_sayisi": "turetildi (sablon tabanli, README + gates + failure-families)",
+    "derleyici_hakemli_sayisi": "olculdu (rustc hakem, varsa; yoksa heuristik)",
+    "oranlar": "turetildi (sayi / toplam, formul acik)",
+    "mufredat_siralamasi": "turetildi (zorluk + tur + path uzunlugu)",
+    "eval_split": "turetildi (digest'e gore deterministik, %10)",
+    "chinchilla_ref": "olculmedi (dis referans, 20 token/param, yalnizca not)"
+  },
+  "kapi_kontrol": {
+    "no_duplicate_passage": "0 tekrar elendi, kapidan gecti",
+    "citation_density": "her SFT satirinda alinti var mi? (make_sft.py'de denetlenir)",
+    "stale_record_flag": "dosya degisince eski kayitlarin otomatik guncel degil isaretlenmesi — bu kosuda uygulanmadi, not olarak kaldi (olculmedi)",
+    "eval_set_never_trained": "114 digest eval-only listeye damgalandi"
+  },
+  "K1_K2_uyumu": {
+    "K1": "temel model sifirdan, hicbir upstream isim servis adi olarak kullanilmaz — bu betik yalnizca veri karisimi, model degil",
+    "K2": "korpus yalnizca Lubot'un kendi agaci + sablon tabanli sentetik (kendi iceriginden), disaridan tek satir girmedi",
+    "K3": "buyume: repo gelisimi + doc komutuyla kapali lisans seti, kayit-bazli provenance ile — oranlar burada"
+  },
+  "mm_kontrol": {
+    "violations": [],
+    "ok": true,
+    "checked_files": 15,
+    "allowed_imports": [
+      "__future__",
+      "argparse",
+      "ast",
+      "base64",
+      "bench_hardware",
+      "binascii",
+      "build_corpus",
+      "collections",
+      "csv",
+      "dataclasses",
+      "datetime",
+      "enum",
+      "epoch_ledger",
+      "eval_sft",
+      "findings",
+      "functools",
+      "gzip",
+      "hashlib",
+      "heapq",
+      "io",
+      "itertools",
+      "json",
+      "make_sft",
+      "math",
+      "model_spec",
+      "operator",
+      "os",
+      "pathlib",
+      "platform",
+      "random",
+      "re",
+      "shutil",
+      "statistics",
+      "struct",
+      "subprocess",
+      "sys",
+      "tempfile",
+      "time",
+      "train_tokenizer",
+      "typing"
+    ]
+  }
+}

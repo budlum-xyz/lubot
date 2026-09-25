@@ -45,7 +45,9 @@ One corpus, one source: this repository, rebuilt by CI on every run.
 
 | file | records | kinds | tokens (approx) |
 |---|---|---|---|
-| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 807 | api 241 · behaviour 178 · doc 287 · markdown 101 | ~28K |
+| `corpus/knowledge-self.jsonl.gz` (CI, this repository) | 893 | api 293 · behaviour 199 · doc 300 · markdown 101 | ~31K |
+| `corpus/karisim.jsonl` (NN-4: real + synthetic + compiler-refereed + curriculum) | 1138 | doc 300 · api 293 · behaviour 199 · markdown 101 · synthetic 152 · compiler-refereed 5 · curriculum 88 | ~40K |
+| `corpus/eval-only.jsonl` (PP: held-out, never trained) | 113 | mixed | ~4K |
 | `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: lubot + budlum + workspace root) | 23604 | api 6015 · behaviour 4684 · doc 7323 · markdown 5582 | ~1.2M |
 
 Every record carries the provenance pair; the provenance gate measures 100%
@@ -102,6 +104,10 @@ text under `chain/<type>`, `request_id` kept), licence PolyForm Shield
 | `dependencies-are-used` | A dependency a crate declares but never reaches is supply-chain weight with no cargo to carry: its audit surface is paid for by nobody's usage |
 | `findings-are-disciplined` | A finding is a claim about code; the validator measures the claim |
 | `eval-runs-are-mechanical` | Every recorded evaluation run carries exactly one machine-checkable boolean criterion plus its resource accounting; judgement words and partial credit are refused (one run, one mechanical criterion: the shape this repository measures itself by) |
+| `veri-karisimi-provenance` | NN-4: data mixture provenance — real/synthetic/compiler/curriculum ratios are logged, no external data (K2), no-duplicate, asset_id+content_id pair, closed licence set (O) |
+| `eval-set-never-trained` | PP: eval set leakage is physically impossible — held-out digests are stamped in eval-only list, SFT generator is refused if it tries to convert one |
+| `karar-basligi-disiplini` | T + LL: decision header discipline — doctrine as data, k-of-n consensus, no generation, deterministic, fail-closed, 14-case battery, SHA-256 ledger chain (BB) |
+| `training-runner-engineering-vs-data` | MM: engineering skeleton vs data separation — training/*.py may carry engineering deps (stdlib), but corpus/ and curriculum/ carry only own-tree data; a single copied example from an external trainer would silently violate K2 |
 
 ## System prompt ve davranis mufredati
 
@@ -225,24 +231,24 @@ Sayılar kendinden-kurulu korpusun ölçümüdür (CI her koşuda yeniden kurar)
 
 | rapor maddesi | Lubot'taki yeri | ölçüm |
 |---|---|---|
-| 0.1 kapalı devre veri erişimi | kayıt kapısı: provenance çifti (`asset_id`+`content_id`) olmayan örnek korpusa alınmaz (cli loader + `corpus-records-carry-provenance`) | 807 kayıt, çifti olan 807 |
+| 0.1 kapalı devre veri erişimi | kayıt kapısı: provenance çifti (`asset_id`+`content_id`) olmayan örnek korpusa alınmaz (cli loader + `corpus-records-carry-provenance`) | 893 kayıt, çifti olan 893 |
 | 0.2 okuma-yalnız modalite | `crates/read/src/perception.rs`: kapalı 4 küme, üretim varyantı yok | `no-generation-variant` kapısı |
 | 0.3 çıktı yalnızca Markdown | `Answer::render_markdown` tek çıkış + `output_schema::validate_markdown_output`; ikili/görsel/video dönüş tipi yok | `ai-output-schema-enforced`, `output-finalize-closed-loop` |
-| 0.4 uzmanlık: veri inceleme + kodlama | korpus ağırlığı kod kayıtları (api/behaviour/doc) + veri analizi metinleri; sohbet korpusu yoktur | `by_kind`: api 241 / behaviour 178 / doc 285 / markdown 89 |
+| 0.4 uzmanlık: veri inceleme + kodlama | korpus ağırlığı kod kayıtları (api/behaviour/doc) + veri analizi metinleri; sohbet korpusu yoktur | `by_kind`: api 293 / behaviour 199 / doc 300 / markdown 101 |
 | Aşama 1 (uygulanan karar) | Lubot Tier -1 attestation-only yolda çalışır: `require_execution_proof = false`, `execution_class = 0`. Tier -2 Lubot'un ana yolu OLABİLİR DEĞİLDİR; dar alt-görevler için ayrı teknik inceleme (K4 verify-only listesi) | `OPERATOR_THRESHOLD = 2`; tek-operatör üretime alınmaz (Aşama 11) |
 | Aşama 2 | her korpus taramasından önce `is_valid`, her epoch sonunda `consume_epoch`, tükenince DUR | `training/epoch_ledger.py`; canlı kanıt: 2/2'den sonra koşu reddedildi |
-| Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 807 |
+| Aşama 3 | `make_manifest.py`: `kind = TrainingCorpus`, `sample_count` sayılarak (tahmin yok), `model_target` alanı; StorageDeal bağı = `chain_binding: Pending` (dürüst kapsam) | sample_count 893 |
 | Aşama 4 | tavanlar kodda sabit: Text 1,048,576 B / Image 16,777,216 px / Audio 3,600,000 ms / Video 4096 kare | `no-generation-variant` kapısı + perception testleri |
-| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 807 kayıt (yüzey: 23.604; hepsi kendi işimiz) |
-| Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 807/807 |
+| Aşama 5 | çekirdek: budlum-xyz yüzeyi (CI'da bu ağaç: `crates/`, `gates/`, `training/`, `docs/`; operatör tarafında manifestle budlum + workspace kök belgeleri) + zincir kaydı okuyucusu (`crates/tools/src/chain.rs`); dış katman yalnızca DataAsset+grant çifti (licence + asset_id) | self 893 kayıt (yüzey: 23.604; hepsi kendi işimiz) |
+| Aşama 6 | kod korpusu modül yolu (`path`) + satır aralığı + kayıt digest'i; çıktı alanı her zaman Markdown; provenance eksik örnek giremez | provenance çifti 893/893 |
 
 ## Aşama 12 kararları (rapora karşı, eğitim başlamadan kapatılır)
 
 | rapor maddesi | karar | Lubot'taki karşılığı |
 |---|---|---|
-| 1. Temel model kaynağı | K1: sıfırdan eğitim. | bu ağacın tüm ölçümleri (178 test, 39 kapı; korpus 807 kayıt) sıfırdan eğitim girdisinin kendisidir |
+| 1. Temel model kaynağı | K1: sıfırdan eğitim. | bu ağacın tüm ölçümleri (199 test, 43 kapı; korpus 893 kayıt) sıfırdan eğitim girdisinin kendisidir |
 | 2. `min_verifier_count` / `agreement_threshold` | K5: koşullu 1/1 + geçiş. Lubot'un model sınıfı için zkVM içerik ispatı canlı değilken 2; canlıyken 1. | `OPERATOR_THRESHOLD = 2`; `consumes(1, 2) = false` (Aşama 11) |
-| 3. Dış korpus kapsamı ve bütçesi | K2/K3: dış korpus yok; korpus Lubot'un kendi ağacıdır ve kendi lisansını taşır. | 807 kayıt, tümü PolyForm Shield 1.0.0; kapıda red 0 |
+| 3. Dış korpus kapsamı ve bütçesi | K2/K3: dış korpus yok; korpus Lubot'un kendi ağacıdır ve kendi lisansını taşır. | 893 kayıt, tümü PolyForm Shield 1.0.0; kapıda red 0 |
 | 4. Tier -2 alt-görevler | K4: yalnızca doğrulama (verify-only). | Lubot'un kendisi verify-only okur: aracı hesap, izin, indeks; üretim yüzeyi yok |
 
 ## Aşama 7 / 9 sınır kaydı (dürüst kapsam)

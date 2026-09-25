@@ -1,0 +1,9 @@
+{
+  "kind": "gap-report",
+  "tarih": "2026-09-25",
+  "harita": {
+    "durum": "audit.jsonl yok, olculmedi",
+    "konular": []
+  },
+  "etiket": "RR: audit.jsonl'den en sik sorulan ama az kaynakli konular"
+}

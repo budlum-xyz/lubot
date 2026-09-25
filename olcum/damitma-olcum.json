@@ -1,0 +1,24 @@
+{
+  "tarih": "2026-09-25",
+  "tur": 1,
+  "checkpoint": "checkpoints/lubot-a1/epoch-1.json",
+  "checkpoint_loss": 0.0024498415614872065,
+  "aday_sayisi": 195,
+  "gecen": 191,
+  "kalan": 4,
+  "gecme_orani": 0.9794871794871794,
+  "sure_saniye": 0.0,
+  "etiketler": {
+    "aday_sayisi": "turetildi (20/(loss+0.1))",
+    "gecen": "olculdu (gate_check)",
+    "sure": "olculdu"
+  },
+  "G_dongusu": {
+    "aciklama": "G: onyukleme dongusu bir kez calisti, gate'lerden gecen cikti ikinci tura beslenecek",
+    "sonraki_adim": "corpus/damitma-turu-1.jsonl -> ikinci tur karisimina ekle"
+  },
+  "K1_K2": {
+    "K1": "checkpoint sifirdan egitildi, dis agirlik yok",
+    "K2": "adaylar yalnizca kendi korpusundan, dis veri yok"
+  }
+}

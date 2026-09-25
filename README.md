@@ -29,9 +29,30 @@ nothing to check a generation against.
 | the assembled reading loop, schema-validated exit; scope refusals; the finalized-output handoff (`ai-inference` tag) | `crates/answer` | 14 tests |
 | rich-document reading: PDF text extraction, paragraph-aware chunking | `crates/doc` | 4 tests |
 | context compression: route by content type, pins survive byte for byte, CCR store with digest re-verification, append-only savings ledger | `crates/sikistir` | 11 tests |
+| decision header (T doctrine): doctrine as data, k-of-n consensus (LL), decision ledger SHA-256 chain, 14-case embedded battery, fail-closed, no generation, deterministic | `crates/karar` | 21 tests |
+| BPE tokenizer, JJ AST-aware: 8192 vocab, merge rules, code vs text split, deterministic | `crates/sozluk` | 20 tests |
+| μP scaling: Tensor Programs V + Lingle 2024 method inspiration (measured), init std and LR table, logit_scale 1/d_model, weight_decay separation | `crates/mu` | 15 tests |
+| deep-narrow architecture: config 64/8/2/256 924K param (spec) + 512/12/8/2048 37M param (K6 ceiling 97M), weight tying, param counting | `crates/derin` | 16 tests |
+| training core Rust: AdamW, sparse embedding update (U speed), forward skeleton, checkpoint, 924K param | `crates/egitim` | 16 tests |
+| inference engine: deterministic, temperature, KV-cache (W), speed measurement, no generation early detection | `crates/cikarim` | 15 tests |
+| data mixture Rust: real 893 + synthetic 152 + compiler 5 + curriculum 88 = 1138, ratios O, provenance asset_id+content_id, dedup 0, eval split %10 | `crates/veri` | 15 tests |
+| measurement: 14 batteries (Z) each single mechanical criterion, GG calibration, RR gap map | `crates/olcum` | 15 tests |
+| self-distillation: self-instruct loop, mechanical jury (citation, schema, licence, provenance), error mining | `crates/kendinden` | 15 tests |
+| contest measurement: AA protocol, rival output only in comparison report, never corpus, eval-set-never-trained PP, gap map RR | `crates/kapisma` | 14 tests |
+| 3-stage training system: Stage1 15K token real 50% (dil temeli), Stage2 26K token real 50% + synthetic 2 epoch + compiler (kod+dil dengesi), Stage3 6K token curriculum Python/web + real 10% FIM 0.3 SPM 0.5, 143 checkpoints, data bucket per checkpoint, transparency report (LLM360 methodology inspiration) | `crates/uc-asama` | 18 tests |
+| transformer: LLaMA-like with muP (embedding scale, output scale, QK^T/d not sqrt, LR/WD groups), RoPE only first 25% hidden (rope fix: half split not neighbor), LayerNorm not RMSNorm, GELU MLP, deterministic | `crates/transformer` | 21 tests |
+| advanced BPE: 8192 base + 4 FIM + 14 code metadata + 4 instruction = 8214 vocab, special token preservation, FIM application, deterministic | `crates/bpe-gelismis` | 17 tests |
+| full system: 13 components (tokenizer, model, data, training, inference, measurement, checkpoint, metrics, preprocessing, data-bucket, training-code, eval, analysis) 143 checkpoints, 47K token, transparency report (LLM360 methodology) | `crates/sistem` | 11 tests |
+| parallelism: 224 GPU batch 2240 (Crystal-like), 1 GPU batch 8 (Lubot), token per batch, mixed-precision BF16 activ/grad FP32 weights, CG-1 4 exaFLOPS 54M core 64-node scale (name-free), speed ratio | `crates/paralel` | 11 tests |
+| data mixture + preprocessing: real 893 + synthetic 152 + compiler 5 + curriculum 88 = 1138, 3-stage 15K/26K/6K, data bucket per checkpoint, FIM 0.3 SPM 0.5, token estimate | `crates/karma` | 11 tests |
+| combined system: 29 crates unified (grant, read, index, tools, answer, cli, doc, sikistir, karar, sozluk, mu, derin, egitim, cikarim, veri, olcum, kendinden, kapisma, uc-asama, transformer, bpe-gelismis, sistem, paralel, karma, tumu, checkpoint, metrics, preprocess, eval) 143 checkpoints, 47K token, all code in one PR, transparency report (LLM360) | `crates/tumu` | 11 tests |
+| checkpoint management: 143 checkpoints (Crystal 143, Amber 360), data bucket per checkpoint, loss decreases, grad_norm decreases, lr decreases, FIM 0.3 last 23 checkpoints, weight + optimizer path, transparency | `crates/checkpoint` | 12 tests |
+| metrics: 143 checkpoints, loss, grad_norm, lr, token/sec, eval, average, report, transparency per checkpoint (Crystal-like) | `crates/metrics` | 12 tests |
+| preprocessing: 8214 vocab (Crystal 32032), FIM 0.3 SPM 0.5, 4 FIM + 14 code + 4 instruction = 22 special, StarCoder method inspiration Lubot names, encode, preprocess, max_seq 256 (Crystal 2048) | `crates/preprocess` | 12 tests |
+| eval: 14 batteries (Z) mechanical criteria, deterministic score, average, pass count, report, GG calibration, RR gap map, Crystal eval per checkpoint | `crates/eval` | 12 tests |
 | the runnable binary: corpus load, `ask`, grant book, output audit, closed-loop handoff; `ceilings`; multi-question `batch`; the uninterrupted-work queue (resume, budget, per-job gate check, loud halt); measured baselines that may only rise (`ratchet`); repository `envanter`; restricted `it` (only the listed paths are committed and pushed); the four-step `olc` verification chain; `durum`; the manifest map `graf`; the credential scan `guvenlik`; the file-kind router `dosya`; the ask_user-shaped decision battery `soru` (list/get/cevapla/durum); content search `ara`, measured `indeks`, the ordered reading plan `mufredat`, effort comparison `karsilastir`; context compression `sikistir` (--path/--geri-getir: typed routing, pinned lines, reversible CCR store, measured ledger) and failure mining `ogren` (pattern grouping, two-tier promotion); the queue operator (`queue ls`, `queue iptal` - a cancelled job never runs); batch writes the same audit and closed-loop trace as `ask` | `crates/cli` | 37 tests |
 
-178 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 39 gates, each with its own self-test; the ratchet holds (178 tests, 39 gates, 0 pedantic warnings, 807 corpus records).
+488 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 43 gates, each with its own self-test; the ratchet holds (488 tests, 43 gates, 0 pedantic warnings, 893 corpus records).
 
 ## Permission is an admission decision
 

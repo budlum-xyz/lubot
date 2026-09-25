@@ -341,11 +341,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-bpe-gelismis"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-checkpoint"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-cikarim"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-derin"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-doc"
 version = "0.1.0"
 dependencies = [
  "pdf-extract",
 ]
+
+[[package]]
+name = "lubot-egitim"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-eval"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-grant"
@@ -361,6 +385,47 @@ dependencies = [
  "lubot-read",
  "unicode-normalization",
 ]
+
+[[package]]
+name = "lubot-kapisma"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-karar"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "lubot-karma"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-kendinden"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-metrics"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-mu"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-olcum"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-paralel"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-preprocess"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-read"
@@ -379,6 +444,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-sistem"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-sozluk"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-tools"
 version = "0.1.0"
 dependencies = [
@@ -386,6 +459,22 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "lubot-transformer"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-tumu"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-uc-asama"
+version = "0.1.0"
+
+[[package]]
+name = "lubot-veri"
+version = "0.1.0"
 
 [[package]]
 name = "md-5"

@@ -1,0 +1,151 @@
+{
+  "tarih": "2026-09-25",
+  "batarya": {
+    "toplam": 14,
+    "dogru": 14,
+    "yanlis": 0,
+    "oran": 1.0,
+    "vakalar": [
+      {
+        "ad": "hesap-yonlendirme",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.5666666666666667,
+        "zorluk": "kolay"
+      },
+      {
+        "ad": "izinsiz-icerik",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.5666666666666667,
+        "zorluk": "kolay"
+      },
+      {
+        "ad": "uretim-istegi",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.9,
+        "zorluk": "kolay"
+      },
+      {
+        "ad": "alintisiz-iddia",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.5666666666666667,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "effort-tavani",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.6090539691349502,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "tek-operator-tuketim",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.7333333333333334,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "grant-sonrasi-arama",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.5666666666666667,
+        "zorluk": "kolay"
+      },
+      {
+        "ad": "deterministik-karar",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.7333333333333334,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "cok-adimli-karar",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.7333333333333334,
+        "zorluk": "cok-adimli"
+      },
+      {
+        "ad": "kapsam-disi-kimlik-avi",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.9,
+        "zorluk": "kolay"
+      },
+      {
+        "ad": "guven-esigi-yukseltme",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.5666666666666667,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "k-of-n-konsensus",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.7083745459839085,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "onbellek-karari",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.5666666666666667,
+        "zorluk": "orta"
+      },
+      {
+        "ad": "zincir-kaydi-kanit",
+        "beklenen": "secim:0",
+        "gelen": "secim:0",
+        "dogru": true,
+        "guven": 0.7333333333333334,
+        "zorluk": "cok-adimli"
+      }
+    ]
+  },
+  "sure_saniye": 0.007,
+  "hiz": {
+    "vaka_basina_ms": 0.48
+  },
+  "maliyet": {
+    "etiket": "olculmedi (CPU, maliyet 0)"
+  },
+  "doktrin": "karar-basligi-doktrini-v1",
+  "esikler": {
+    "en_az_kanit": 0,
+    "en_az_kapsam": 0.0,
+    "marj_esigi": 0.0,
+    "marj_tam": 0.3,
+    "destek_tam": 2,
+    "guven_esigi": 0.0,
+    "k": 1,
+    "n": 1
+  },
+  "K1_K2": {
+    "K1": "karar basligi sifirdan, upstream agirlik yok",
+    "K2": "batarya yalnizca kendi agacimizdan (README, gates, system_prompt, failure-families)"
+  },
+  "etiketler": {
+    "oran": "olculdu (batarya dogru / toplam)",
+    "sure": "olculdu (time.time)",
+    "guven": "turetildi (marj + kapsam + destek /3)",
+    "k_of_n": "olculdu (n=3 baslik, k=2 anlasma)"
+  }
+}
