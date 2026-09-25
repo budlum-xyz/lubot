@@ -64,8 +64,10 @@ fn aws_access(line: &str) -> bool {
         .iter()
         .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::Aws)
         .any(|(onek, _)| {
-            head_after(line, onek, COUNT)
-                .is_some_and(|head| head.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
+            head_after(line, onek, COUNT).is_some_and(|head| {
+                head.chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            })
         })
 }
 

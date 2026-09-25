@@ -27,7 +27,11 @@ pub struct SekilHatasi {
 
 impl std::fmt::Display for SekilHatasi {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "sekil uyusmadi: beklenen {}, gelen {}", self.beklenen, self.gelen)
+        write!(
+            f,
+            "sekil uyusmadi: beklenen {}, gelen {}",
+            self.beklenen, self.gelen
+        )
     }
 }
 
@@ -141,7 +145,8 @@ fn erf(x: f64) -> f64 {
                         + t * (-0.186_288_06
                             + t * (0.278_868_07
                                 + t * (-1.135_203_98
-                                    + t * (1.488_515_87 + t * (-0.822_152_23 + t * 0.170_872_77)))))))))
+                                    + t * (1.488_515_87
+                                        + t * (-0.822_152_23 + t * 0.170_872_77)))))))))
             .exp();
     if x >= 0.0 {
         1.0 - ans
