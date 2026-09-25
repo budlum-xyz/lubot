@@ -28,13 +28,82 @@
 ///
 /// Folded, ASCII-only, lowercase. See the module note for why.
 pub(crate) const DUR_ILETLERI: &[&str] = &[
-    "acaba", "ama", "ancak", "aslinda", "az", "bazi", "belki", "bile", "bircok", "birkac",
-    "birsey", "bu", "butun", "cok", "cunku", "cuney", "da", "daha", "de", "defa", "degil",
-    "diger", "diye", "dort", "eger", "elbette", "en", "gibi", "hem", "her", "hersey", "hic",
-    "icin", "ile", "ise", "iste", "kadar", "karsi", "ki", "kim", "madem", "mi", "mu", "nasil",
-    "ne", "neden", "nerde", "nerede", "nicin", "niye", "o", "olarak", "oldugu", "olmak",
-    "olmasi", "olsun", "oyle", "ozellikle", "ragmen", "sadece", "sanki", "sey", "seyler", "siz",
-    "sonra", "soyle", "su", "tum", "uc", "uzere", "var", "ve", "veya", "ya", "yani", "yine",
+    "acaba",
+    "ama",
+    "ancak",
+    "aslinda",
+    "az",
+    "bazi",
+    "belki",
+    "bile",
+    "bircok",
+    "birkac",
+    "birsey",
+    "bu",
+    "butun",
+    "cok",
+    "cunku",
+    "cuney",
+    "da",
+    "daha",
+    "de",
+    "defa",
+    "degil",
+    "diger",
+    "diye",
+    "dort",
+    "eger",
+    "elbette",
+    "en",
+    "gibi",
+    "hem",
+    "her",
+    "hersey",
+    "hic",
+    "icin",
+    "ile",
+    "ise",
+    "iste",
+    "kadar",
+    "karsi",
+    "ki",
+    "kim",
+    "madem",
+    "mi",
+    "mu",
+    "nasil",
+    "ne",
+    "neden",
+    "nerde",
+    "nerede",
+    "nicin",
+    "niye",
+    "o",
+    "olarak",
+    "oldugu",
+    "olmak",
+    "olmasi",
+    "olsun",
+    "oyle",
+    "ozellikle",
+    "ragmen",
+    "sadece",
+    "sanki",
+    "sey",
+    "seyler",
+    "siz",
+    "sonra",
+    "soyle",
+    "su",
+    "tum",
+    "uc",
+    "uzere",
+    "var",
+    "ve",
+    "veya",
+    "ya",
+    "yani",
+    "yine",
 ];
 
 /// Words that carry a negation.
@@ -54,7 +123,11 @@ pub(crate) const OLUMSUZLUK_ILETLERI: &[&str] = &[
 /// word which merely *ends* like a negation is read as one, which is why the
 /// stems are kept long enough to be unambiguous.
 pub(crate) const OLUMSUZLUK_SONEKLERI: &[&str] = &[
-    "madi", "maz", "mazlik", "medi", "mez", "mezlik", "miyor", "muyor", "madi",
+    // -me/-ma with the tense endings that follow it
+    "madi", "madi", "maz", "mazlik", "mayacak", "mayan", "mamis", "medi", "mez", "mezlik",
+    "meyecek", "meyen", "memis", "miyor", "muyor",
+    // -siz: "without", carried by a suffix rather than a separate word
+    "siz", "sizlik", "sizdir", "suz", "suzluk",
 ];
 
 /// The fold: one character in, one character out, no locale consulted.
@@ -136,7 +209,7 @@ pub(crate) fn olumsuz_mu(jeton: &str) -> bool {
     }
     OLUMSUZLUK_SONEKLERI
         .iter()
-        .any(|sonek| jeton.len() > sonek.len() + 2 && jeton.ends_with(sonek))
+        .any(|sonek| jeton.len() > sonek.len() + 1 && jeton.ends_with(sonek))
 }
 
 /// The share of tokens that carry a negation.
@@ -173,7 +246,10 @@ mod tests {
 
     #[test]
     fn a_decimal_number_stays_one_token_and_a_sentence_dot_does_not() {
-        assert_eq!(jetonlar("oran 3.5 oldu. bitti"), vec!["oran", "3.5", "oldu", "bitti"]);
+        assert_eq!(
+            jetonlar("oran 3.5 oldu. bitti"),
+            vec!["oran", "3.5", "oldu", "bitti"]
+        );
     }
 
     #[test]
@@ -188,7 +264,10 @@ mod tests {
         let gramlar = ikili_gramlar(&jetonlar);
         assert_eq!(gramlar.len(), jetonlar.len() - 1);
         assert_eq!(gramlar[0], "kayit\u{1f}acildi");
-        assert!(!jetonlar.contains(&gramlar[0]), "bigram tek jetonla cakisti");
+        assert!(
+            !jetonlar.contains(&gramlar[0]),
+            "bigram tek jetonla cakisti"
+        );
     }
 
     #[test]

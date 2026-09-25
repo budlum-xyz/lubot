@@ -1,0 +1,293 @@
+{
+  "surum": 1,
+  "vakalar": [
+    {
+      "ad": "acik-kapi",
+      "dava": {
+        "soru": "kayit acildi mi",
+        "secenekler": [
+          "kayit acildi",
+          "kayit kapandi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "kayit acildi ve dogrulandi"
+          },
+          {
+            "kimlik": "k2",
+            "metin": "kayit acildi kaydi tutuldu"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 0
+        }
+      }
+    },
+    {
+      "ad": "sira-verilen-yerden-gelir",
+      "dava": {
+        "soru": "kayit acildi mi",
+        "secenekler": [
+          "kayit kapandi",
+          "kayit acildi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "kayit acildi ve surdu"
+          },
+          {
+            "kimlik": "k2",
+            "metin": "kayit acildi"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 1
+        }
+      }
+    },
+    {
+      "ad": "olumsuzluk-celiskisi",
+      "dava": {
+        "soru": "yedek acildi mi",
+        "secenekler": [
+          "yedek acildi",
+          "yedek acilmadi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "yedek acilmadi ve kayit kapandi"
+          },
+          {
+            "kimlik": "k2",
+            "metin": "yedek acilmadi"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 1
+        }
+      }
+    },
+    {
+      "ad": "sayi-uyumu",
+      "dava": {
+        "soru": "dosya boyutu 500 mb mi",
+        "secenekler": [
+          "boyut 500 mb",
+          "boyut 300 mb"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "dosya boyutu 500 mb olculdu"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 0
+        }
+      }
+    },
+    {
+      "ad": "sayi-celiskisi-cezasi",
+      "dava": {
+        "soru": "dosya boyutu 500 mb mi",
+        "secenekler": [
+          "boyut 300 mb",
+          "boyut 500 mb"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "dosya boyutu 500 mb olculdu"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 1
+        }
+      }
+    },
+    {
+      "ad": "agirlikli-kanit",
+      "dava": {
+        "soru": "rapor reddedildi mi",
+        "secenekler": [
+          "rapor onaylandi",
+          "rapor reddedildi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "rapor onaylandi",
+            "agirlik": 0.1
+          },
+          {
+            "kimlik": "k2",
+            "metin": "rapor reddedildi",
+            "agirlik": 1.0
+          },
+          {
+            "kimlik": "k3",
+            "metin": "rapor reddedildi ve muhurlendi",
+            "agirlik": 1.0
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 1
+        }
+      }
+    },
+    {
+      "ad": "tek-aday-tam-kapsam",
+      "dava": {
+        "soru": "defter kapandi mi",
+        "secenekler": [
+          "defter kapandi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "defter kapandi ve muhurlendi"
+          },
+          {
+            "kimlik": "k2",
+            "metin": "defter kapandi"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 0
+        }
+      }
+    },
+    {
+      "ad": "iki-esit-aday-yukseltilir",
+      "dava": {
+        "soru": "kayit acildi mi",
+        "secenekler": [
+          "kayit acildi",
+          "kayit acildi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "kayit acildi"
+          }
+        ]
+      },
+      "beklenen": "yukselt"
+    },
+    {
+      "ad": "kapsam-dusuk-yukseltilir",
+      "dava": {
+        "soru": "kayit acildi mi ve denetim tamamlandi mi ve rapor onaylandi mi ve yedek dogrulandi mi",
+        "secenekler": [
+          "kayit acildi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "kayit acildi"
+          }
+        ]
+      },
+      "beklenen": "yukselt"
+    },
+    {
+      "ad": "kanit-yok-ret",
+      "dava": {
+        "soru": "kayit acildi mi",
+        "secenekler": [
+          "kayit acildi"
+        ],
+        "kanitlar": []
+      },
+      "beklenen": "ret"
+    },
+    {
+      "ad": "ortusme-yok-ret",
+      "dava": {
+        "soru": "hava durumu nedir",
+        "secenekler": [
+          "gunesli"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "defter muhurlendi"
+          }
+        ]
+      },
+      "beklenen": "ret"
+    },
+    {
+      "ad": "bos-soru-ret",
+      "dava": {
+        "soru": "   ",
+        "secenekler": [
+          "kayit acildi"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "kayit acildi"
+          }
+        ]
+      },
+      "beklenen": "ret"
+    },
+    {
+      "ad": "secenek-yok-ret",
+      "dava": {
+        "soru": "kayit acildi mi",
+        "secenekler": [],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "kayit acildi"
+          }
+        ]
+      },
+      "beklenen": "ret"
+    },
+    {
+      "ad": "turkce-katlama",
+      "dava": {
+        "soru": "KAYIT AÇILDI MI",
+        "secenekler": [
+          "kayıt açıldı",
+          "kayıt kapandı"
+        ],
+        "kanitlar": [
+          {
+            "kimlik": "k1",
+            "metin": "Kayıt açıldı ve doğrulandı"
+          },
+          {
+            "kimlik": "k2",
+            "metin": "kayıt açıldı"
+          }
+        ]
+      },
+      "beklenen": {
+        "secim": {
+          "indeks": 0
+        }
+      }
+    }
+  ]
+}

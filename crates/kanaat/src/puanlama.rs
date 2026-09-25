@@ -29,7 +29,7 @@
 
 use std::collections::HashMap;
 
-use crate::metin::{ikili_gramlar, jetonlar, olumsuzluk_orani};
+use crate::metin::{ikili_gramlar, jetonlar, olumsuzluk_orani, DUR_ILETLERI};
 use crate::Kanit;
 
 /// The inverse document frequencies of one evidence set.
@@ -57,12 +57,6 @@ impl Dokum {
             df,
             adet: kanitlar.len(),
         }
-    }
-
-    /// How many evidence items there are.
-    #[must_use]
-    pub(crate) fn adet(&self) -> usize {
-        self.adet
     }
 
     /// Smoothed idf of one token.
@@ -170,8 +164,19 @@ fn olumsuzluk_celiskisi(aday_jetonlari: &[String], kanit_jetonlari: &[String]) -
 /// overlap with the *evidence*, because the evidence is what a verdict has to
 /// stand on.
 pub(crate) fn puanla(aday: &str, soru: &str, kanitlar: &[Kanit], dokum: &Dokum) -> SecenekPuan {
-    let aday_jetonlari = jetonlar(aday);
-    let soru_jetonlari = jetonlar(soru);
+    // Stop words are removed before anything is measured. They carry no
+    // discriminating power, and leaving them in would let a candidate raise
+    // its coverage by repeating the grammar of the question rather than its
+    // content. The filter is applied to both sides so the two numbers compare
+    // like with like.
+    let aday_jetonlari: Vec<String> = jetonlar(aday)
+        .into_iter()
+        .filter(|jeton| !DUR_ILETLERI.contains(&jeton.as_str()))
+        .collect();
+    let soru_jetonlari: Vec<String> = jetonlar(soru)
+        .into_iter()
+        .filter(|jeton| !DUR_ILETLERI.contains(&jeton.as_str()))
+        .collect();
     let aday_gramlar = ikili_gramlar(&aday_jetonlari);
 
     let mut agirlikli = 0.0_f64;
@@ -350,7 +355,10 @@ mod tests {
         let farkli_deger = puanla("boyut 300 mb", "boyut ne", &kanitlar, &dokum);
         let farkli_birim = puanla("boyut 500 gb", "boyut ne", &kanitlar, &dokum);
         assert!(!uyumlu.sayi_celiskisi);
-        assert!(farkli_deger.sayi_celiskisi, "ayni birim farkli deger celiski");
+        assert!(
+            farkli_deger.sayi_celiskisi,
+            "ayni birim farkli deger celiski"
+        );
         assert!(
             !farkli_birim.sayi_celiskisi,
             "farkli birim celiski sayilmaz: karsilastirilamaz"
@@ -372,10 +380,19 @@ mod tests {
         let kanitlar = vec![kanit("k1", "yedek acildi ve dogrulandi", None)];
         let dokum = Dokum::kur(&kanitlar);
         let tam = puanla("yedek acildi", "yedek acildi mi", &kanitlar, &dokum);
-        let kismi = puanla("yedek acildi", "yedek acildi mi ve kayit kapandi mi", &kanitlar, &dokum);
+        let kismi = puanla(
+            "yedek acildi",
+            "yedek acildi mi ve kayit kapandi mi ve denetim tamamlandi mi ve rapor onaylandi mi",
+            &kanitlar,
+            &dokum,
+        );
         assert!((tam.kapsam - 1.0).abs() < 1e-12);
-        assert!(kismi.kapsam < 0.5, "kapsam {} beklenenden yuksek", kismi.kapsam);
-        assert!(kismi.kapsam > 0.0);
+        assert!(
+            kismi.kapsam < 0.5,
+            "kapsam {} beklenenden yuksek",
+            kismi.kapsam
+        );
+        assert!(kismi.kapsam > 0.0, "kapsam sifir olmamali");
     }
 
     #[test]
