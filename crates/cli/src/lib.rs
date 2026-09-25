@@ -39,6 +39,7 @@ pub mod odeme;
 pub mod olcum;
 pub mod queue;
 pub mod ratchet;
+pub mod sohbet;
 pub mod sikistir;
 pub mod soru;
 

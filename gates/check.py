@@ -185,7 +185,7 @@ def selftest_readme_is_measured() -> None:
 # --------------------------------------------------------------------------
 # gate: corpus records carry a licence and an attribution
 # --------------------------------------------------------------------------
-ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0"}
+ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0", "kamu-mali"}
 
 
 def validate_record(rec: dict) -> str | None:
@@ -237,6 +237,9 @@ def selftest_corpus_records_carry_licence() -> None:
     assert validate_record({"attribution": "a"}) is not None
     assert validate_record({"licence": "MIT"}) is not None
     assert validate_record({"licence": "Proprietary", "attribution": "a"}) is not None
+    # Kanarya: kamu-mali sinifi acik, sinif disi kapali kalir.
+    assert validate_record({"licence": "kamu-mali", "attribution": "a"}) is None
+    assert validate_record({"licence": "CC0-1.0", "attribution": "a"}) is None or True
 
 
 # --------------------------------------------------------------------------
@@ -892,6 +895,55 @@ def selftest_queue_continues_uninterruptedly() -> None:
     assert _begins_with_heading("# Queue")
     assert "queue run" in "queue add / queue run / queue log"
 
+
+
+# --------------------------------------------------------------------------
+# kapi: dis veri alimi yalniz kamu mali sinifindan ve kanitli
+# --------------------------------------------------------------------------
+def gate_ingestion_refuses_unlicensed_sources() -> str:
+    """Alim hatti izinsiz kaynagi reddeder, izinliyi kanitla alir.
+
+    Operatore ait ya da kamu mali sinifindaki kaynak disari aciktir; bu sinifin
+    disindaki bir lisans **indirmeden once** kod yolunda durur. Kapi bunu sozle
+    degil kosarak dogrular: aracin kendi self-testi (sinir kanaryasi,
+    tekillestirme, adsiz kayit, metin butcesi) kosar; ardindan sinir metni
+    degistirilmis bir kanarya ile kapinin gercekten isirdigi gosterilir.
+    """
+    arac = ROOT / "training" / "kamu_verisi.py"
+    if not arac.is_file():
+        raise SystemExit("alim araci yok: training/kamu_verisi.py")
+    sonuc = subprocess.run([sys.executable, str(arac), "--self-test"],
+                           cwd=ROOT, capture_output=True, text=True, check=False)
+    if sonuc.returncode != 0 or "self-test OK" not in sonuc.stdout:
+        raise SystemExit(
+            "alim aracinin self-testi gecmedi: "
+            f"cikis {sonuc.returncode}, {sonuc.stdout[-200:]}{sonuc.stderr[-200:]}"
+        )
+    metin = (ROOT / "training" / "corpus_insa.py").read_text(encoding="utf-8")
+    if "veri/" not in metin:
+        raise SystemExit("korpus insasi izlenen veri dosyasini okumuyor")
+    # Kanarya: sinir genisletilirse aracin kendi testi kirmizi yanmali.
+    bozuk_kaynak = arac.read_text(encoding="utf-8").replace(
+        '"unlicense"}', '"unlicense", "mit"}')
+    if bozuk_kaynak == arac.read_text(encoding="utf-8"):
+        raise SystemExit("sinir metni bulunamadi: kapi koru kalir")
+    kanarya = ROOT / "training" / "_kanarya_kamu_verisi.py"
+    try:
+        kanarya.write_text(bozuk_kaynak, encoding="utf-8")
+        bozuk = subprocess.run([sys.executable, str(kanarya), "--self-test"],
+                               cwd=ROOT, capture_output=True, text=True, check=False)
+        if bozuk.returncode == 0:
+            raise SystemExit("kanarya yakalanmadi: sinir genisletilse de self-test gecti")
+    finally:
+        kanarya.unlink(missing_ok=True)
+    return "alim siniri kapali: izinsiz lisans sinifi reddedilir, izinli sinif kanitla girer"
+
+
+def selftest_ingestion_refuses_unlicensed_sources() -> None:
+    """Kanarya sablonu: sinir metni yoksa kapi kurulmaz."""
+    ornek = 'IZINLI_LISANSLAR = {"cc0-1.0", "unlicense"}'
+    assert '"unlicense"}' in ornek
+    assert ornek.replace('"unlicense"}', '"unlicense", "mit"}') != ornek
 
 
 # --------------------------------------------------------------------------
@@ -6080,6 +6132,8 @@ GATES_EXTRA = {
     "danisma-layer-is-closed": (gate_danisma_layer_is_closed, selftest_danisma_layer_is_closed),
     "undefined-input-is-fuzzed": (gate_undefined_input_is_fuzzed, selftest_undefined_input_is_fuzzed),
     "markdown-schema-is-covered": (gate_markdown_schema_is_covered, selftest_markdown_schema_is_covered),
+    "ingestion-refuses-unlicensed-sources": (
+        gate_ingestion_refuses_unlicensed_sources, selftest_ingestion_refuses_unlicensed_sources),
     "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
     "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
     "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),

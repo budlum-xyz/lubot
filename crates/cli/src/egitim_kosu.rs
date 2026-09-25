@@ -47,12 +47,12 @@ const BILDIRIM_VARSAYILAN: u64 = 25;
 
 /// The flags this module understands, split into a lookup so a typo is a
 /// refusal rather than a silently ignored word.
-struct Bayraklar {
+pub(crate) struct Bayraklar {
     degerler: Vec<(String, String)>,
 }
 
 impl Bayraklar {
-    fn ayikla(args: &[String], gecerli: &[&str]) -> Result<Self, String> {
+    pub(crate) fn ayikla(args: &[String], gecerli: &[&str]) -> Result<Self, String> {
         let mut degerler: Vec<(String, String)> = Vec::new();
         let mut i = 0;
         while i < args.len() {
@@ -79,18 +79,18 @@ impl Bayraklar {
         Ok(Self { degerler })
     }
 
-    fn metin(&self, ad: &str) -> Option<&str> {
+    pub(crate) fn metin(&self, ad: &str) -> Option<&str> {
         self.degerler
             .iter()
             .find(|(a, _)| a == ad)
             .map(|(_, d)| d.as_str())
     }
 
-    fn zorunlu(&self, ad: &str) -> Result<&str, String> {
+    pub(crate) fn zorunlu(&self, ad: &str) -> Result<&str, String> {
         self.metin(ad).ok_or_else(|| format!("{ad} zorunlu"))
     }
 
-    fn sayi<T: std::str::FromStr>(&self, ad: &str) -> Result<Option<T>, String> {
+    pub(crate) fn sayi<T: std::str::FromStr>(&self, ad: &str) -> Result<Option<T>, String> {
         match self.metin(ad) {
             None => Ok(None),
             Some(ham) => ham
@@ -100,7 +100,7 @@ impl Bayraklar {
         }
     }
 
-    fn ondalik(&self, ad: &str) -> Result<Option<f64>, String> {
+    pub(crate) fn ondalik(&self, ad: &str) -> Result<Option<f64>, String> {
         match self.metin(ad) {
             None => Ok(None),
             Some(ham) => ham
@@ -110,7 +110,7 @@ impl Bayraklar {
         }
     }
 
-    fn var_mi(&self, ad: &str) -> bool {
+    pub(crate) fn var_mi(&self, ad: &str) -> bool {
         self.degerler.iter().any(|(a, _)| a == ad)
     }
 }
@@ -729,6 +729,30 @@ fn kimlikleri_coz(ham: &str, sozluk: usize) -> Result<Vec<u32>, String> {
     Ok(kimlikler)
 }
 
+/// Metni jetonlara çevirir: `@` ile başlayan değer **metindir** (dosya yolu
+/// varsa dosyadan, yoksa düz metin olarak), aksi hâlde virgüllü kimlik listesi.
+///
+/// Bu ayrım olmadan kıyas ölçümü (iki model aynı şıkları görsün) çağıranın her
+/// taraf için jeton listesi üretmesini gerektirirdi; jetonlayıcı iki yerde
+/// yaşasaydı iki cevap olurdu.
+fn metin_veya_kimlik(ham: &str, c: &Cikarim) -> Result<Vec<u32>, String> {
+    let Some(metin) = ham.strip_prefix('@') else {
+        return kimlikleri_coz(ham, c.sozluk_boyutu());
+    };
+    let icerik = if Path::new(metin).is_file() {
+        std::fs::read_to_string(metin).map_err(|e| format!("{metin} okunamadi: {e}"))?
+    } else {
+        metin.to_string()
+    };
+    let sozluk = lubot_jeton::Sozluk::yukle(Path::new("training/tokenizer/lubot-bpe-v2.json"))
+        .map_err(|e| format!("sozluk reddedildi: {e}"))?;
+    let jetonlar = sozluk.kodla(&icerik);
+    if jetonlar.is_empty() {
+        return Err("metin jetonlanmadi: bos girdi puanlanmaz".to_string());
+    }
+    Ok(jetonlar)
+}
+
 fn cikarim_yukle(b: &Bayraklar) -> Result<Cikarim, String> {
     let yol = b.zorunlu("--ckpt")?;
     Cikarim::yukle(Path::new(yol))
@@ -774,8 +798,11 @@ fn cikarim_denetle(args: &[String]) -> Result<(), String> {
 fn cikarim_puanla(args: &[String]) -> Result<(), String> {
     let b = Bayraklar::ayikla(args, &["--ckpt", "--baglam", "--metin"])?;
     let c = cikarim_yukle(&b)?;
-    let baglam = kimlikleri_coz(b.metin("--baglam").unwrap_or(""), c.sozluk_boyutu())?;
-    let metin = kimlikleri_coz(b.zorunlu("--metin")?, c.sozluk_boyutu())?;
+    let baglam = match b.metin("--baglam") {
+        Some(ham) if !ham.is_empty() => metin_veya_kimlik(ham, &c)?,
+        _ => Vec::new(),
+    };
+    let metin = metin_veya_kimlik(b.zorunlu("--metin")?, &c)?;
     let puan = c
         .puanla(&baglam, &metin)
         .map_err(|e| format!("puanlama reddedildi: {e}"))?;
