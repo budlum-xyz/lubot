@@ -1787,6 +1787,17 @@ fn cmd_durum(args: &[String]) -> Result<(), String> {
     let porcelain = git_stdout(&["status", "--porcelain"])?;
     let lines: Vec<&str> = porcelain.lines().filter(|l| !l.trim().is_empty()).collect();
     let mut md = format!("# Durum\n\nbranch: `{branch}`\n\n");
+    // Sertlestirme ozeti buraya girer: kapi raporu her durum cagrisinda
+    // olculur ve tek satirda yazilir, boylece "bu makinede ne goruluyor"
+    // sorusu ayri bir komut hatirlamayi gerektirmez.
+    let sertleme = lubot_sertlestirme::kapi::topla(
+        lubot_sertlestirme::Kip::Bildir,
+        lubot_sertlestirme::izler::hafif_kontrol(),
+    );
+    md.push_str(&format!(
+        "{}\n\n",
+        lubot::sertleme::sertleme_ozeti(&sertleme)
+    ));
     if lines.is_empty() {
         md.push_str("Agac temiz: calisma agaci branch ile ayni.\n");
     } else {
