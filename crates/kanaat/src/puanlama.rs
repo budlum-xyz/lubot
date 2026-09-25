@@ -240,9 +240,12 @@ pub(crate) fn puanla(aday: &str, soru: &str, kanitlar: &[Kanit], dokum: &Dokum) 
     if !aday_gramlar.is_empty() {
         let mut tutan = 0usize;
         for gram in &aday_gramlar {
-            let (ilk, ikinci) = gram
-                .split_once('\u{1f}')
-                .expect("ikili gram her zaman ayirici tasir");
+            // A bigram always carries the separator; a value that does not is
+            // skipped rather than unwrapped, because a panic here would take
+            // the whole verdict with it over a malformed internal string.
+            let Some((ilk, ikinci)) = gram.split_once('\u{1f}') else {
+                continue;
+            };
             let bulundu = kanitlar.iter().any(|kanit| {
                 let kj = jetonlar(&kanit.metin);
                 kj.windows(2)
