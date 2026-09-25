@@ -43,8 +43,13 @@ pub struct UretimAyari {
 
 impl Default for UretimAyari {
     fn default() -> Self {
-        Self { ayar: Ayarlar::default(), tohum: 0, en_cok_jeton: 64,
-               dur_jetonlari: Vec::new(), pencere_kaydir: true }
+        Self {
+            ayar: Ayarlar::default(),
+            tohum: 0,
+            en_cok_jeton: 64,
+            dur_jetonlari: Vec::new(),
+            pencere_kaydir: true,
+        }
     }
 }
 
@@ -82,7 +87,11 @@ impl Uretic {
     #[must_use]
     pub fn yeni(cikarim: Cikarim, ayar: UretimAyari) -> Self {
         let rastgele = Rastgele::tohumdan(ayar.tohum);
-        Self { cikarim, ayar, rastgele }
+        Self {
+            cikarim,
+            ayar,
+            rastgele,
+        }
     }
 
     /// Çıkarımın kendi görünümü.
@@ -133,12 +142,18 @@ impl Uretic {
             let mut onbellek = crate::Onbellek::yeni(self.cikarim.spec());
             let mut son_gizli = None;
             for jeton in &gecmis {
-                son_gizli = Some(self.cikarim.ileri_konum(*jeton, &mut onbellek).map_err(UretimHatasi::Cikarim)?);
+                son_gizli = Some(
+                    self.cikarim
+                        .ileri_konum(*jeton, &mut onbellek)
+                        .map_err(UretimHatasi::Cikarim)?,
+                );
             }
             let gizli = son_gizli.ok_or(UretimHatasi::BosBaglam)?;
             let logitler = self.cikarim.logitler(&gizli);
-            let dagilim = ornekleyici::dagilim(&logitler, &self.ayar.ayar).map_err(UretimHatasi::Ornek)?;
-            let jeton = ornekleyici::ornekle(&dagilim, &mut self.rastgele).map_err(UretimHatasi::Ornek)?;
+            let dagilim =
+                ornekleyici::dagilim(&logitler, &self.ayar.ayar).map_err(UretimHatasi::Ornek)?;
+            let jeton =
+                ornekleyici::ornekle(&dagilim, &mut self.rastgele).map_err(UretimHatasi::Ornek)?;
             let olasilik = dagilim
                 .iter()
                 .find(|(j, _)| *j == jeton)
@@ -162,7 +177,11 @@ impl Uretic {
         let rapor = UretimRaporu {
             jeton: uretilen.len(),
             durma,
-            ortalama_log_olasilik: if uretilen.is_empty() { f64::NAN } else { toplam_log / uretilen.len() as f64 },
+            ortalama_log_olasilik: if uretilen.is_empty() {
+                f64::NAN
+            } else {
+                toplam_log / uretilen.len() as f64
+            },
             kaydirma,
         };
         Ok((uretilen, rapor))
@@ -221,7 +240,11 @@ mod testler {
             devam_konum: 0,
             hassasiyet: lubot_egitim::kontrol::Hassasiyet::F64,
             optimizer: Some(lubot_egitim::kontrol::OptimizerDurumu {
-                adim, ogrenme_orani: 0.01, agirlik_sonumu: 0.1, m: m.to_vec(), v: v.to_vec(),
+                adim,
+                ogrenme_orani: 0.01,
+                agirlik_sonumu: 0.1,
+                m: m.to_vec(),
+                v: v.to_vec(),
             }),
         })
     }
@@ -235,8 +258,14 @@ mod testler {
     #[test]
     fn ayni_tohum_ayni_jetonlari_verir_ve_uzunluk_tutar() {
         let baglam = [3u32, 17, 42, 8];
-        let ayar = UretimAyari { tohum: 20260924, en_cok_jeton: 12, ..UretimAyari::default() };
-        let (a, rapor_a) = Uretic::yeni(oyuncak(), ayar.clone()).uret(&baglam).expect("uret");
+        let ayar = UretimAyari {
+            tohum: 20260924,
+            en_cok_jeton: 12,
+            ..UretimAyari::default()
+        };
+        let (a, rapor_a) = Uretic::yeni(oyuncak(), ayar.clone())
+            .uret(&baglam)
+            .expect("uret");
         let (b, rapor_b) = Uretic::yeni(oyuncak(), ayar).uret(&baglam).expect("uret");
         assert_eq!(a, b, "ayni tohum ayni diziyi vermeliydi");
         assert_eq!(rapor_a, rapor_b);
@@ -249,8 +278,12 @@ mod testler {
         let baglam = [1u32, 2, 3];
         // Butun jetonlar durma jetoni: ilk adimda kesilmeli.
         let hepsi: Vec<u32> = (0..8192).collect();
-        let ayar = UretimAyari { tohum: 5, en_cok_jeton: 50, dur_jetonlari: hepsi,
-                                 ..UretimAyari::default() };
+        let ayar = UretimAyari {
+            tohum: 5,
+            en_cok_jeton: 50,
+            dur_jetonlari: hepsi,
+            ..UretimAyari::default()
+        };
         let (uretilen, rapor) = Uretic::yeni(oyuncak(), ayar).uret(&baglam).expect("uret");
         assert_eq!(uretilen.len(), 1);
         assert_eq!(rapor.durma, Durma::DurJetonu);
@@ -259,9 +292,18 @@ mod testler {
     #[test]
     fn sicaklik_sifir_acgozlu_ve_tekrarlanabilir() {
         let baglam = [11u32, 12, 13];
-        let ayar = UretimAyari { ayar: Ayarlar { sicaklik: 0.0, ..Ayarlar::default() },
-                                 tohum: 1, en_cok_jeton: 6, ..UretimAyari::default() };
-        let (a, _) = Uretic::yeni(oyuncak(), ayar.clone()).uret(&baglam).expect("uret");
+        let ayar = UretimAyari {
+            ayar: Ayarlar {
+                sicaklik: 0.0,
+                ..Ayarlar::default()
+            },
+            tohum: 1,
+            en_cok_jeton: 6,
+            ..UretimAyari::default()
+        };
+        let (a, _) = Uretic::yeni(oyuncak(), ayar.clone())
+            .uret(&baglam)
+            .expect("uret");
         let (b, _) = Uretic::yeni(oyuncak(), ayar).uret(&baglam).expect("uret");
         assert_eq!(a, b);
     }
@@ -269,12 +311,31 @@ mod testler {
     #[test]
     fn pencere_asimi_ve_kayan_pencere() {
         let spec = crate::Spec::lubot_a1();
-        let uzun: Vec<u32> = (0..spec.max_seq_len + 20).map(|i| (i % 100) as u32).collect();
-        let mut u = Uretic::yeni(oyuncak(), UretimAyari {
-            pencere_kaydir: false, tohum: 2, en_cok_jeton: 4, ..UretimAyari::default() });
-        assert!(matches!(u.uret(&uzun), Err(UretimHatasi::Cikarim(_))), "tasmasina izin verildi");
-        let mut u2 = Uretic::yeni(oyuncak(), UretimAyari {
-            pencere_kaydir: true, tohum: 2, en_cok_jeton: 4, ..UretimAyari::default() });
+        let uzun: Vec<u32> = (0..spec.max_seq_len + 20)
+            .map(|i| (i % 100) as u32)
+            .collect();
+        let mut u = Uretic::yeni(
+            oyuncak(),
+            UretimAyari {
+                pencere_kaydir: false,
+                tohum: 2,
+                en_cok_jeton: 4,
+                ..UretimAyari::default()
+            },
+        );
+        assert!(
+            matches!(u.uret(&uzun), Err(UretimHatasi::Cikarim(_))),
+            "tasmasina izin verildi"
+        );
+        let mut u2 = Uretic::yeni(
+            oyuncak(),
+            UretimAyari {
+                pencere_kaydir: true,
+                tohum: 2,
+                en_cok_jeton: 4,
+                ..UretimAyari::default()
+            },
+        );
         let (uretilen, _) = u2.uret(&uzun).expect("kayan pencere uretmeliydi");
         assert_eq!(uretilen.len(), 4);
     }

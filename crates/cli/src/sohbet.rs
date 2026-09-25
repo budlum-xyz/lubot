@@ -31,8 +31,16 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
     let b = Bayraklar::ayikla(
         args,
         &[
-            "--ckpt", "--vocab", "--sorgu", "--tohum", "--sicaklik", "--top-k", "--top-p",
-            "--en-cok", "--dur-jetonu", "--kayit",
+            "--ckpt",
+            "--vocab",
+            "--sorgu",
+            "--tohum",
+            "--sicaklik",
+            "--top-k",
+            "--top-p",
+            "--en-cok",
+            "--dur-jetonu",
+            "--kayit",
         ],
     )?;
     let ckpt = b.zorunlu("--ckpt")?.to_string();
@@ -59,7 +67,11 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
         return Err("sorgu jetonlanmadi: bos girdiden uretim yok".to_string());
     }
     let ayar = UretimAyari {
-        ayar: Ayarlar { sicaklik, top_k, top_p },
+        ayar: Ayarlar {
+            sicaklik,
+            top_k,
+            top_p,
+        },
         tohum,
         en_cok_jeton: en_cok,
         dur_jetonlari: dur_jetonu.into_iter().collect(),
@@ -118,11 +130,21 @@ pub fn cmd_sohbet(args: &[String]) -> Result<(), String> {
 fn govde(metin: &str) -> String {
     let temiz: Vec<String> = metin
         .lines()
-        .map(|s| if s.starts_with('#') { format!("\\{s}") } else { s.to_string() })
+        .map(|s| {
+            if s.starts_with('#') {
+                format!("\\{s}")
+            } else {
+                s.to_string()
+            }
+        })
         .collect();
     let birlesik = temiz.join("\n");
     let kirpik = birlesik.trim();
-    if kirpik.is_empty() { "(bos)".to_string() } else { kirpik.to_string() }
+    if kirpik.is_empty() {
+        "(bos)".to_string()
+    } else {
+        kirpik.to_string()
+    }
 }
 
 #[cfg(test)]
