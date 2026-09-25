@@ -1,7 +1,7 @@
-//! Lubot preprocess — BPE + FIM + ozel token preprocessing, CrystalCoder preprocessing ilhami.
+//! Lubot preprocess — BPE + FIM + ozel token preprocessing, 3-asamali-egitim preprocessing ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder: preprocessing code tamamen acik, FIM 4 token, 14 ozel kod metadata, 4 instruction, 32032 vocab, FIM rate 0.3 SPM 0.5, StarCoder yontemi.
+//! 3-asamali-egitim: preprocessing code tamamen acik, FIM 4 token, 14 ozel kod metadata, 4 instruction, 32032 vocab, FIM rate 0.3 SPM 0.5, kod-korpus yontemi.
 //! Biz: 8214 vocab, FIM 4, kod 14, instruction 4, FIM 0.3, kendi verisi.
 
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ impl PreprocessConfig {
     }
 
     #[must_use]
-    pub fn crystal_benzeri() -> Self {
+    pub fn referans_olcek() -> Self {
         Self {
             vocab_boyutu: 32032,
             fim_orani: 0.3,
@@ -260,8 +260,8 @@ mod tests {
     }
 
     #[test]
-    fn crystal_config() {
-        let c = PreprocessConfig::crystal_benzeri();
+    fn referans_config() {
+        let c = PreprocessConfig::referans_olcek();
         assert_eq!(c.vocab_boyutu, 32032);
         assert_eq!(c.max_seq, 2048);
     }

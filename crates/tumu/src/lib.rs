@@ -2,7 +2,7 @@
 //!
 //! Kullanicinin komutu: Lubot PR'inda kalsin tum kod birlestir hepsini ve devam et.
 //! Bu crate tum 24+ crate'i birlestirir, tek sistem olarak sunar.
-//! CrystalCoder metodolojisi: 143 checkpoint, data bucket per checkpoint, training log, metrics, code tamamen acik.
+//! 3-asamali-egitim metodolojisi: 143 checkpoint, data bucket per checkpoint, training log, metrics, code tamamen acik.
 //! K1-K6 korunur, dis kod/veri yok.
 
 use std::collections::HashMap;
@@ -202,7 +202,7 @@ impl BirlesikSistem {
                 Bilesen::Transformer,
                 21,
                 474,
-                "LLaMA-like muP RoPE %25 QK^T/d LayerNorm",
+                "derin-dar-transformer-like muP RoPE %25 QK^T/d LayerNorm",
             ),
             (Bilesen::BpeGelismis, 17, 360, "8192+4+14+4=8214 vocab FIM"),
             (Bilesen::Sistem, 11, 263, "13 bilesen seffaflik"),
@@ -268,7 +268,7 @@ impl BirlesikSistem {
     #[must_use]
     pub fn seffaflik_raporu(&self) -> String {
         format!(
-            "Birlesik Sistem {}: {} bilesen ({} kategori), {} test, {} satir, {} checkpoint, {} token, tum kod tek PR'da birlesti, seffaflik: checkpoint+bucket+metrics+code+log acik (LLM360 metodolojisi), K1-K6 uyumlu",
+            "Birlesik Sistem {}: {} bilesen ({} kategori), {} test, {} satir, {} checkpoint, {} token, tum kod tek PR'da birlesti, seffaflik: checkpoint+bucket+metrics+code+log acik (seffaflik-metodolojisi metodolojisi), K1-K6 uyumlu",
             self.ad,
             self.bilesen_sayisi(),
             self.kategori_sayisi(),

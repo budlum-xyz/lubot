@@ -1,7 +1,7 @@
-//! Lubot paralel — paralellik boyutlari, CrystalCoder altyapi ilhami.
+//! Lubot paralel — paralellik boyutlari, 3-asamali-egitim altyapi ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder: 224 GPU, batch 2240 (224*10), CG-1 4 exaFLOPS 54M core 64-node, mixed-precision BF16/FP32.
+//! 3-asamali-egitim: 224 GPU, batch 2240 (224*10), yuksek-performans-sistem 4 exaFLOPS 54M core 64-node, mixed-precision BF16/FP32.
 //! Biz: paralellik boyutlari, batch hesaplama, mixed-precision iskeleti.
 
 /// Paralellik config.
@@ -31,8 +31,8 @@ impl ParalelConfig {
     }
 
     #[must_use]
-    pub fn crystal_benzeri() -> Self {
-        // CrystalCoder: 224 GPU, batch 2240 (224*10)
+    pub fn referans_olcek() -> Self {
+        // 3-asamali-egitim: 224 GPU, batch 2240 (224*10)
         Self::yeni(224, 10, 4096, 2048)
     }
 
@@ -55,14 +55,14 @@ impl ParalelConfig {
     #[must_use]
     pub fn mixed_precision_aciklama(&self) -> String {
         if self.bf16 && self.fp32_weights {
-            "BF16 activ/grad, FP32 weights (CrystalCoder benzeri)".to_string()
+            "BF16 activ/grad, FP32 weights (3-asamali-egitim benzeri)".to_string()
         } else {
             "FP32".to_string()
         }
     }
 }
 
-/// CG-1 benzeri supercomputer iskeleti — 4 exaFLOPS 54M core 64-node (isimsiz, sadece olcek).
+/// yuksek-performans-sistem benzeri supercomputer iskeleti — 4 exaFLOPS 54M core 64-node (isimsiz, sadece olcek).
 #[derive(Debug, Clone)]
 pub struct SuperComputer {
     pub exaflops: f64,
@@ -73,12 +73,14 @@ pub struct SuperComputer {
 
 impl SuperComputer {
     #[must_use]
-    pub fn cg1_benzeri() -> Self {
+    pub fn yuksek_performans() -> Self {
         Self {
             exaflops: 4.0,
             core_sayisi: 54_000_000,
             node_sayisi: 64,
-            aciklama: "4 exaFLOPS, 54M core, 64-node (CG-1 benzeri olcek, isim yok)".to_string(),
+            aciklama:
+                "4 exaFLOPS, 54M core, 64-node (yuksek-performans-sistem benzeri olcek, isim yok)"
+                    .to_string(),
         }
     }
 
@@ -138,8 +140,8 @@ mod tests {
     }
 
     #[test]
-    fn crystal_benzeri() {
-        let c = ParalelConfig::crystal_benzeri();
+    fn referans_olcek() {
+        let c = ParalelConfig::referans_olcek();
         assert_eq!(c.gpu_sayisi, 224);
         assert_eq!(c.toplam_batch(), 2240);
     }
@@ -166,7 +168,7 @@ mod tests {
 
     #[test]
     fn supercomputer_cg1() {
-        let sc = SuperComputer::cg1_benzeri();
+        let sc = SuperComputer::yuksek_performans();
         assert_eq!(sc.exaflops, 4.0);
         assert_eq!(sc.core_sayisi, 54_000_000);
     }
@@ -179,7 +181,7 @@ mod tests {
 
     #[test]
     fn hiz_orani() {
-        let cg1 = SuperComputer::cg1_benzeri();
+        let cg1 = SuperComputer::yuksek_performans();
         let sandbox = SuperComputer::lubot_sandbox();
         let oran = cg1.hiz_orani(&sandbox);
         assert!(oran > 1000.0);

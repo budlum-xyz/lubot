@@ -1,7 +1,7 @@
-//! Lubot metrics — loss, grad_norm, eval metrics, CrystalCoder metrics ilhami.
+//! Lubot metrics — loss, grad_norm, eval metrics, 3-asamali-egitim metrics ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder: training log, metrics, eval per checkpoint, 143 checkpoint.
+//! 3-asamali-egitim: training log, metrics, eval per checkpoint, 143 checkpoint.
 //! Biz: loss, grad_norm, eval, speed, transparency.
 
 use std::collections::HashMap;

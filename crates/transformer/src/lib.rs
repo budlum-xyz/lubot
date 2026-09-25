@@ -1,13 +1,13 @@
-//! Lubot transformer — gercek transformer, CrystalCoder mimari ilhami.
+//! Lubot transformer — gercek transformer, 3-asamali-egitim mimari ilhami.
 //!
 //! K1: sifirdan yazildi, torch yok, gercek matmul yok ama iskelet tam.
-//! CrystalCoder mimarisi:
-//! - LLaMA benzeri, muP ile
+//! 3-asamali-egitim mimarisi:
+//! - derin-dar-transformer benzeri, muP ile
 //! - Input embeddings scaled by mup_embeddings_scale
 //! - Output logits scaled by mup_output_alpha * mup_width_scale
 //! - Attention QK^T/d (sqrt degil), RoPE sadece ilk %25 gizli boyutta, LayerNorm RMSNorm yerine
 //! - Seq len 2048, vocab 32032 (biz 8192)
-//! - No-upstream-naming: kodda LLaMA/Crystal ismi yok.
+//! - No-upstream-naming: kodda derin-dar-transformer/3-asamali ismi yok.
 
 /// Config — transformer.
 #[derive(Debug, Clone)]
@@ -245,7 +245,7 @@ impl Katman {
     }
 }
 
-/// Transformer modeli — LLaMA benzeri ama muP ve RoPE %25.
+/// Transformer modeli — derin-dar-transformer benzeri ama muP ve RoPE %25.
 #[derive(Debug, Clone)]
 pub struct Transformer {
     pub config: Config,

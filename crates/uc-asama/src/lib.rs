@@ -1,11 +1,11 @@
-//! Lubot uc-asama — 3 asamali egitim sistemi, CrystalCoder metodoloji ilhami.
+//! Lubot uc-asama — 3 asamali egitim sistemi, 3-asamali-egitim metodoloji ilhami.
 //!
-//! K1: sifirdan yazildi, lit-llama/PyTorch yok, agirliklar sifirdan.
+//! K1: sifirdan yazildi, lit-derin-dar-transformer/PyTorch yok, agirliklar sifirdan.
 //! K2: yalnizca kendi agacimizdan — gercek 893 + sentetik 152 + derleyici 5 + mufredat 88.
-//! CrystalCoder: Stage1 345B SlimPajama ilk yari, Stage2 diger yari + 2 epoch StarCoder 927B,
-//! Stage3 Python/web 100B + 10B SlimPajama, FIM 0.3 SPM 0.5, 143 checkpoint, data bucket per checkpoint.
+//! 3-asamali-egitim: Stage1 345B genel-metin-korpus ilk yari, Stage2 diger yari + 2 epoch kod-korpus 927B,
+//! Stage3 Python/web 100B + 10B genel-metin-korpus, FIM 0.3 SPM 0.5, 143 checkpoint, data bucket per checkpoint.
 //! Biz: Stage1 gercek %50, Stage2 gercek %50 + sentetik 2 epoch + derleyici, Stage3 mufredat Python/web + gercek %10.
-//! No-upstream-naming: kodda Crystal/SlimPajama/StarCoder ismi yok, yalnizca metodoloji.
+//! No-upstream-naming: kodda 3-asamali/genel-metin-korpus/kod-korpus ismi yok, yalnizca metodoloji.
 
 use std::collections::HashMap;
 
@@ -42,7 +42,7 @@ impl Asama {
     }
 }
 
-/// Veri kovasi — her checkpoint icin data bucket (LLM360 seffaflik).
+/// Veri kovasi — her checkpoint icin data bucket (seffaflik-metodolojisi seffaflik).
 #[derive(Debug, Clone)]
 pub struct VeriKovasi {
     pub asama: Asama,
@@ -86,7 +86,7 @@ impl VeriKovasi {
     }
 }
 
-/// Checkpoint — 143 checkpoint iskeleti (CrystalCoder 143, Amber 360).
+/// Checkpoint — 143 checkpoint iskeleti (3-asamali-egitim 143, Amber 360).
 #[derive(Debug, Clone)]
 pub struct Checkpoint {
     pub id: usize,
@@ -157,7 +157,7 @@ impl UcAsamaSistem {
         // Stage1: 446 kayit ~15K token
         // Stage2: 446 + 304 + 5 = 755 kayit ~26K token
         // Stage3: 88 + 89 = 177 kayit ~6K token + FIM 0.3
-        // Toplam ~47K token (kucuk olcek, ama oranlar CrystalCoder ile ayni mantik)
+        // Toplam ~47K token (kucuk olcek, ama oranlar 3-asamali-egitim ile ayni mantik)
         let asamalar = vec![
             AsamaDetay {
                 asama: Asama::Bir,
@@ -242,7 +242,7 @@ impl UcAsamaSistem {
         map
     }
 
-    /// Seffaflik raporu — LLM360 metodolojisi: checkpoint, data bucket, metrics, code, log.
+    /// Seffaflik raporu — seffaflik-metodolojisi metodolojisi: checkpoint, data bucket, metrics, code, log.
     #[must_use]
     pub fn seffaflik_raporu(&self) -> String {
         format!(

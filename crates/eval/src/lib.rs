@@ -1,7 +1,7 @@
-//! Lubot eval — degerlendirme, 14 batarya, CrystalCoder eval ilhami.
+//! Lubot eval — degerlendirme, 14 batarya, 3-asamali-egitim eval ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder: eval per checkpoint, HumanEval, MBPP, etc.
+//! 3-asamali-egitim: eval per checkpoint, insan-degerlendirme, kod-degerlendirme, etc.
 //! Biz: 14 batarya, mekanik olcut, GG kalibrasyon, RR gap map.
 
 use std::collections::HashMap;

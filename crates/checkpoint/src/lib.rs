@@ -1,7 +1,7 @@
-//! Lubot checkpoint — 143 checkpoint, data bucket, seffaflik, CrystalCoder ilhami.
+//! Lubot checkpoint — 143 checkpoint, data bucket, seffaflik, 3-asamali-egitim ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder: 143 checkpoint (Crystal) 360 checkpoint (Amber), her checkpoint icin data bucket, training log, metrics, code, preprocessing tamamen acik, lit-llama.
+//! 3-asamali-egitim: 143 checkpoint (3-asamali) 360 checkpoint (Amber), her checkpoint icin data bucket, training log, metrics, code, preprocessing tamamen acik, lit-derin-dar-transformer.
 //! Biz: 143 checkpoint, data bucket per checkpoint, loss azalir, grad_norm, provenance.
 
 use std::collections::HashMap;

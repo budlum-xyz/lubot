@@ -1,7 +1,7 @@
-//! Lubot bpe-gelismis — gelismis BPE, FIM ve ozel tokenlar, CrystalCoder ilhami.
+//! Lubot bpe-gelismis — gelismis BPE, FIM ve ozel tokenlar, 3-asamali-egitim ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder tokenizer: 4 FIM token (<|fim_prefix|>), 14 ozel kod metadata (<|filename|>, <|jupyter_start|>, <|reponame|> StarCoder yontemi), 4 instruction (<|sys_start|>, <|im_start|>), vocab 32032.
+//! 3-asamali-egitim tokenizer: 4 FIM token (<|fim_prefix|>), 14 ozel kod metadata (<|filename|>, <|jupyter_start|>, <|reponame|> kod-korpus yontemi), 4 instruction (<|sys_start|>, <|im_start|>), vocab 32032.
 //! Biz: kendi vocab 8192 + FIM 4 + ozel kod 14 + instruction 4 = 8214, Lubot adlariyla.
 
 use std::collections::HashMap;
@@ -61,7 +61,7 @@ impl BpeGelismis {
         }
         next_id += 4;
 
-        // Kod metadata 14 token — StarCoder yontemi ilham, Lubot adlariyla
+        // Kod metadata 14 token — kod-korpus yontemi ilham, Lubot adlariyla
         for (i, token) in [
             "<dosya_adi>",
             "<jupyter_baslangic>",
@@ -354,7 +354,7 @@ mod tests {
     fn kod_metadata_14() {
         let bpe = BpeGelismis::yeni();
         assert_eq!(bpe.kod_tokenlar.len(), 14);
-        // StarCoder yontemi ilham ama Lubot adlariyla — no-upstream-naming
+        // kod-korpus yontemi ilham ama Lubot adlariyla — no-upstream-naming
         assert!(bpe.kod_tokenlar.iter().any(|t| t.metin == "<dosya_adi>"));
     }
 }

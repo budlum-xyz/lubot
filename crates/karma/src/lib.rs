@@ -1,7 +1,7 @@
-//! Lubot karma — veri hazirlama, preprocessing, data bucket, CrystalCoder veri karisimi ilhami.
+//! Lubot karma — veri hazirlama, preprocessing, data bucket, 3-asamali-egitim veri karisimi ilhami.
 //!
 //! K1: sifirdan yazildi.
-//! CrystalCoder veri: SlimPajama 690B + StarCoder 291B, 3 asama 345B/927B/100B+10B, FIM 0.3 SPM 0.5.
+//! 3-asamali-egitim veri: genel-metin-korpus 690B + kod-korpus 291B, 3 asama 345B/927B/100B+10B, FIM 0.3 SPM 0.5.
 //! Biz: gercek 893 + sentetik 152 + derleyici 5 + mufredat 88 = 1138, 3 asama, FIM 0.3, data bucket.
 
 use std::collections::HashMap;
@@ -102,7 +102,7 @@ impl Preprocessing {
     }
 }
 
-/// 3 asamali veri karisimi — CrystalCoder benzeri ama Lubot verisiyle.
+/// 3 asamali veri karisimi — 3-asamali-egitim benzeri ama Lubot verisiyle.
 #[derive(Debug, Clone)]
 pub struct UcAsamaliKarisim {
     pub asama1: AsamaKarisim,
@@ -122,17 +122,17 @@ pub struct AsamaKarisim {
 impl UcAsamaliKarisim {
     #[must_use]
     pub fn lubot() -> Self {
-        // Stage1: 345B SlimPajama ilk yari benzeri — biz gercek %50 15K
+        // Stage1: 345B genel-metin-korpus ilk yari benzeri — biz gercek %50 15K
         let mut d1 = HashMap::new();
         d1.insert(VeriKaynagi::Gercek, 15_000);
         let asama1 = AsamaKarisim {
             asama: 1,
             token_sayisi: 15_000,
             dagilim: d1,
-            aciklama: "asama-1: ilk yari gercek veri — dil temeli (Crystal Stage1 345B SlimPajama ilk yari benzeri)".to_string(),
+            aciklama: "asama-1: ilk yari gercek veri — dil temeli (3-asamali Stage1 345B genel-metin-korpus ilk yari benzeri)".to_string(),
         };
 
-        // Stage2: 927B = 345B SlimPajama diger yari + 2*291B StarCoder benzeri — biz gercek %50 + sentetik 2 epoch + derleyici 26K
+        // Stage2: 927B = 345B genel-metin-korpus diger yari + 2*291B kod-korpus benzeri — biz gercek %50 + sentetik 2 epoch + derleyici 26K
         let mut d2 = HashMap::new();
         d2.insert(VeriKaynagi::Gercek, 13_000);
         d2.insert(VeriKaynagi::Sentetik, 13_000);
@@ -141,10 +141,10 @@ impl UcAsamaliKarisim {
             asama: 2,
             token_sayisi: 26_000,
             dagilim: d2,
-            aciklama: "asama-2: diger yari gercek + 2 epoch sentetik + derleyici — kod+dil dengesi (Crystal Stage2 927B benzeri)".to_string(),
+            aciklama: "asama-2: diger yari gercek + 2 epoch sentetik + derleyici — kod+dil dengesi (3-asamali Stage2 927B benzeri)".to_string(),
         };
 
-        // Stage3: 100B Python/web + 10B SlimPajama + FIM 0.3 SPM 0.5 benzeri — biz mufredat %90 + gercek %10 6K FIM 0.3
+        // Stage3: 100B Python/web + 10B genel-metin-korpus + FIM 0.3 SPM 0.5 benzeri — biz mufredat %90 + gercek %10 6K FIM 0.3
         let mut d3 = HashMap::new();
         d3.insert(VeriKaynagi::Mufredat, 5_400);
         d3.insert(VeriKaynagi::Gercek, 600);
@@ -152,7 +152,7 @@ impl UcAsamaliKarisim {
             asama: 3,
             token_sayisi: 6_000,
             dagilim: d3,
-            aciklama: "asama-3: mufredat Python/web + gercek %10 — uzmanlasma FIM 0.3 (Crystal Stage3 100B+10B benzeri)".to_string(),
+            aciklama: "asama-3: mufredat Python/web + gercek %10 — uzmanlasma FIM 0.3 (3-asamali Stage3 100B+10B benzeri)".to_string(),
         };
 
         Self {

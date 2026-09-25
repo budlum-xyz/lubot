@@ -1,7 +1,7 @@
-//! Lubot sistem — tum sistemin Rust portu, CrystalCoder seffaflik metodolojisi.
+//! Lubot sistem — tum sistemin Rust portu, 3-asamali-egitim seffaflik metodolojisi.
 //!
-//! K1: sifirdan yazildi, lit-llama yok.
-//! LLM360 seffaflik: checkpoint 143, data bucket per checkpoint, training log, metrics, code, preprocessing tamamen acik.
+//! K1: sifirdan yazildi, lit-derin-dar-transformer yok.
+//! seffaflik-metodolojisi seffaflik: checkpoint 143, data bucket per checkpoint, training log, metrics, code, preprocessing tamamen acik.
 //! Biz: 396 test, 143 checkpoint, data bucket, metrics, code, log.
 
 use std::collections::HashMap;
@@ -128,7 +128,11 @@ impl Sistem {
                 Bilesen::Metrics => (15, 300, "loss grad_norm eval metrics"),
                 Bilesen::Preprocessing => (17, 400, "BPE + FIM + ozel token preprocessing"),
                 Bilesen::DataBucket => (15, 350, "data bucket per checkpoint"),
-                Bilesen::TrainingCode => (16, 478, "training code lit-llama benzeri Rust"),
+                Bilesen::TrainingCode => (
+                    16,
+                    478,
+                    "training code lit-derin-dar-transformer benzeri Rust",
+                ),
                 Bilesen::Eval => (14, 351, "kapisma AA protokol"),
                 Bilesen::Analysis => (15, 300, "analysis code"),
             };
@@ -159,7 +163,7 @@ impl Sistem {
     #[must_use]
     pub fn seffaflik_raporu(&self) -> String {
         format!(
-            "Sistem {}: {} bilesen, {} test, {} satir, {} checkpoint, {} token, seffaflik: checkpoint+data_bucket+metrics+code+log tamamen acik (LLM360 metodolojisi)",
+            "Sistem {}: {} bilesen, {} test, {} satir, {} checkpoint, {} token, seffaflik: checkpoint+data_bucket+metrics+code+log tamamen acik (seffaflik-metodolojisi metodolojisi)",
             self.config.ad,
             self.bilesenler.len(),
             self.toplam_test(),
