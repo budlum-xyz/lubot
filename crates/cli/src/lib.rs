@@ -35,6 +35,7 @@ pub mod egitim_kosu;
 pub mod graph;
 pub mod kanaat;
 pub mod kodlayici;
+pub mod gunluk;
 pub mod sir;
 pub mod sozluk;
 pub mod karar;

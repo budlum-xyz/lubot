@@ -81,6 +81,7 @@ fn usage() -> String {
         "  lubot kodlayici [envanter|kosu|dogrula] --paket <dizin> [--kimlik 1,2,3] [--isaret 0,1] [--tip choice]",
         "  lubot sozluk [envanter|jetonla|coz] --sozluk <tokenizer.json> [--metin <yazi>] [--ids 1,2,3]",
         "  lubot sir [maskele|tara] [--dosya <yol>]   (dosya yoksa stdin)",
+        "  lubot gunluk [ozet|oku] --dosya <yol> [--en-agir <0-7>]",
         "  lubot karar [doktrin|tek <evet|hayir>:<olasilik>|oyla <evet:0.9,hayir:0.7,...>]",
     ]
     .join("\n")
@@ -144,6 +145,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "kodlayici" => lubot::kodlayici::cmd_kodlayici(rest),
         "sozluk" => lubot::sozluk::cmd_sozluk(rest),
         "sir" => lubot::sir::cmd_sir(rest),
+        "gunluk" => lubot::gunluk::cmd_gunluk(rest),
         "sertleme" => lubot::sertleme::cmd_sertleme(rest),
         "ogren" => lubot::sikistir::cmd_ogren(rest),
         other => Err(format!("unknown command `{other}`\n{}", usage())),

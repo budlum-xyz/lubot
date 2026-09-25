@@ -394,6 +394,7 @@ dependencies = [
  "lubot-erisim",
  "lubot-esik",
  "lubot-grant",
+ "lubot-gunluk",
  "lubot-index",
  "lubot-izolasyon",
  "lubot-jeton",
@@ -492,6 +493,13 @@ name = "lubot-grant"
 version = "0.1.0"
 dependencies = [
  "sha2",
+]
+
+[[package]]
+name = "lubot-gunluk"
+version = "0.1.0"
+dependencies = [
+ "lubot-sir",
 ]
 
 [[package]]
