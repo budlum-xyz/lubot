@@ -407,6 +407,7 @@ dependencies = [
  "lubot-read",
  "lubot-sertlestirme",
  "lubot-sikistir",
+ "lubot-sir",
  "lubot-takip",
  "lubot-tomurcuk",
  "lubot-tools",
@@ -576,6 +577,10 @@ dependencies = [
  "serde_json",
  "sha2",
 ]
+
+[[package]]
+name = "lubot-sir"
+version = "0.1.0"
 
 [[package]]
 name = "lubot-takip"
