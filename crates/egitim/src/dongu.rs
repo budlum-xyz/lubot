@@ -28,14 +28,14 @@ impl Agirliklar {
         // Her katman icin qkv, out, mlp1, mlp2, ln1, ln2
         for layer in 0..12 {
             params.insert(
-                format!("layer_{}_qkv", layer),
+                format!("layer_{layer}_qkv"),
                 vec![0.0; 3 * d_model * d_model],
             );
-            params.insert(format!("layer_{}_out", layer), vec![0.0; d_model * d_model]);
-            params.insert(format!("layer_{}_mlp1", layer), vec![0.0; d_model * 2048]);
-            params.insert(format!("layer_{}_mlp2", layer), vec![0.0; 2048 * d_model]);
-            params.insert(format!("layer_{}_ln1", layer), vec![0.0; d_model]);
-            params.insert(format!("layer_{}_ln2", layer), vec![0.0; d_model]);
+            params.insert(format!("layer_{layer}_out"), vec![0.0; d_model * d_model]);
+            params.insert(format!("layer_{layer}_mlp1"), vec![0.0; d_model * 2048]);
+            params.insert(format!("layer_{layer}_mlp2"), vec![0.0; 2048 * d_model]);
+            params.insert(format!("layer_{layer}_ln1"), vec![0.0; d_model]);
+            params.insert(format!("layer_{layer}_ln2"), vec![0.0; d_model]);
         }
         params.insert("final_ln".to_string(), vec![0.0; d_model]);
         // Readout: d_model x vocab, baglama aciksa embedding ile ayni ref (iskelet)

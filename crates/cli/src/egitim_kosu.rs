@@ -665,7 +665,12 @@ fn kosu_markdown(
         rapor.olculer();
     match olculer {
         Ok(olcum) => {
+            // `join` puts newlines *between* rows only: without the trailing
+            // one, the last olcum row merges with the next pushed row into a
+            // single 4-column line and the schema refuses the whole report
+            // (measured: TableMismatch at that merged line).
             md.push_str(&olcum.markdown_satirlari().join("\n"));
+            md.push('\n');
             let ema: &lubot_egitim::olcum::KayipIstatistigi = &olcum.kayip;
             md.push_str(&format!(
                 "| EMA | {} |\n",
@@ -693,7 +698,10 @@ fn kosu_markdown(
         }
         Err(hata) => md.push_str(&format!("| olcum | olculemedi: {hata} |\n")),
     }
-    md.push('\n');
+    // The olcum rows above belong to the same alan/deger table as the rows
+    // below: a blank line here would split the table in two, and a table
+    // whose second line is not a separator is a schema refusal (measured:
+    // TableMismatch at the first row after the split).
     md.push_str(&format!(
         "| kayip | {:.6} -> {:.6} |\n",
         rapor.baslangic_kaybi, rapor.son_kaybi
@@ -1394,5 +1402,25 @@ mod tests {
         assert_eq!(t.len(), 10, "tarih bicimi bozuk: {t}");
         let yil: i32 = t[..4].parse().expect("yil");
         assert!((2024..2100).contains(&yil), "yil beklenmedik: {t}");
+    }
+
+    #[test]
+    fn the_olcum_rows_stay_one_line_each_under_the_schema() {
+        // Regression for the TableMismatch at the olcum seam: the rows come
+        // back joined without a trailing newline, so the caller must add it
+        // before pushing the next row; otherwise the last olcum row merges
+        // with it into one 4-column line and the schema refuses the report.
+        for doldur in [false, true] {
+            let mut olcum = lubot_egitim::olcum::KosuOlculeri::yeni();
+            if doldur {
+                olcum.adim_ekle(2.5, 128, 0.4).expect("adim");
+            }
+            let mut md = String::from("| alan | deger |\n| --- | --- |\n| jeton | 128 |\n");
+            md.push_str(&olcum.markdown_satirlari().join("\n"));
+            md.push('\n');
+            md.push_str("| EMA | 2.500000 |\n");
+            crate::validate_output(md.as_bytes(), "egitim-kosu-test")
+                .expect("olcum satirlari semadan gecmeli");
+        }
     }
 }

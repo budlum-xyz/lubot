@@ -241,7 +241,7 @@ impl Sozluk {
                 let m = if (id as usize) < self.vocab.len() && !self.vocab[id as usize].is_empty() {
                     String::from_utf8_lossy(&self.vocab[id as usize]).to_string()
                 } else {
-                    format!("<{}>", id)
+                    format!("<{id}>")
                 };
                 ids.push(id);
                 jetonlar.push(Jeton { id, metin: m });

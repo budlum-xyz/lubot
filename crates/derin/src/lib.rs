@@ -255,7 +255,7 @@ mod tests {
         let c = Config::lubot_a1();
         let p = c.param_sayisi();
         // model_spec.json: 924288
-        assert!(p > 800_000 && p < 1_100_000, "param {}", p);
+        assert!(p > 800_000 && p < 1_100_000, "param {p}");
     }
 
     #[test]

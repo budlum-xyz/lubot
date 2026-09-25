@@ -232,7 +232,7 @@ mod tests {
         let p = o.param_sayisi();
         // 924K civari olmali (training/model_spec.py'den) — tying ile 924K, tying'siz 1.4M, ama Olcek param_sayisi embedding+... hesaplar
         // Olcek::param_sayisi embedding + qkv + out + mlp1+mlp2+ln = 924K civari
-        assert!(p > 800_000 && p < 2_000_000, "param {}", p);
+        assert!(p > 800_000 && p < 2_000_000, "param {p}");
     }
 
     #[test]

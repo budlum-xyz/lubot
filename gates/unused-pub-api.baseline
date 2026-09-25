@@ -29,7 +29,6 @@ grant:EpochBook
 grant:EpochEntry
 grant:EpochOutcome
 grant:EpochRefusal
-grant:Id
 grant:TrainingDataGrant
 index:BM25_B
 index:BM25_K1
@@ -52,7 +51,6 @@ read:is_known
 read:source_kind
 sikistir:CCR_ASLI
 sikistir:CCR_TUR
-sikistir:Hata
 sikistir:IcerikTuru
 sikistir:OgrenSatiri
 sikistir:Sikistirma
@@ -64,7 +62,6 @@ tools:AiInferenceResult
 tools:CeilingsReport
 tools:ChainOutcome
 tools:CheckpointWindow
-tools:OPERATOR_THRESHOLD
 tools:OVERWRITE_PATTERNS
 tools:OperatorRecord
 tools:Rational
