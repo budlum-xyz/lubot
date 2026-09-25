@@ -586,6 +586,14 @@ name = "lubot-takip"
 version = "0.1.0"
 
 [[package]]
+name = "lubot-tasiyici"
+version = "0.1.0"
+dependencies = [
+ "lubot-nicem",
+ "sha2",
+]
+
+[[package]]
 name = "lubot-tomurcuk"
 version = "0.1.0"
 dependencies = [
