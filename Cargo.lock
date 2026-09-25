@@ -510,6 +510,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lubot-kanaat"
+version = "0.1.0"
+dependencies = [
+ "lubot-tomurcuk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lubot-kanit"
 version = "0.1.0"
 
@@ -534,6 +543,13 @@ version = "0.1.0"
 
 [[package]]
 name = "lubot-read"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
+name = "lubot-sertlestirme"
 version = "0.1.0"
 dependencies = [
  "sha2",

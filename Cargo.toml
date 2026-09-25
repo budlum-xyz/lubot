@@ -27,6 +27,8 @@ members = [
   "crates/egitim",
   "crates/jeton",
   "crates/arayuz",
+  "crates/kanaat",
+  "crates/sertlestirme",
 ]
 
 # The panic limit: a reader that panics is a reader that stops answering.
@@ -41,3 +43,14 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license-file = "LICENSE.md"
+
+# Sertlestirme katmani 1: derleyici. panic = "abort" unwind tablolarini
+# kaldirir, strip sembolleri siler, lto = "fat" ile codegen-units = 1 fonksiyon
+# sinirlarini birbirine karistirir. Maliyeti derleme suresi; kazanci
+# strings/nm ile olculur.
+[profile.release]
+panic = "abort"
+strip = true
+lto = "fat"
+codegen-units = 1
+opt-level = 3
