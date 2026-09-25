@@ -44,6 +44,12 @@ kuyruk:QueueError
 mimari:Component
 muhur:LINK_HEX_LEN
 muhur:SEAL_TAG
+# nicem:paketle_ucdeger is the ternary packer. Its caller inside the crate is the
+# quantiser; its caller outside it is the reader that maps a container and
+# rebuilds weights, which is not written yet. Deleting the packer would leave a
+# public unpacker with no public counterpart, so this is the second case in the
+# note above: an item waiting for a caller, and the fix is to write the caller.
+nicem:paketle_ucdeger
 olcek:PolicyError
 read:MAX_OUTPUT_BYTES
 read:PerceptionKind

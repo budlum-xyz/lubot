@@ -30,6 +30,8 @@ members = [
   "crates/kanaat",
   "crates/sertlestirme",
   "crates/kodlayici",
+  "crates/nicem",
+  "crates/tasiyici",
 ]
 
 # The panic limit: a reader that panics is a reader that stops answering.

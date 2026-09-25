@@ -173,7 +173,11 @@ impl Agirliklar {
     /// # Errors
     /// [`BaslikHatasi`] for a missing name, a shape that is not what the
     /// configuration implies, or an unreadable range.
-    pub fn yukle(yapi: KodlayiciYapisi, dosya: &ParcaliDosya, dizin: &Dizin) -> Result<Self, BaslikHatasi> {
+    pub fn yukle(
+        yapi: KodlayiciYapisi,
+        dosya: &ParcaliDosya,
+        dizin: &Dizin,
+    ) -> Result<Self, BaslikHatasi> {
         let mut eksik = Vec::new();
         for ad in ORTAK_ADLAR {
             if dizin.tensor(ad).is_none() {
@@ -384,11 +388,14 @@ pub fn katman_ileri(
     if let Some(norm) = &agirlik.attn_norm {
         let mut bas = 0;
         while bas < uzunluk {
-            katman_norm(&mut normal[bas * h..(bas + 1) * h], norm, yapi.layer_norm_eps).map_err(
-                |hata| BaslikHatasi::Baslik {
-                    mesaj: hata.to_string(),
-                },
-            )?;
+            katman_norm(
+                &mut normal[bas * h..(bas + 1) * h],
+                norm,
+                yapi.layer_norm_eps,
+            )
+            .map_err(|hata| BaslikHatasi::Baslik {
+                mesaj: hata.to_string(),
+            })?;
             bas += 1;
         }
     }
@@ -400,10 +407,15 @@ pub fn katman_ileri(
     let mut v = vec![0.0_f32; uzunluk * h];
     let mut gecici = vec![0.0_f32; 3 * h];
     for konum in 0..uzunluk {
-        matris_vektor(&agirlik.dikkat.wqkv, &normal[konum * h..(konum + 1) * h], &mut gecici, h)
-            .map_err(|hata| BaslikHatasi::Baslik {
-                mesaj: hata.to_string(),
-            })?;
+        matris_vektor(
+            &agirlik.dikkat.wqkv,
+            &normal[konum * h..(konum + 1) * h],
+            &mut gecici,
+            h,
+        )
+        .map_err(|hata| BaslikHatasi::Baslik {
+            mesaj: hata.to_string(),
+        })?;
         q[konum * h..(konum + 1) * h].copy_from_slice(&gecici[..h]);
         k[konum * h..(konum + 1) * h].copy_from_slice(&gecici[h..2 * h]);
         v[konum * h..(konum + 1) * h].copy_from_slice(&gecici[2 * h..]);
@@ -415,10 +427,16 @@ pub fn katman_ileri(
     for konum in 0..uzunluk {
         for kafa_sirasi in 0..kafa_sayisi {
             let dilim = konum * h + kafa_sirasi * kafa;
-            rope(&mut q[dilim..dilim + kafa], &kosin, &sinus, konum)
-                .map_err(|hata| BaslikHatasi::Baslik { mesaj: hata.to_string() })?;
-            rope(&mut k[dilim..dilim + kafa], &kosin, &sinus, konum)
-                .map_err(|hata| BaslikHatasi::Baslik { mesaj: hata.to_string() })?;
+            rope(&mut q[dilim..dilim + kafa], &kosin, &sinus, konum).map_err(|hata| {
+                BaslikHatasi::Baslik {
+                    mesaj: hata.to_string(),
+                }
+            })?;
+            rope(&mut k[dilim..dilim + kafa], &kosin, &sinus, konum).map_err(|hata| {
+                BaslikHatasi::Baslik {
+                    mesaj: hata.to_string(),
+                }
+            })?;
         }
     }
 
@@ -460,7 +478,8 @@ pub fn katman_ileri(
                 if *agirlik_payi == 0.0 {
                     continue;
                 }
-                let v_dilim = &v[kaynak * h + kafa_sirasi * kafa..kaynak * h + (kafa_sirasi + 1) * kafa];
+                let v_dilim =
+                    &v[kaynak * h + kafa_sirasi * kafa..kaynak * h + (kafa_sirasi + 1) * kafa];
                 for (i, deger) in v_dilim.iter().enumerate() {
                     cikti[konum * h + kafa_sirasi * kafa + i] += agirlik_payi * deger;
                 }
@@ -505,12 +524,18 @@ pub fn katman_ileri(
         // The gate is the first `ffn` rows, the value the second `ffn` rows.
         for (sira, hedef) in kapi.iter_mut().enumerate() {
             let satir = &agirlik.mlp.wi[sira * h..(sira + 1) * h];
-            *hedef = satir.iter().zip(x.iter()).fold(0.0_f32, |a, (w, v)| a + w * v);
+            *hedef = satir
+                .iter()
+                .zip(x.iter())
+                .fold(0.0_f32, |a, (w, v)| a + w * v);
         }
         for (sira, hedef) in deger.iter_mut().enumerate() {
             let baslangic = (ffn + sira) * h;
             let satir = &agirlik.mlp.wi[baslangic..baslangic + h];
-            *hedef = satir.iter().zip(x.iter()).fold(0.0_f32, |a, (w, v)| a + w * v);
+            *hedef = satir
+                .iter()
+                .zip(x.iter())
+                .fold(0.0_f32, |a, (w, v)| a + w * v);
         }
         // GELU on the gate, multiply by the value: the product is what makes
         // this gated rather than a plain two-layer perceptron.
@@ -660,7 +685,8 @@ mod tests {
         // different stacks then look identical. That is measured, not assumed:
         // with a ramp the one-layer and three-layer outputs agreed to 5e-7.
         let doldur = |n: usize, kaydirma: u64| -> Vec<f32> {
-            let mut tohum: u64 = 0x2545_F491_4F6C_DD1D ^ kaydirma.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            let mut tohum: u64 =
+                0x2545_F491_4F6C_DD1D ^ kaydirma.wrapping_mul(0x9E37_79B9_7F4A_7C15);
             (0..n)
                 .map(|_| {
                     tohum ^= tohum << 13;
@@ -697,7 +723,9 @@ mod tests {
     fn kucuk_agirliklar(katman: usize) -> Agirliklar {
         let yapi = kucuk_yapi(katman);
         let h = yapi.hidden_size;
-        let katmanlar = (0..katman).map(|_| kucuk_katman(&yapi, KT::FullAttention)).collect();
+        let katmanlar = (0..katman)
+            .map(|_| kucuk_katman(&yapi, KT::FullAttention))
+            .collect();
         let mut tohum: u64 = 0x1234_5678_9ABC_DEF0;
         let gomme_tablosu: Vec<f32> = (0..yapi.vocab_size * h)
             .map(|_| {
@@ -784,9 +812,18 @@ mod tests {
             PencereKurali::SolPencere,
             PencereKurali::Simetrik,
         ] {
-            assert!(pencere_icinde(10, 10, 4, kural), "{kural:?} kendini gormeli");
-            assert!(pencere_icinde(7, 10, 4, kural), "{kural:?} yakin gecmisi gormeli");
-            assert!(!pencere_icinde(6, 10, 4, kural), "{kural:?} uzak gecmisi gormemeli");
+            assert!(
+                pencere_icinde(10, 10, 4, kural),
+                "{kural:?} kendini gormeli"
+            );
+            assert!(
+                pencere_icinde(7, 10, 4, kural),
+                "{kural:?} yakin gecmisi gormeli"
+            );
+            assert!(
+                !pencere_icinde(6, 10, 4, kural),
+                "{kural:?} uzak gecmisi gormemeli"
+            );
         }
         // The future: only the reference shape leaves it open.
         assert!(pencere_icinde(11, 10, 4, PencereKurali::ReferansYarisi));
