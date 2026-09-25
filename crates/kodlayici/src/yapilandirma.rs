@@ -368,8 +368,11 @@ mod tests {
 
     #[test]
     fn the_break_even_accuracy_follows_from_the_stated_costs() {
+        // The fixture name is unique on purpose: tests run in parallel threads
+        // and a shared temp path is a race (measured on CI: another test
+        // removed `kafa.json` between this test's write and its read).
         let yol = gecici(
-            "kafa",
+            "kafa-basabas",
             r#"{"head_layers": 2, "max_len": 1024, "head_max_len": 256,
                 "max_prefixes": 6, "act_costs": {"escalate": 0.5},
                 "cost_wrong_act": 3.0, "temperature": [1.0, 1.0, 1.0]}"#,
