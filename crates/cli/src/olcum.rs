@@ -65,6 +65,7 @@ pub const ARCHITECTURE: &[(&str, u32)] = &[
     ("answer", 2),
     // The evidence-to-verdict engine, and the binary hardening checks.
     ("kanaat", 2),
+    ("kodlayici", 3),
     ("sertlestirme", 0),
     // The binary sits on top of everything.
     ("cli", 3),

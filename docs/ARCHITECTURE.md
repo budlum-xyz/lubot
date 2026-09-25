@@ -19,6 +19,11 @@ the exact reverse rather than a second computation.
 
 The layers, bottom to top:
 
+A note on `kodlayici`: it depends on no workspace crate above it and is
+depended on by none; it is the one crate that runs somebody else's trained
+weights and it says so. Nothing in the reading loop reaches it yet, and the
+cross-check tool (`tools/kodlayici_capraz.py`) is not part of the binary.
+
 1. **Primitives** — single-rule crates with no workspace dependencies:
    `muhur` (seal chains), `esik` (quorum arithmetic), `izolasyon` (fresh
    sessions), `kanit` (proofs about a state root), `kuyruk` (a queue that
@@ -34,8 +39,11 @@ The layers, bottom to top:
    forward pass, hand-written backward pass, packing with per-position
    provenance, the run loop and the checkpoint format) and `cikarim` (the
    inference surface: score and rank with a trained checkpoint, and never a
-   generation surface), and `kanaat` (evidence to verdict: a choice, an
-   escalation or a refusal, with a battery compiled into the binary).
+   generation surface), `kanaat` (evidence to verdict: a choice, an
+   escalation or a refusal, with a battery compiled into the binary) and
+   `kodlayici` (a checkpoint from outside this repository, read and run from
+   Rust: the split-file header reader, the configuration, the encoder stack and
+   the decision head, with a tokenizer still to come).
 3. **Reading** — `read` (three channels, digest-verified), `index` (BM25
    with line-accurate citations), `grant` (permission settled before bytes),
    `tools` (exact-rational calculator, router), `doc` (PDF and rich

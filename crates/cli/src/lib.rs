@@ -34,6 +34,7 @@ pub mod activation;
 pub mod egitim_kosu;
 pub mod graph;
 pub mod kanaat;
+pub mod kodlayici;
 pub mod karar;
 pub mod kosum;
 pub mod odeme;
