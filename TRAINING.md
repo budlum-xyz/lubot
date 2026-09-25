@@ -347,6 +347,15 @@ kapı olarak durur:
 - A Markdown schema validator: lives in Lubot (`crates/read/src/output_schema.rs`)
   and is enforced at the single answer exit (`Answer::render_markdown`).
   The node's own output path is out of Lubot's scope.
-- The first comparison measurement (Adim 8c): the runner and the checkpoint
-  exist now, but a scored comparison against the declared class needs a run
-  that has finished and a protocol run against a second scorer.
+- ~~The first comparison measurement (Adim 8c)~~ — DONE (2026-09-25):
+  `training/kapisma_protokolu.py` ran the scored comparison against a
+  declared-class rival (SmolLM2-135M-Instruct, 134.515.008 params, bfloat16,
+  greedy) on the same 12 locked cards (sha256 kart kimliği; şık sırası
+  `rekabet-2026-09-25.json` ile birebir doğrulandı). Sonuç: Lubot 3/12
+  (0.250) vs rakip 3/12 (0.250); olçüt
+  `lubot_top1_beyan_edilen_sinif_rakibinden_dusuk_degil` geçti. Kayıt:
+  `training/eval/sonuclar/kapisma-sinifi-2026-09-25.json`
+  (eval-runs-are-mechanical kapısından geçti; 37.2 s, 4.144 girdi / 384
+  çıktı jetonu). Lubot tarafı yeniden koşulmadı: checkpoint'ler gitignored
+  olduğundan aynı koşunun kaydı kaynak gösterildi — bu dürüstlük kaydı
+  kayıtta ve protokolün `olculmeyen` notunda durur.
