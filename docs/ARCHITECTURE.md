@@ -25,7 +25,8 @@ The layers, bottom to top:
    refuses rather than evicts), `erisim` (capabilities, attenuation only),
    `takip` (monotonic progress), `olcek` (flap-resistant scaling), `yetenek`
    (a capability only exists after its own self-test), `jeton` (the frozen
-   BPE vocab, applied fail-closed) and `mimari` itself.
+   BPE vocab, applied fail-closed), `sertlestirme` (hardening checks that are
+   measured rather than asserted) and `mimari` itself.
 2. **Composed** — crates built on the primitives: `denetim` (append-only
    audit), `usl` (media re-verified byte for byte), `anlama` (classification
    that may decline), `tomurcuk` (the decision head: closed output shapes,
@@ -33,7 +34,8 @@ The layers, bottom to top:
    forward pass, hand-written backward pass, packing with per-position
    provenance, the run loop and the checkpoint format) and `cikarim` (the
    inference surface: score and rank with a trained checkpoint, and never a
-   generation surface).
+   generation surface), and `kanaat` (evidence to verdict: a choice, an
+   escalation or a refusal, with a battery compiled into the binary).
 3. **Reading** — `read` (three channels, digest-verified), `index` (BM25
    with line-accurate citations), `grant` (permission settled before bytes),
    `tools` (exact-rational calculator, router), `doc` (PDF and rich
