@@ -20,53 +20,66 @@ pub struct Hit {
 }
 
 /// A GitHub classic token (`ghp_`/`gho_`/`ghu_`/`ghs_` + 36 alphanumerics).
+///
+/// The prefixes come from [`lubot_sir::taninan_onekler_sinifli`], never from
+/// literals here. Two tables would be two truths - one updated, one forgotten,
+/// and one of the two scanners quietly blind - and the list is built from hidden
+/// constants, so no prefix of it appears in `strings`.
 fn github_classic(line: &str) -> bool {
-    for prefix in ["ghp_", "gho_", "ghu_", "ghs_"] {
-        if exact_alnum_tail(line, prefix, 36) {
-            return true;
-        }
-    }
-    false
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::GitHub)
+        .any(|(onek, _)| exact_alnum_tail(line, onek, 36))
 }
 
 /// A GitHub fine-grained token (`github_pat_` + 20+ of `[A-Za-z0-9_]`).
 fn github_fine(line: &str) -> bool {
-    const PREFIX: &str = "github_pat_";
     const MIN: usize = 20;
-    head_after(line, PREFIX, MIN)
-        .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::GitHub)
+        .any(|(onek, _)| {
+            onek.len() > 10
+                && head_after(line, onek, MIN)
+                    .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        })
 }
 
 /// A model-API key (`sk-` + 20+ alphanumerics).
 fn model_api_style(line: &str) -> bool {
-    const PREFIX: &str = "sk-";
     const MIN: usize = 20;
-    head_after(line, PREFIX, MIN)
-        .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric()))
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::ModelApi)
+        .any(|(onek, _)| {
+            head_after(line, onek, MIN)
+                .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric()))
+        })
 }
 
 /// An AWS access key id (`AKIA` + 16 uppercase alphanumerics).
 fn aws_access(line: &str) -> bool {
-    const PREFIX: &str = "AKIA";
     const COUNT: usize = 16;
-    head_after(line, PREFIX, COUNT).is_some_and(|head| {
-        head.chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
-    })
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::Aws)
+        .any(|(onek, _)| {
+            head_after(line, onek, COUNT)
+                .is_some_and(|head| head.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
+        })
 }
 
 /// A Slack token (`xoxb-`/`xoxp-`/`xoxa-`/`xoxr-`/`xoxs-` + 10+ of
 /// `[A-Za-z0-9-]`).
 fn slack_token(line: &str) -> bool {
-    for prefix in ["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-"] {
-        const MIN: usize = 10;
-        if head_after(line, prefix, MIN)
-            .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
-        {
-            return true;
-        }
-    }
-    false
+    const MIN: usize = 10;
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::Slack)
+        .any(|(onek, _)| {
+            head_after(line, onek, MIN)
+                .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        })
 }
 
 /// A private key block (`-----BEGIN ... PRIVATE KEY-----`).

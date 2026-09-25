@@ -7,6 +7,7 @@ license-file.workspace = true
 
 [dependencies]
 lubot-sir = { path = "../sir" }
+lubot-sertlestirme = { path = "../sertlestirme" }
 
 [lints]
 workspace = true

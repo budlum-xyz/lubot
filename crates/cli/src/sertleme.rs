@@ -51,9 +51,25 @@ pub fn cmd_sertleme(args: &[String]) -> Result<(), String> {
             bulgular.push(bulgu);
         }
     }
+    // Dagitik noktalar raporda **sayi** olarak gorunur: "dagitik mi" sorusunun
+    // cevabi bir iddia degil, o ana kadar calismis noktalarin listesidir.
+    let noktalar = izler::noktalar();
     let rapor = kapi::topla(kip, bulgular);
     let kapanis = izler::hafif_kontrol();
     let mut metin = kapi::rapor_md(&rapor);
+    metin.push_str(&format!(
+        "\nDagitik noktalar ({}): {}\n",
+        noktalar.len(),
+        noktalar
+            .iter()
+            .map(|(ad, adet)| if *adet > 1 {
+                format!("{ad} x{adet}")
+            } else {
+                (*ad).to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
     metin.push_str(&format!(
         "\nGiris kontrolu {} bulgu, cikis kontrolu {} bulgu uretti (kontroller tek noktada degil).\n",
         baslangic.len(),
