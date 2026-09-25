@@ -172,7 +172,9 @@ impl Sozluk {
             };
             let birlesti = format!("{a}{b}");
             let Some(&ic) = id.get(&birlesti) else {
-                return Err(hata(&format!("merge `{a}`+`{b}`: sonuc `{birlesti}` sozlukte yok")));
+                return Err(hata(&format!(
+                    "merge `{a}`+`{b}`: sonuc `{birlesti}` sozlukte yok"
+                )));
             };
             #[allow(clippy::cast_possible_truncation)]
             let sira = sira as u32;
@@ -479,7 +481,10 @@ fn eklenenleri_oku(
     kok: &serde_json::Value,
     id: &HashMap<String, u32>,
 ) -> Result<Vec<EklenenJeton>, BaslikHatasi> {
-    let Some(liste) = kok.get("added_tokens").and_then(serde_json::Value::as_array) else {
+    let Some(liste) = kok
+        .get("added_tokens")
+        .and_then(serde_json::Value::as_array)
+    else {
         return Ok(Vec::new());
     };
     let mut cikti = Vec::with_capacity(liste.len());

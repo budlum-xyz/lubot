@@ -72,10 +72,24 @@ fn jetonla(args: &[String]) -> Result<(), String> {
     println!("# Jetonlama\n");
     println!("- metin uzunlugu: {} bayt", metin.len());
     println!("- jeton: {}", idler.len());
-    println!("- ids: {}", idler.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+    println!(
+        "- ids: {}",
+        idler
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
     if deger(args, "--kapsamli").is_some() {
         let cekirdek = sozluk.jetonla_cekirdek(&metin);
-        println!("- cekirdek: {}", cekirdek.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+        println!(
+            "- cekirdek: {}",
+            cekirdek
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
         let parcalar: Vec<String> = idler
             .iter()
             .map(|i| sozluk.jeton(*i).unwrap_or("?").to_string())

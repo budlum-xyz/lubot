@@ -67,10 +67,7 @@ fn tara(args: &[String]) -> Result<(), String> {
     let ham = metin(args)?;
     let s = lubot_sir::maskele(&ham);
     if s.rapor().degisti() {
-        eprintln!(
-            "# sir bulundu: {} maskeleme gerekir",
-            s.rapor().toplam()
-        );
+        eprintln!("# sir bulundu: {} maskeleme gerekir", s.rapor().toplam());
         // A non-zero exit is the answer: a caller that gates on this command
         // does not have to parse anything.
         std::process::exit(1);

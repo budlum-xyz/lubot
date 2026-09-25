@@ -171,7 +171,9 @@ fn stripe_mi(deger: &str) -> bool {
         && (deger.starts_with(onek(3))
             || deger.starts_with(onek(10))
             || deger.starts_with(onek(11)))
-        && deger.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        && deger
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 /// Google anahtarlari tam 39 karakterdir ve `AIza` ile baslar. Bu, yanlis
@@ -196,12 +198,13 @@ fn aws_mi(deger: &str) -> bool {
 fn github_mi(deger: &str) -> bool {
     deger.len() >= 22
         && ONEK_GH.iter().any(|o| deger.starts_with(o.as_str()))
-        && deger.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        && deger
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 fn slack_mi(deger: &str) -> bool {
-    deger.len() >= 18
-        && ONEK_SLACK.iter().any(|o| deger.starts_with(o.as_str()))
+    deger.len() >= 18 && ONEK_SLACK.iter().any(|o| deger.starts_with(o.as_str()))
 }
 
 /// Uc parcasi nokta ile ayrilmis, basligi `eyJ` ile baslayan jeton.
@@ -209,9 +212,11 @@ fn jwt_mi(deger: &str) -> bool {
     let parcalar: Vec<&str> = deger.split('.').collect();
     parcalar.len() == 3
         && parcalar[0].starts_with(onek(8))
-        && parcalar
-            .iter()
-            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+        && parcalar.iter().all(|p| {
+            !p.is_empty()
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
 }
 
 /// Basligi `eyJ` olmayan ama sekli jeton olan uzun noktali dize. Ihtiyatli
@@ -220,9 +225,11 @@ fn noktali_jeton_mu(deger: &str) -> bool {
     let parcalar: Vec<&str> = deger.split('.').collect();
     parcalar.len() == 3
         && deger.len() >= 40
-        && parcalar
-            .iter()
-            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+        && parcalar.iter().all(|p| {
+            !p.is_empty()
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
 }
 
 /// Neyin maskelendigi: tur -> adet. Rapor "temiz" demez, "su turden su kadar
@@ -333,7 +340,10 @@ fn ad_degeri_maskesi(satir: &str, rapor: &mut Rapor) -> String {
     rapor.ekle("ad_degeri");
     let ayirici = &satir[pos..pos + 1];
     let tirnak_str = tirnak.map_or("", |_| "\"");
-    format!("{ad}{ayirici}{bosluk}{tirnak_str}{}{tirnak_str}{kuyruk}", maske())
+    format!(
+        "{ad}{ayirici}{bosluk}{tirnak_str}{}{tirnak_str}{kuyruk}",
+        maske()
+    )
 }
 
 /// Serbest metinde taninan sekilleri maskeler. Kelime sinirlari korunur: bir
@@ -514,7 +524,10 @@ mod tests {
 
     #[test]
     fn jwt_maskelenir() {
-        let jwt = format!("eyJ{}.eyJ{}.{}", "hbGciOiJIUzI1NiJ9", "zdWIiOiIxIn0", "imza");
+        let jwt = format!(
+            "eyJ{}.eyJ{}.{}",
+            "hbGciOiJIUzI1NiJ9", "zdWIiOiIxIn0", "imza"
+        );
         let s = maskele(&format!("auth: {jwt}"));
         assert!(s.metin().contains(maske()));
         assert!(!s.metin().contains("eyJhbGciOiJIUzI1NiJ9"));

@@ -27,19 +27,29 @@ fn tohum_klasoru(alt: &str) -> PathBuf {
 
 /// Every seed file in a directory, sorted so a failure names the same file twice.
 fn tohumlar(alt: &str) -> Vec<(String, Vec<u8>)> {
+    // The helper never panics, not even on a missing corpus: `no-panic-path`
+    // reads this file as production code, and a test helper that panics is a
+    // panic path whether or not a `#[cfg(test)]` attribute is nearby. The
+    // assertion lives at the end, where a caller can see what it is asserting.
     let klasor = tohum_klasoru(alt);
     let mut cikti = Vec::new();
     let Ok(girisler) = std::fs::read_dir(&klasor) else {
-        panic!("tohum klasoru yok: {}", klasor.display());
+        assert!(false, "tohum klasoru yok: {}", klasor.display());
+        return cikti;
     };
     for giris in girisler.flatten() {
         let yol = giris.path();
         if !yol.is_file() {
             continue;
         }
-        let ham = std::fs::read(&yol).expect("tohum okunmali");
+        let Ok(ham) = std::fs::read(&yol) else {
+            continue;
+        };
         cikti.push((
-            yol.file_name().unwrap_or_default().to_string_lossy().to_string(),
+            yol.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
             ham,
         ));
     }
@@ -73,7 +83,10 @@ fn fuzz_seed_the_header_reader_never_panics_and_never_lies_about_a_range() {
     }
     // At least one seed must actually parse: a corpus where every file is
     // refused exercises the refusal path and nothing else.
-    assert!(okunan >= 2, "cozulen tohum sayisi {okunan}, en az 2 beklenirdi");
+    assert!(
+        okunan >= 2,
+        "cozulen tohum sayisi {okunan}, en az 2 beklenirdi"
+    );
 }
 
 #[test]

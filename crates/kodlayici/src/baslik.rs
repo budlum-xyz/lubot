@@ -204,11 +204,7 @@ impl ParcaliDosya {
         let mut ozet = Sha256::new();
         if let Some(veri) = &self.bellek {
             ozet.update(veri.as_slice());
-            return Ok(ozet
-                .finalize()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect());
+            return Ok(ozet.finalize().iter().map(|b| format!("{b:02x}")).collect());
         }
         let mut tampon = vec![0_u8; 1 << 20];
         for parca in &self.parcalar {
@@ -227,20 +223,16 @@ impl ParcaliDosya {
                 ozet.update(&tampon[..okunan]);
             }
         }
-        Ok(ozet
-            .finalize()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect())
+        Ok(ozet.finalize().iter().map(|b| format!("{b:02x}")).collect())
     }
 
     /// The directory the parts live in.
     #[must_use]
     pub fn klasor(&self) -> &Path {
-        self.parcalar.first().and_then(|p| p.parent()).map_or_else(
-            || Path::new("."),
-            |p| p,
-        )
+        self.parcalar
+            .first()
+            .and_then(|p| p.parent())
+            .map_or_else(|| Path::new("."), |p| p)
     }
 
     /// The name prefix the parts share.
@@ -294,11 +286,11 @@ impl ParcaliDosya {
             // `son <= toplam` was just checked, and `toplam` is the length of
             // this buffer, so the slice below cannot be out of bounds; the
             // `get` form keeps that a fact rather than an assumption.
-            let dilim = veri
-                .get(ofset as usize..son as usize)
-                .ok_or_else(|| BaslikHatasi::AralikDisi {
-                    ad: format!("{ofset}..{son}"),
-                })?;
+            let dilim =
+                veri.get(ofset as usize..son as usize)
+                    .ok_or_else(|| BaslikHatasi::AralikDisi {
+                        ad: format!("{ofset}..{son}"),
+                    })?;
             hedef.copy_from_slice(dilim);
             return Ok(());
         }
@@ -322,10 +314,11 @@ impl ParcaliDosya {
             let ic_ofset = kalan_ofset - parca_basi;
             let kalan_bayt = (self.boyutlar[parca] - ic_ofset) as usize;
             let alinacak = kalan_bayt.min(hedef.len() - yazilan);
-            let mut dosya = File::open(&self.parcalar[parca]).map_err(|h| BaslikHatasi::Okunamadi {
-                yol: self.parcalar[parca].display().to_string(),
-                mesaj: h.to_string(),
-            })?;
+            let mut dosya =
+                File::open(&self.parcalar[parca]).map_err(|h| BaslikHatasi::Okunamadi {
+                    yol: self.parcalar[parca].display().to_string(),
+                    mesaj: h.to_string(),
+                })?;
             dosya
                 .seek(SeekFrom::Start(ic_ofset))
                 .map_err(|h| BaslikHatasi::Okunamadi {
@@ -393,15 +386,16 @@ impl Dizin {
         let metin = String::from_utf8(ham).map_err(|h| BaslikHatasi::Baslik {
             mesaj: format!("baslik utf-8 degil: {h}"),
         })?;
-        let ham_tablolar: BTreeMap<String, serde_json::Value> =
-            serde_json::from_str(&metin).map_err(|h| BaslikHatasi::Baslik {
+        let ham_tablolar: BTreeMap<String, serde_json::Value> = serde_json::from_str(&metin)
+            .map_err(|h| BaslikHatasi::Baslik {
                 mesaj: h.to_string(),
             })?;
-        let veri_baslangici = 8_u64
-            .checked_add(uzunluk as u64)
-            .ok_or_else(|| BaslikHatasi::Baslik {
-                mesaj: "baslik uzunlugu tasiyor".to_string(),
-            })?;
+        let veri_baslangici =
+            8_u64
+                .checked_add(uzunluk as u64)
+                .ok_or_else(|| BaslikHatasi::Baslik {
+                    mesaj: "baslik uzunlugu tasiyor".to_string(),
+                })?;
         // JSON objects have no order, so the header's *listing* order says
         // nothing about where the bytes are: tensors are checked by their
         // ranges, sorted, not by the order they were written in. Getting this
@@ -417,7 +411,8 @@ impl Dizin {
             .iter()
             .filter(|(ad, _)| ad.as_str() != "__metadata__")
             .filter_map(|(_, deger)| {
-                deger.get("data_offsets")
+                deger
+                    .get("data_offsets")
                     .and_then(|o| o.get(1))
                     .and_then(serde_json::Value::as_u64)
             })
@@ -557,10 +552,7 @@ impl Dizin {
             "F32" => {
                 let (parcalar, kalan) = ham.as_chunks::<4>();
                 debug_assert!(kalan.is_empty(), "f32 govdesi dort baytin kati olmali");
-                Ok(parcalar
-                    .iter()
-                    .map(|k| f32::from_le_bytes(*k))
-                    .collect())
+                Ok(parcalar.iter().map(|k| f32::from_le_bytes(*k)).collect())
             }
             _ => {
                 let (parcalar, kalan) = ham.as_chunks::<2>();
@@ -846,9 +838,13 @@ mod tests {
         let dosya = ParcaliDosya::ac(&klasor, "model.safetensors.part-").expect("acilmali");
         let dizin = Dizin::oku(&dosya).expect("baslik");
         // Elements 1..3 of `a`: exactly [2, 3], and the cross-part read of `b`.
-        let dilim = dizin.tensor_aralik_oku(&dosya, "a", 1, 2).expect("okunmali");
+        let dilim = dizin
+            .tensor_aralik_oku(&dosya, "a", 1, 2)
+            .expect("okunmali");
         assert_eq!(dilim, vec![a[1], a[2]]);
-        let b = dizin.tensor_aralik_oku(&dosya, "b", 0, 2).expect("okunmali");
+        let b = dizin
+            .tensor_aralik_oku(&dosya, "b", 0, 2)
+            .expect("okunmali");
         assert_eq!(b, vec![5.0, 6.0]);
         assert!(dizin.tensor_aralik_oku(&dosya, "a", 3, 2).is_err());
         let _ = std::fs::remove_dir_all(&klasor);
@@ -887,7 +883,11 @@ mod tests {
     #[test]
     fn parts_are_ordered_by_name_so_ten_comes_after_nine() {
         let klasor = gecici_klasor("siralama");
-        for (ad, icerik) in [("p-09", b"a".to_vec()), ("p-10", b"b".to_vec()), ("p-02", b"c".to_vec())] {
+        for (ad, icerik) in [
+            ("p-09", b"a".to_vec()),
+            ("p-10", b"b".to_vec()),
+            ("p-02", b"c".to_vec()),
+        ] {
             File::create(klasor.join(ad))
                 .expect("parca")
                 .write_all(&icerik)

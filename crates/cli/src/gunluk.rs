@@ -55,7 +55,10 @@ fn ozet(args: &[String]) -> Result<(), String> {
     if !seviyeler.is_empty() {
         println!("\n| seviye | ad | adet |\n|---:|---|---:|");
         for (seviye, adet) in &seviyeler {
-            println!("| {seviye} | {} | {adet} |", lubot_gunluk::severity_adi(*seviye));
+            println!(
+                "| {seviye} | {} | {adet} |",
+                lubot_gunluk::severity_adi(*seviye)
+            );
         }
     }
     Ok(())
@@ -114,7 +117,12 @@ mod tests {
 
     #[test]
     fn a_threshold_above_the_severity_range_is_refused() {
-        let hata = oku(&["--en-agir".to_string(), "9".to_string(), "--dosya".to_string(), "/yok".to_string()]);
+        let hata = oku(&[
+            "--en-agir".to_string(),
+            "9".to_string(),
+            "--dosya".to_string(),
+            "/yok".to_string(),
+        ]);
         assert!(hata.is_err());
     }
 }

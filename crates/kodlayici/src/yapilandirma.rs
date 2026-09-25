@@ -148,7 +148,9 @@ impl KodlayiciYapisi {
     /// How wide one head is.
     #[must_use]
     pub fn kafa_genisligi(&self) -> usize {
-        self.hidden_size.checked_div(self.num_attention_heads).unwrap_or(0)
+        self.hidden_size
+            .checked_div(self.num_attention_heads)
+            .unwrap_or(0)
     }
 
     /// Checks the parts of the configuration the forward pass depends on.
