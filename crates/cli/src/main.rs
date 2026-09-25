@@ -76,7 +76,7 @@ fn usage() -> String {
         "  lubot sikistir --path <f> [--igne desen ...] [--depo dir]",
         "  lubot sikistir --geri-getir <ozet-dosya> [--depo dir]",
         "  lubot ogren --log <f> [--ogren-dir outputs/ogren]",
-        "  lubot kanaat [doktrin|batarya|ver] ...  (kanittan hukum: yerel karar motoru)",
+        "  lubot kanaat [doktrin|batarya|ver|defter] ...  (kanittan hukum: yerel karar motoru)",
         "  lubot sertleme [--zorla] [--derin] [--ayrinti] [--beklenen-sha <hex>] [--dosya <yol>]",
         "  lubot karar [doktrin|tek <evet|hayir>:<olasilik>|oyla <evet:0.9,hayir:0.7,...>]",
     ]

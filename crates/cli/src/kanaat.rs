@@ -10,8 +10,8 @@
 //! printing a table nobody fails on is how a battery rots.
 
 use lubot_kanaat::{
-    batarya_kos, batarya_oku, hukum_metni, karar_ver, Ayarlar, BataryaRaporu, Dava, Gerekce, Hukum,
-    RedSebebi, SecenekPuan, VakaSonucu, Yukseltme, GOMULU_BATARYA,
+    batarya_kos, batarya_oku, hukum_metni, karar_ver, Ayarlar, BataryaRaporu, Dava, Defter,
+    Gerekce, Hukum, RedSebebi, SecenekPuan, VakaSonucu, Yukseltme, GOMULU_BATARYA,
 };
 
 /// Dispatches the `kanaat` subcommands.
@@ -23,6 +23,7 @@ pub fn cmd_kanaat(args: &[String]) -> Result<(), String> {
         }
         Some("batarya") => batarya(&args[1..]),
         Some("ver") => ver(&args[1..]),
+        Some("defter") => defter(&args[1..]),
         Some(other) => Err(format!(
             "unknown kanaat subcommand: {other}\nusage: lubot kanaat [doktrin|batarya|ver] ..."
         )),
@@ -116,6 +117,101 @@ fn ver(args: &[String]) -> Result<(), String> {
     let hukum = karar_ver(&dava, &ayar);
     print!("{}", hukum_md(&dava, &hukum));
     Ok(())
+}
+
+/// The append-only verdict ledger: `yaz`, `dogrula`, `liste`.
+fn defter(args: &[String]) -> Result<(), String> {
+    let alt = args
+        .first()
+        .map(String::as_str)
+        .ok_or("usage: lubot kanaat defter [yaz|dogrula|liste] --dosya <defter.jsonl>")?;
+    let kalan = &args[1..];
+    let yol = deger(kalan, "--dosya").unwrap_or_else(|| "outputs/kanaat-defteri.jsonl".to_string());
+    match alt {
+        "yaz" => {
+            let vaka = deger(kalan, "--vaka")
+                .ok_or("usage: lubot kanaat defter yaz --dosya <defter.jsonl> --vaka <vaka.json>")?;
+            let vaka_metni =
+                std::fs::read_to_string(&vaka).map_err(|h| format!("{vaka}: {h}"))?;
+            let dava: Dava =
+                serde_json::from_str(&vaka_metni).map_err(|h| format!("{vaka}: {h}"))?;
+            let hukum = karar_ver(&dava, &Ayarlar::default());
+            // The ledger is read and re-verified before it is appended to: a
+            // ledger that is already broken must not be extended, or every
+            // later entry would be built on a link nobody checked.
+            let mut mevcut = match std::fs::read_to_string(&yol) {
+                Ok(metin) => Defter::oku(&metin).map_err(|h| format!("{yol}: {h:?}"))?,
+                Err(_) => Defter::yeni(),
+            };
+            let kayit = mevcut.ekle(&dava.soru, &hukum);
+            let metin = mevcut.jsonl()?;
+            if let Some(klasor) = std::path::Path::new(&yol).parent() {
+                if !klasor.as_os_str().is_empty() {
+                    std::fs::create_dir_all(klasor).map_err(|h| format!("{}: {h}", klasor.display()))?;
+                }
+            }
+            std::fs::write(&yol, metin).map_err(|h| format!("{yol}: {h}"))?;
+            print!(
+                "# Kanaat defteri\n\n- dosya: `{yol}`\n- sira: {}\n- hukum: {}\n- ozet: `{}`\n- zincir ucu: `{}`\n",
+                kayit.sira,
+                kayit.hukum,
+                kayit.ozet,
+                mevcut.uc()
+            );
+            Ok(())
+        }
+        "dogrula" => {
+            let metin = std::fs::read_to_string(&yol).map_err(|h| format!("{yol}: {h}"))?;
+            let defter = Defter::oku(&metin).map_err(|h| format!("{yol}: {h:?}"))?;
+            let mut c = format!(
+                "# Kanaat defteri dogrulamasi\n\n- dosya: `{yol}`\n- kayit: {}\n- zincir ucu: `{}`\n",
+                defter.uzunluk(),
+                defter.uc()
+            );
+            // An anchor given from outside turns "internally consistent" into
+            // "the same ledger I recorded", which is the only way to notice a
+            // truncated tail.
+            if let Some(capa) = deger(kalan, "--capa") {
+                match defter.dogrula_uc(&capa) {
+                    Ok(()) => {
+                        c.push_str(&format!(
+                            "- capa: dogrulandi (`{}`)\n",
+                            capa.trim().to_ascii_lowercase()
+                        ));
+                        print!("{c}");
+                        Ok(())
+                    }
+                    Err(hata) => {
+                        c.push_str(&format!("- capa: UYUSMADI ({hata:?})\n"));
+                        print!("{c}");
+                        Err(format!("{hata:?}"))
+                    }
+                }
+            } else {
+                print!("{c}");
+                Ok(())
+            }
+        }
+        "liste" => {
+            let metin = std::fs::read_to_string(&yol).map_err(|h| format!("{yol}: {h}"))?;
+            let defter = Defter::oku(&metin).map_err(|h| format!("{yol}: {h:?}"))?;
+            let mut c = format!("# Kanaat defteri\n\n- dosya: `{yol}`\n\n| sira | hukum | soru | ozet |\n|---:|---|---|---|\n");
+            for kayit in defter.kayitlar() {
+                c.push_str(&format!(
+                    "| {} | {} | `{}` | `{}` |\n",
+                    kayit.sira,
+                    kayit.hukum,
+                    &kayit.soru_damgasi[..8.min(kayit.soru_damgasi.len())],
+                    &kayit.ozet[..12.min(kayit.ozet.len())]
+                ));
+            }
+            print!("{c}");
+            Ok(())
+        }
+        other => Err(format!(
+            "unknown kanaat defter subcommand: {other}\nusage: lubot kanaat defter [yaz|dogrula|liste] --dosya <defter.jsonl>"
+        )),
+    }
 }
 
 /// Renders one verdict as Markdown.
@@ -320,6 +416,48 @@ mod tests {
         assert_eq!(rapor.toplam, batarya.vakalar.len());
         let tutmayan: Vec<&VakaSonucu> = rapor.vakalar.iter().filter(|v| !v.dogru).collect();
         assert!(tutmayan.is_empty(), "tutmayan: {tutmayan:?}");
+    }
+
+    #[test]
+    fn the_ledger_appends_verifies_and_notices_an_edit() {
+        let yol = std::env::temp_dir().join("lubot-kanaat-defter-testi.jsonl");
+        let _ = std::fs::remove_file(&yol);
+        let vaka = std::env::temp_dir().join("lubot-kanaat-vaka-testi.json");
+        let dava = dava(
+            "kayit acildi mi",
+            &["kayit acildi", "kayit kapandi"],
+            &[("k1", "kayit acildi")],
+        );
+        std::fs::write(&vaka, serde_json::to_string(&dava).expect("vaka yazilmali"))
+            .expect("vaka dosyasi");
+        let yol_str = yol.to_string_lossy().to_string();
+        let vaka_str = vaka.to_string_lossy().to_string();
+        for _ in 0..2 {
+            defter(&[
+                "yaz".to_string(),
+                "--dosya".to_string(),
+                yol_str.clone(),
+                "--vaka".to_string(),
+                vaka_str.clone(),
+            ])
+            .expect("defter yazilmali");
+        }
+        let metin = std::fs::read_to_string(&yol).expect("defter okunmali");
+        let okunan = Defter::oku(&metin).expect("zincir tutarli olmali");
+        assert_eq!(okunan.uzunluk(), 2);
+        assert_eq!(okunan.kayitlar()[1].onceki, okunan.kayitlar()[0].ozet);
+        defter(&[
+            "dogrula".to_string(),
+            "--dosya".to_string(),
+            yol_str.clone(),
+        ])
+        .expect("dogrulama gecmeli");
+        // Kurcalama: bir kaydin hukum etiketi degistirilir.
+        let bozuk = metin.replacen("secim:0", "ret", 1);
+        std::fs::write(&yol, bozuk).expect("bozuk defter yazilmali");
+        assert!(defter(&["dogrula".to_string(), "--dosya".to_string(), yol_str]).is_err());
+        let _ = std::fs::remove_file(&yol);
+        let _ = std::fs::remove_file(&vaka);
     }
 
     #[test]
