@@ -4799,9 +4799,32 @@ def _mm_disi_url(metin: str) -> bool:
     return "http://" in metin or "https://" in metin
 
 
+def _kamu_kayitlari(kok: pathlib.Path) -> dict[str, str]:
+    """Izlenen kamu veri dosyasindaki yol -> ozet eslesmesi.
+
+    K2'nin son hali kamu mali veriyi egitimde kabul ediyor ama adini depoda
+    yazmiyor: kayitlarin kaynagi bu yuzden depodaki damgali veri dosyasidir.
+    Denetim "dosya var mi" degil "kayit gercekten bu dosyadan mi" diye sorar -
+    yani kanit zayiflamaz, yer degistirir.
+    """
+    eslesme: dict[str, str] = {}
+    veri = kok / "veri" / "kamu-mali.jsonl.gz"
+    if not veri.is_file():
+        return eslesme
+    with gzip.open(veri, "rt", encoding="utf-8", newline="") as fh:
+        for satir in fh.read().split("\n"):
+            if not satir.strip():
+                continue
+            kayit = json.loads(satir)
+            eslesme[str(kayit.get("path", ""))] = str(
+                kayit.get("digest") or kayit.get("content_id") or "")
+    return eslesme
+
+
 def _mm_veri_ihlalleri(kok: pathlib.Path) -> list[str]:
     """K2 siniri: curriculum yalniz kendi agactan (dis URL yasak), korpus kayitlarinin
-    provenance'i agac icindeki bir dosyayi gostermek zorunda."""
+    provenance'i depo icinde dogrulanabilir olmak zorunda: ya agacta duran bir dosya,
+    ya da izlenen kamu veri dosyasindaki kaydin kendisi (ayni ozetle)."""
     ihlaller: list[str] = []
     for p in sorted((kok / "training" / "curriculum").glob("*.jsonl")):
         for no, satir in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -4814,14 +4837,24 @@ def _mm_veri_ihlalleri(kok: pathlib.Path) -> list[str]:
                 ihlaller.append(f"{p.name}:{no} kullanici/asistan cifti yok")
             if _mm_disi_url(satir):
                 ihlaller.append(f"{p.name}:{no} dis URL tasiyor")
+    kamu = _kamu_kayitlari(kok)
     for p in sorted((kok / "corpus").glob("knowledge-*.jsonl.gz")):
-        with gzip.open(p, "rt", encoding="utf-8") as f:
-            for no, satir in enumerate(f, 1):
+        with gzip.open(p, "rt", encoding="utf-8", newline="") as f:
+            for no, satir in enumerate(f.read().split("\n"), 1):
                 satir = satir.strip()
                 if not satir:
                     continue
                 kayit = json.loads(satir)
                 yol = str(kayit.get("path", ""))
+                if yol.startswith("kamu/"):
+                    ozet = kamu.get(yol)
+                    if ozet is None:
+                        ihlaller.append(
+                            f"{p.name}:{no} kamu kaydi izlenen veri dosyasinda yok: {yol!r}")
+                    elif kayit.get("digest") and kayit["digest"] != ozet:
+                        ihlaller.append(
+                            f"{p.name}:{no} kamu kaydi ozeti veri dosyasiyla uyusmuyor: {yol!r}")
+                    continue
                 if not yol or yol.startswith(("/", "..")) or not (kok / yol).is_file():
                     ihlaller.append(f"{p.name}:{no} provenance agac disi: {yol!r}")
     return ihlaller
@@ -4868,6 +4901,24 @@ def selftest_training_runner_engineering_vs_data() -> None:
         (kok / "training" / "curriculum" / "a.jsonl").write_text(
             json.dumps(kotu) + "\n", encoding="utf-8")
         assert _mm_veri_ihlalleri(kok), "dis URL kabul edildi"
+        (kok / "training" / "curriculum" / "a.jsonl").write_text(
+            json.dumps(iyi) + "\n", encoding="utf-8")
+        # Kamu kaydi: izlenen veri dosyasinda varsa kabul, yoksa ve ozeti
+        # uyusmuyorsa reddedilir - ad degil kanit aranir.
+        with gzip.open(kok / "veri" / "kamu-mali.jsonl.gz", "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000001", "digest": "d1"}) + "\n")
+        korpus = kok / "corpus" / "knowledge-self.jsonl.gz"
+        with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000001", "digest": "d1"}) + "\n")
+        assert _mm_veri_ihlalleri(kok) == [], _mm_veri_ihlalleri(kok)
+        with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000002", "digest": "d1"}) + "\n")
+        assert _mm_veri_ihlalleri(kok), "veri dosyasinda olmayan kamu kaydi kabul edildi"
+        with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000001", "digest": "baska"}) + "\n")
+        assert _mm_veri_ihlalleri(kok), "ozeti uyusmayan kamu kaydi kabul edildi"
+        korpus.unlink()
+        (kok / "veri" / "kamu-mali.jsonl.gz").unlink()
 
 
 # --- JJ: korpusun yapisal kayitlari -----------------------------------------

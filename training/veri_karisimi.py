@@ -47,7 +47,7 @@ KAYIT = ROOT / "training" / "eval" / "sonuclar" / "veri-karisimi-2026-09-23.json
 
 # A stratum whose rows are facts drawn from the tree, and therefore have to
 # carry the digest of the passage they came from.
-TOPRAKLI_KATMANLAR = {"gercek", "derleyici-hakem"}
+TOPRAKLI_KATMANLAR = {"gercek", "kamu-mali", "derleyici-hakem"}
 
 
 def digest(text: str) -> str:
@@ -96,7 +96,7 @@ def mufredat_satirlari() -> list[dict]:
 # --------------------------------------------------------------------------
 # stratum: the real corpus
 # --------------------------------------------------------------------------
-def gercek_satirlari(corpus: Path) -> list[dict]:
+def _korpus_satirlari(corpus: Path, katman: str, kamu_mu: bool) -> list[dict]:
     sys.path.insert(0, str(ROOT / "training"))
     import make_sft  # noqa: PLC0415  (the grounded row shape is its business)
 
@@ -112,12 +112,32 @@ def gercek_satirlari(corpus: Path) -> list[dict]:
                 line = line.strip()
                 if not line:
                     continue
-                row = make_sft.grounded(json.loads(line))
+                kayit = json.loads(line)
+                row = make_sft.grounded(kayit)
                 if row is None:
                     continue
-                row["katman"] = "gercek"
+                yol = str(kayit.get("path", ""))
+                if (yol.startswith("kamu/")) != kamu_mu:
+                    continue
+                row["katman"] = katman
                 rows.append(row)
     return rows
+
+
+def gercek_satirlari(corpus: Path) -> list[dict]:
+    """Depo agacinin kendi kayitlari (kamu verisi ayri katmanda sayilir)."""
+    return _korpus_satirlari(corpus, "gercek", kamu_mu=False)
+
+
+def kamu_satirlari(corpus: Path) -> list[dict]:
+    """Depoda izlenen kamu mali kayitlar: alintili gercek metin, ayri bantta.
+
+    Ayri katman olmasinin sebebi beyanin kendi tanimi: `gercek` katmani
+    "agaclarin kendi icerigi" diyor. Kamu verisi bu tanima girmez; ayni bantta
+    sayilirsa beyan ile olcum birbirini tutmaz ve karisim kimsenin karar
+    vermedigi bir orana kayar.
+    """
+    return _korpus_satirlari(corpus, "kamu-mali", kamu_mu=True)
 
 
 # --------------------------------------------------------------------------
@@ -270,6 +290,7 @@ def satirlari_topla(toplam_test: int, basarisiz: int) -> list[dict]:
     ureticiler = {
         "mufredat": mufredat_satirlari,
         "gercek": lambda: gercek_satirlari(corpus),
+        "kamu-mali": lambda: kamu_satirlari(corpus),
         "derleyici-hakem": lambda: derleyici_satirlari(toplam_test, basarisiz),
         "sentetik": list,  # no checkpoint yet: declared, measured empty
     }

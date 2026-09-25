@@ -52,10 +52,14 @@ jobs:
             python3 gates/check.py "$gate" --self-test
           done
 
-      - name: The corpus builds from this repository
+      # Korpus iki kaynaktan kurulur: depo agaci (kendi eser) ve depoda izlenen
+      # kamu mali veri dosyasi. Ikincisi commit'li oldugu icin CI ag erisimi
+      # olmadan ayni korpusu kurar; yalniz agaci kuran eski cagri, ratchet'i ve
+      # dil maliyeti olcumunu yerelde oldugundan kucuk gosteriyordu.
+      - name: The corpus builds from this repository and its tracked data
         run: |
           set -euo pipefail
-          python3 training/build_corpus.py --repo . --out corpus/knowledge-self.jsonl.gz
+          python3 training/corpus_insa.py
 
       - name: Repository gates
         run: python3 gates/check.py --all

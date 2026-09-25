@@ -29,6 +29,7 @@ import gzip
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import time
 import re
@@ -116,7 +117,6 @@ def _gorunmezleri_sil(metin: str) -> str:
     return metin.translate(SIFIR_GENISLIK).translate(GORUNMEZ_AYIRICI)
 
 
-BLOK = 2048            # parquet blok satır sayısı
 EN_AZ_PARCA = 80       # bundan kısa parçalar korpusa girmez
 EN_UZUN_PARCA = 4000   # bundan uzun tek satırlar kırpılır
 ZAMAN_ASIMI = 180
@@ -192,20 +192,34 @@ def _kirp(satir: str) -> str:
 
 
 def parquet_parcalari(yol: Path) -> Iterator[str]:
-    """Parquet'i blok blok okur; satır başına etiketli tek parça üretir."""
-    import pyarrow as pa
-    import pyarrow.parquet as pq
+    """Parquet'i ayri çözücü araç üzerinden okur; satır başına tek parça üretir.
 
-    dosya = pq.ParquetFile(yol)
-    metin_sutunlari = [f.name for f in dosya.schema_arrow
-                       if pa.types.is_string(f.type) or pa.types.is_large_string(f.type)]
-    for blok in dosya.iter_batches(batch_size=BLOK, columns=metin_sutunlari or None):
-        for satir in blok.to_pylist():
-            parcalar = [f"{ad}: {deger.strip()}" for ad, deger in satir.items()
-                        if isinstance(deger, str) and deger.strip()
-                        and _temiz_satir(f"{ad}: {deger.strip()}", ad)]
-            if parcalar:
-                yield _kirp(_adlari_sil("\n".join(parcalar)))
+    Biçim çözme dışarıda (`tools/parquet_metin.py`), korpus kuralları burada:
+    koşucu stdlib-only kalır (MM kapısı), bağımlılık beyan edilmiş tek araçta
+    toplanır. Araç yoksa ya da hata verirse alım durur - sessiz eksik veri yok.
+    """
+    arac = KOK / "tools" / "parquet_metin.py"
+    if not arac.is_file():
+        raise SystemExit(f"parquet cozucusu yok: {arac}")
+    kosu = subprocess.Popen(
+        [sys.executable, str(arac), "--dosya", str(yol)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+    )
+    if kosu.stdout is None:
+        raise SystemExit(f"parquet cozucusu boru acmadi: {yol.name}")
+    for satir in kosu.stdout:
+        satir = satir.strip()
+        if not satir:
+            continue
+        alanlar = json.loads(satir)
+        parcalar = [f"{ad}: {deger.strip()}" for ad, deger in alanlar.items()
+                    if isinstance(deger, str) and deger.strip()
+                    and _temiz_satir(f"{ad}: {deger.strip()}", ad)]
+        if parcalar:
+            yield _kirp(_adlari_sil("\n".join(parcalar)))
+    hata = kosu.stderr.read() if kosu.stderr is not None else ""
+    if kosu.wait() != 0:
+        raise SystemExit(f"parquet cozucusu hata verdi ({yol.name}): {hata[-200:]}")
 
 
 def csv_parcalari(yol: Path) -> Iterator[str]:
@@ -344,7 +358,7 @@ def onar(yol: Path) -> dict:
     """
     with gzip.open(yol, "rt", encoding="utf-8", newline="") as dosya:
         ham = dosya.read()
-    duzeltilen, kayit = 0, 0
+    duzeltilen, ozet_tazelenen, kayit = 0, 0, 0
     satirlar = []
     for satir in ham.split("\n"):
         if not satir.strip():
@@ -357,6 +371,18 @@ def onar(yol: Path) -> dict:
             duzeltilen += 1
             veri["text"] = temiz
             veri["lines"] = [1, temiz.count("\n") + 1]
+        # Ozet metnin kendisinden turer: metin degistiyse (ya da onceki bir
+        # onarim ozeti yenilemeden metni degistirdiyse) ozet de tazelenir.
+        # Aksi halde korpus yukleyicisi kaydi "ozet uyusmuyor" diye reddeder -
+        # ki etmelidir; sessiz bozulma tam olarak boyle gizlenirdi.
+        yeni_ozet = sha256(temiz.encode("utf-8"))
+        tazelendi = False
+        for alan in ("digest", "content_id"):
+            if alan in veri and veri[alan] != yeni_ozet:
+                veri[alan] = yeni_ozet
+                tazelendi = True
+        if tazelendi:
+            ozet_tazelenen += 1
         satirlar.append(json.dumps(veri, ensure_ascii=False))
     cikti = "\n".join(satirlar) + "\n"
     # Onarim sonrasi her satir tek basina cozulmeli: bozuk satir kalirsa yazma.
@@ -367,7 +393,8 @@ def onar(yol: Path) -> dict:
     with gzip.open(gecici, "wt", encoding="utf-8", compresslevel=6) as dosya:
         dosya.write(cikti)
     gecici.replace(yol)
-    return {"kayit": kayit, "duzeltilen": duzeltilen, "cikti": str(yol)}
+    return {"kayit": kayit, "duzeltilen": duzeltilen,
+            "ozet_tazelenen": ozet_tazelenen, "cikti": str(yol)}
 
 
 def calistir(manifest_yolu: Path, cikti: Path, karakter_butce: int) -> dict:
