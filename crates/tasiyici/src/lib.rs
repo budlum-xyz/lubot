@@ -12,12 +12,12 @@
 //! parse is in flight. On a phone that peak is the binding constraint, not the
 //! model size. So the container here is laid out to be **mapped and used where
 //! it lies**: a 64-byte header, a directory of fixed-meaning fields, then a
-//! payload whose blocks are 64-byte aligned. [`Kapsayici::dilimler`] hands back
+//! payload whose blocks are 64-byte aligned. [`bicim::Kapsayici::dilimler`] hands back
 //! sub-slices of the caller's buffer, and the only heap allocation a load makes
 //! is the directory itself, which is kilobytes.
 //!
 //! The digest is over the payload and is checked only when
-//! [`Kapsayici::dogrula`] is called. Verifying on open would mean touching
+//! [`bicim::Kapsayici::dogrula`] is called. Verifying on open would mean touching
 //! every page of a file whose entire point is that most pages are never
 //! touched, which would undo the design at the moment of loading. Opening
 //! validates *structure* - that offsets are in range, blocks do not overlap,
@@ -70,7 +70,7 @@ pub use yazici::{Yazici, YaziciHatasi};
 /// Two thirds, not all of it: the host process, the tokeniser and the scratch
 /// buffer all need room, and a reader that claims everything it can see makes
 /// the machine unusable for the thing that called it. Callers that know their
-/// own budget should pass their own share to [`Tavan::olcumden`] rather than
+/// own budget should pass their own share to [`merdiven::Tavan::olcumden`] rather than
 /// take this one.
 pub const VARSAYILAN_PAY: f64 = 0.66;
 

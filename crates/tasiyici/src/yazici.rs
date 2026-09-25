@@ -178,7 +178,8 @@ impl Yazici {
     /// Serialise the directory.
     ///
     /// The two narrowing casts are bounded by checks made at insertion time:
-    /// a name is refused above [`AD_EN_COK`] bytes, so its length fits `u16`,
+    /// a name longer than 65535 bytes is refused with [`YaziciHatasi::AdUzun`],
+    /// so every name length that reaches here fits in a `u16`,
     /// and the tensor count is a `usize` that cannot exceed `u32` in any file
     /// this writer can hold in memory.
     #[allow(clippy::cast_possible_truncation)]
