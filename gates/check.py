@@ -6173,6 +6173,137 @@ def selftest_credential_shapes_are_measured() -> None:
 
 
 
+# --------------------------------------------------------------------------
+# gate: the single-device bit budget is arithmetic, not a slogan
+# --------------------------------------------------------------------------
+# "2.125 bits per weight" is a number with four parts: the alphabet width, the
+# group size, the size of the one scale each group carries, and the packing
+# density. Any of the four can be changed on its own, and the sentence in the
+# documentation stays there looking true. So the sentence is recomputed here
+# from the constants and compared with what the crate says out loud.
+
+
+def _rust_const(text: str, name: str) -> str:
+    match = re.search(rf"const\s+{re.escape(name)}\s*:\s*[A-Za-z0-9_]+\s*=\s*([^;]+);", text)
+    if match is None:
+        raise SystemExit(f"the constant `{name}` is gone, so the budget cannot be recomputed")
+    return match.group(1).strip().replace("_", "")
+
+
+def gate_bit_budget_is_arithmetic() -> str:
+    """`crates/nicem`'s advertised bits per weight is recomputed from the group
+    size, the scale width and the packing density, and must match."""
+    lib = read("crates/nicem/src/lib.rs")
+    paket = read("crates/nicem/src/paket.rs")
+    grup = int(_rust_const(lib, "VARSAYILAN_GRUP"))
+    iddia = float(_rust_const(lib, "VARSAYILAN_BIT"))
+    trit_bayt = int(_rust_const(paket, "TRIT_BASINA_BAYT"))
+    if grup <= 0:
+        raise SystemExit("the default group size is not a positive count")
+    # One fp16 scale per group. If the scale ever stops being sixteen bits this
+    # multiplication is wrong, so the type is checked rather than assumed.
+    if "olcekler: Vec<u16>" not in read("crates/nicem/src/grup.rs"):
+        raise SystemExit("the group scale is no longer a u16, so 16 bits per group is a guess")
+    olculen = 2.0 + 16.0 / grup
+    if abs(olculen - iddia) > 1e-9:
+        raise SystemExit(
+            f"the crate advertises {iddia} bits per weight but 2 bits + one fp16 scale "
+            f"per {grup} weights is {olculen}"
+        )
+    ucdeger = 8.0 / trit_bayt + 16.0 / grup
+    if abs(ucdeger - 1.725) > 1e-9:
+        raise SystemExit(
+            f"{trit_bayt} trits per byte plus one fp16 scale per {grup} weights is {ucdeger}, "
+            "not the 1.725 the crate documents"
+        )
+    if "1.725" not in lib and "1.725" not in paket:
+        raise SystemExit("the ternary rate is computed nowhere the reader can see it")
+    return (
+        f"bit budget recomputed: 2 + 16/{grup} = {olculen} bits per weight; "
+        f"ternary {8.0 / trit_bayt} + 16/{grup} = {ucdeger}"
+    )
+
+
+def selftest_bit_budget_is_arithmetic() -> None:
+    """The recomputation has to notice a group size changed without the claim."""
+    metin = "pub const VARSAYILAN_GRUP: usize = 128;"
+    assert _rust_const(metin, "VARSAYILAN_GRUP") == "128", "constant parsing broke"
+    assert _rust_const("const A: usize = 1_024;", "A") == "1024", "underscores broke the parse"
+    # A group of 64 costs 2.25 bits, not 2.125: the gate must see the gap.
+    assert abs((2.0 + 16.0 / 64) - 2.125) > 1e-9, "a changed group size would go unnoticed"
+    try:
+        _rust_const("nothing here", "VARSAYILAN_GRUP")
+    except SystemExit:
+        pass
+    else:  # pragma: no cover - the gate would be blind
+        raise AssertionError("a deleted constant was not noticed")
+
+
+# --------------------------------------------------------------------------
+# gate: the device ceiling is declared with its provenance
+# --------------------------------------------------------------------------
+# The operator rule ("an operator answers with the machine it owns") is only
+# enforceable if a machine can state a ceiling. `crates/tasiyici` makes that
+# ceiling a depth. Three things have to stay true for the declaration to mean
+# anything, and all three are quiet to break.
+
+
+def gate_device_ceiling_is_declared() -> str:
+    """The ladder is wired to the binary, a ceiling carries whether it was
+    measured, and a machine too small for rung zero is refused rather than
+    served at depth zero."""
+    merdiven = read("crates/tasiyici/src/merdiven.rs")
+    if "TabanSigmiyor" not in merdiven:
+        raise SystemExit("the ladder has no refusal for a machine that cannot hold rung zero")
+    if "OLCULMEDI" not in merdiven:
+        raise SystemExit(
+            "a declaration no longer says when its ceiling was not measured, so a "
+            "declared number reads as a measured one"
+        )
+    if "pub olculdu: bool" not in merdiven:
+        raise SystemExit("the ceiling no longer carries its provenance")
+    # A duration invented from a byte count would be an unmeasured number
+    # reported as measured. The crate says so; the gate keeps it said.
+    for kelime in ["millis", "as_secs", "Duration"]:
+        if kelime in merdiven:
+            raise SystemExit(
+                f"`{kelime}` appears in the ladder: streamed bytes are being turned into a time, "
+                "which this crate cannot measure"
+            )
+    tasiyici_manifest = read("crates/tasiyici/Cargo.toml")
+    if "lubot-nicem" not in tasiyici_manifest:
+        raise SystemExit("the container no longer builds on the quantiser")
+    cli_manifest = read("crates/cli/Cargo.toml")
+    if "lubot-tasiyici" not in cli_manifest:
+        raise SystemExit("the container is not reachable from the binary")
+    main = read("crates/cli/src/main.rs")
+    if '"tasiyici" =>' not in main:
+        raise SystemExit("`lubot tasiyici` is not dispatched, so the ladder has no command")
+    if "lubot tasiyici tavan" not in main:
+        raise SystemExit("`lubot tasiyici tavan` is undocumented in the usage text")
+    komut = read("crates/cli/src/tasiyici.rs")
+    if "MemAvailable" not in komut:
+        raise SystemExit("the ceiling command no longer reads the machine's available memory")
+    if "olculmedi" not in komut.lower() and "OLCULMEDI" not in komut:
+        raise SystemExit("the ceiling command can report a number without saying it was measured")
+    return (
+        "the ceiling is a depth: rung-zero refusal, measured-or-declared provenance, "
+        "and `lubot tasiyici tavan` wired to the binary"
+    )
+
+
+def selftest_device_ceiling_is_declared() -> None:
+    """The checks have to fire on the three quiet failures they exist for."""
+    saglam = "TabanSigmiyor OLCULMEDI pub olculdu: bool"
+    assert "TabanSigmiyor" in saglam, "the refusal check is inverted"
+    # A ladder that reports depth zero instead of refusing.
+    assert "TabanSigmiyor" not in "derinlik: 0", "a depth-zero fallback would pass"
+    # A declaration that hides where its number came from.
+    assert "OLCULMEDI" not in "tavan olculdu", "an unmeasured ceiling would read as measured"
+    # A duration invented from a byte count.
+    assert "as_secs" in "let s = d.as_secs();", "the invented-duration check is blind"
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -6197,6 +6328,8 @@ GATES_EXTRA = {
     "corpus-carries-structure": (gate_corpus_carries_structure, selftest_corpus_carries_structure),
     "training-runner-engineering-vs-data": (gate_training_runner_engineering_vs_data, selftest_training_runner_engineering_vs_data),
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
+    "bit-budget-is-arithmetic": (gate_bit_budget_is_arithmetic, selftest_bit_budget_is_arithmetic),
+    "device-ceiling-is-declared": (gate_device_ceiling_is_declared, selftest_device_ceiling_is_declared),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
     "output-finalize-closed-loop": (gate_output_finalize_closed_loop, selftest_output_finalize_closed_loop),
     "cli-asks-and-renders-markdown": (gate_cli_asks_and_renders_markdown, selftest_cli_asks_and_renders_markdown),

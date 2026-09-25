@@ -37,6 +37,8 @@ lubot-jeton = { path = "../jeton" }
 lubot-kanaat = { path = "../kanaat" }
 lubot-sertlestirme = { path = "../sertlestirme" }
 lubot-kodlayici = { path = "../kodlayici" }
+lubot-nicem = { path = "../nicem" }
+lubot-tasiyici = { path = "../tasiyici" }
 
 [lints]
 workspace = true

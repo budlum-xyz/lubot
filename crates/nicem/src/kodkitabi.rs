@@ -155,7 +155,7 @@ fn phi(x: f64) -> f64 {
 /// Mass of a standard normal on `[a, b]`, by composite Gauss-Legendre.
 ///
 /// The only quantity in the solve that is not closed form. Panels are at most
-/// [`PANEL`] wide, so the count depends on the interval and not on any global
+/// [`PANEL_SAYISI`] panels wide, so the count depends on the interval and not on any global
 /// grid; a narrow central region costs one panel and the tail costs the rest.
 fn kutle(a: f64, b: f64) -> f64 {
     let a = a.max(-SONSUZ);
@@ -215,7 +215,7 @@ impl Kodkitabi {
         self.bozulma
     }
 
-    /// Signal-to-noise ratio in decibels, `10 log10(1 / distortion)`, for a
+    /// The signal-to-noise ratio in decibels, `10 log10(1 / distortion)`, for a
     /// unit-variance source. Reported because it is the number that can be
     /// compared directly against the measured reconstruction error of a real
     /// tensor - if a tensor does much worse than this, the rotation is not

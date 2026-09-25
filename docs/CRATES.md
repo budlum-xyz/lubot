@@ -84,7 +84,7 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 10693 | 137 | The runnable binary, and the only crate that reaches everything else. `kodlayici envanter` prints what is inside a package and which tensors nothing read; `kodlayici kosu` runs the encoder and, with `--isaret`, the head; `kodlayici dogrula` streams the parts through SHA-256 and compares the digest with one given, so a run can say which artifact it ran. |
+| `cli` | 11540 | 151 | The runnable binary, and the only crate that reaches everything else. `kodlayici envanter` prints what is inside a package and which tensors nothing read; `kodlayici kosu` runs the encoder and, with `--isaret`, the head; `kodlayici dogrula` streams the parts through SHA-256 and compares the digest with one given, so a run can say which artifact it ran. |
 
 Four modules carry the wiring:
 
@@ -94,6 +94,20 @@ Four modules carry the wiring:
 | `kosum` | `lubot kosum denetle`, `lubot kosum dogrula` | `activation` + `erisim` + `kuyruk` + `denetim` + `muhur` + `izolasyon` + `kanit` + `yetenek`. Each item runs inside an isolated session with a fresh identity and leaves a proof accepted against the state it was made for. The record is verified by recomputation, not by trusting the writer. |
 | `olcum` | `lubot olcum mimari\|esik\|takip\|sinif` | `mimari` + `esik` + `takip` + `anlama`. `olcum mimari` reads every `crates/*/Cargo.toml` and checks the real dependency graph against the declared layering in `ARCHITECTURE`. |
 | `odeme` | `lubot odeme yaz`, `lubot odeme dogrula` | `usl` + `muhur`. Verification re-parses, re-checks, re-seals and re-renders, naming the first check that fails. |
+
+## Running on one small device
+
+Two crates written together, for the one question the rest of the repository
+cannot answer: what has to be true for a model with a large parameter count to
+run on a machine somebody actually owns.
+
+| crate | lines | tests | deps | what it holds |
+|---|---|---|---|---|
+| `nicem` | 2697 | 61 | - | Sub-byte weight quantisation, written here and depending on nothing. Four stages, each measurable on its own: an fp16 codec verified across all 65536 bit patterns; an in-place normalised Walsh-Hadamard transform (`H/sqrt(n)` is symmetric and orthogonal, so the inverse is the transform itself and no second routine exists to disagree with the first); an analytic Lloyd-Max codebook for a Gaussian source at 1..=8 bits and ternary, solved from closed-form moments with quadrature used only for the region mass; and LSB-first bit packing with a base-3 packer at five trits per byte. The error is **measured, not claimed**: `Olcum` reports relative error, SNR, the largest single-weight deviation and the bits actually spent, and the largest deviation is reported beside the aggregate because a small Frobenius error can still hide one badly placed weight. Two findings are kept as passing tests rather than tidied away: the rotation is not universally better than absmax (a single-spike vector measures 0.5052 rotated against 0.3340 unrotated, because a spike maps to a constant-magnitude vector whose coordinates land between the two-bit levels), and the solver needs over-relaxation rather than a finer grid - a fixed-grid Lloyd iteration stalls at one grid cell width by construction, and the residual that remains at seven bits is Lloyd's linear convergence, not the quadrature. |
+| `tasiyici` | 1725 | 32 | `nicem` | The container the weights are read from and the ladder that decides how much of it a machine holds. The file is mapped and used where it lies: a 64-byte header, a directory of fixed-meaning fields, then a payload whose blocks are 64-byte aligned, and a load's only allocation is the directory. Opening validates structure exhaustively - offsets in range, no overlapping blocks, byte counts matching the declared shapes - but deliberately does **not** verify the digest, because touching every page of a file designed so most pages are never touched would undo the design at the moment of loading; `dogrula()` is the explicit full pass. The writer is a pure function of insertion order, so two builds of the same model are byte-identical and the digest means something. Every tensor carries a rung: rung 0 is what every depth needs, and a reader holding rungs `0..=k` has a working model at depth `k`, which is what finally gives an operator a ceiling that refers to the machine. What it refuses to do is written into the crate: it does not turn streamed bytes into a predicted latency (that belongs to the storage, and an invented number would be reported as measured), it does not decide that a shallower depth is good enough (that is the exam set's judgement), and it does not report depth 0 when rung zero will not fit - that is a refusal, because a depth-zero reading looks like a working shallow model. A ceiling carries whether it was measured or declared, and the declaration line says `OLCULMEDI` when it was not. |
+
+Both are reached from the binary: `lubot nicem kitap|butce|dondur|yarim` and
+`lubot tasiyici olc|incele|tavan`.
 
 ## Reachability
 
