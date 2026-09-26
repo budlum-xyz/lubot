@@ -3,7 +3,8 @@ name = "lubot-jeton"
 version = "0.1.0"
 edition = "2021"
 description = "Lubot frozen BPE vocab reader: loads the committed vocab, encodes and decodes, refuses what it cannot apply."
-license = "PolyForm-Shield-1.0.0"
+license-file.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
 repository = "https://github.com/budlum-xyz/lubot"
 readme = "README.md"
 

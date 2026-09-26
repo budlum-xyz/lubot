@@ -6823,6 +6823,66 @@ def selftest_elf_sertlestirme() -> None:
         else:
             raise AssertionError("ELF olmayan dosya kabul edildi")
 
+# --------------------------------------------------------------------------
+# gate: crate manifests declare what cargo-deny has to assume otherwise
+# --------------------------------------------------------------------------
+# `cargo deny --locked check` failed in CI for two reasons that were both
+# invisible in the tree: 47 crate manifests never said `publish = false`, so a
+# path dependency of a "publishable" crate is a wildcard dependency, and three
+# manifests carried a licence string that is not an SPDX expression. The
+# settings that answer those questions live in the manifest, not in deny.toml,
+# so a gate has to read the manifests.
+
+
+def _manifest_dosyalari() -> list[Path]:
+    return sorted(Path("crates").glob("*/Cargo.toml"))
+
+
+def _yol_bagimliliklari(metin: str) -> list[str]:
+    """Dependency lines that point at another crate in this tree."""
+    return [satir.strip() for satir in metin.splitlines()
+            if "path = " in satir and "=" in satir.split("path = ")[0]
+            and not satir.lstrip().startswith("#")]
+
+
+def gate_crate_manifest_politikasi() -> str:
+    """Every crate is marked unpublished and every path dependency has a version."""
+    bulgular: list[str] = []
+    dosyalar = _manifest_dosyalari()
+    if not dosyalar:
+        raise SystemExit("no crate manifests found: crates/*/Cargo.toml is empty")
+    for yol in dosyalar:
+        metin = yol.read_text(encoding="utf-8")
+        if "publish.workspace = true" not in metin and "publish = false" not in metin:
+            bulgular.append(f"{yol}: publish is not false, so cargo-deny reads this crate as publishable")
+        if 'license = "' in metin:
+            lisans = re.search(r'license = "([^"]+)"', metin)
+            bulgular.append(
+                f"{yol}: `license = \"{lisans.group(1)}\"` is an SPDX expression slot; "
+                "the repository points at its licence file instead"
+            )
+        for satir in _yol_bagimliliklari(metin):
+            if "version" not in satir:
+                bulgular.append(f"{yol}: path dependency without a version is a wildcard: {satir}")
+    if bulgular:
+        raise SystemExit("; ".join(bulgular))
+    return f"{len(dosyalar)} crate manifests: unpublished, licensed by file, versions on every path dependency"
+
+
+def selftest_crate_manifest_politikasi() -> None:
+    iyi = '[package]\nname = "lubot-read"\npublish.workspace = true\nlicense-file.workspace = true\n\n[dependencies]\nlubot-mu = { path = "../mu", version = "0.1.0" }\n'
+    assert "publish.workspace = true" in iyi
+    assert not [s for s in _yol_bagimliliklari(iyi) if "version" not in s]
+    kotu = iyi.replace("publish.workspace = true", "").replace(', version = "0.1.0"', "")
+    kotu += 'license = "PolyForm-Shield-1.0.0"\n'
+    eksik = [s for s in _yol_bagimliliklari(kotu) if "version" not in s]
+    assert eksik, "a versionless path dependency was not seen"
+    assert "publish.workspace = true" not in kotu and 'license = "' in kotu
+    # A commented-out line is not a dependency.
+    yorum = "# lubot-mu = { path = \"../mu\" }\n"
+    assert _yol_bagimliliklari(yorum) == [], "a comment was read as a dependency"
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -6951,6 +7011,7 @@ GATES = {
     "mask-before-storage": (gate_mask_before_storage, selftest_mask_before_storage),
     "no-panic-path": (gate_no_panic_path, selftest_no_panic_path),
     "readme-is-measured": (gate_readme_is_measured, selftest_readme_is_measured),
+    "crate-manifest-politikasi": (gate_crate_manifest_politikasi, selftest_crate_manifest_politikasi),
     **GATES_EXTRA,
     "unserved-records-never-cited": (
         gate_unserved_records_never_cited,
