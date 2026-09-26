@@ -681,6 +681,7 @@ mod tests {
             d_model: 16,
             n_layers: 2,
             n_heads: 2,
+            n_kv_heads: 2,
             d_ff: 32,
             max_seq_len: 8,
         }
