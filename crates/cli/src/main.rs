@@ -83,6 +83,7 @@ fn usage() -> String {
         "  lubot sir [maskele|tara] [--dosya <yol>]   (dosya yoksa stdin)",
         "  lubot gunluk [ozet|oku] --dosya <yol> [--en-agir <0-7>]",
         "  lubot karar [doktrin|tek <evet|hayir>:<olasilik>|oyla <evet:0.9,hayir:0.7,...>]",
+        "  lubot kalibrasyon --girdi <kayitlar.jsonl> [--hedef 0.9]",
     ]
     .join("\n")
 }
@@ -141,6 +142,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "odeme" => lubot::odeme::cmd_odeme(rest),
         "sikistir" => lubot::sikistir::cmd_sikistir(rest),
         "karar" => lubot::karar::cmd_karar(rest),
+        "kalibrasyon" => lubot::kalibrasyon::cmd_kalibrasyon(rest),
         "kanaat" => lubot::kanaat::cmd_kanaat(rest),
         "kodlayici" => lubot::kodlayici::cmd_kodlayici(rest),
         "sozluk" => lubot::sozluk::cmd_sozluk(rest),
