@@ -1,0 +1,158 @@
+{
+ "surum": 1,
+ "tarih": "2026-09-25",
+ "kosucu": "model",
+ "is": "Kapisma protokolu (AA): beyan edilmis siniftan rakip, ayni kilitli kartlarda; Lubot tarafi kayitli rekabet kosusundan.",
+ "olcut": {
+  "ad": "lubot_top1_beyan_edilen_sinif_rakibinden_dusuk_degil",
+  "sonuc": true
+ },
+ "kaynaklar": {
+  "sure_saniye": 37.214,
+  "girdi_jetonlari": 4144,
+  "onbellekli_jetonlari": 0,
+  "cikti_jetonlari": 384,
+  "maliyet": 0.0
+ },
+ "kanit": "Ayni kartlar (kartlari_kur) ve ayni sik sirasi iki tarafa da verildi; rakip secimi kapali bir sayi olarak okundu, Lubot top-1'i rekabet kaydindan alindi ve oranlar karsilastirildi.",
+ "rakip": {
+  "model_dizini": "/tmp/hf-cache/smollm2-135m",
+  "agirlik_dosyasi": "model.safetensors",
+  "agirlik_sha256": "5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c",
+  "parametre": 134515008,
+  "uretim": "greedy (do_sample=False)",
+  "sinif_beyani": "training/eval/sonuclar/kiyas-sinifi-2026-09-23.json"
+ },
+ "lubot_tarafi": {
+  "kaynak": "training/eval/sonuclar/rekabet-2026-09-25.json",
+  "top1": 0.25,
+  "dogru": 3,
+  "kart_sayisi": 12,
+  "kontrol_noktasi": "lubot-a1.ckpt"
+ },
+ "kartlar_sha256": "68774b4e1d97513f05686fa35434a050ddfa23f244f873de7dad9f6b4c605863",
+ "kart_sayisi": 12,
+ "rakip_dogru": 3,
+ "rakip_top1": 0.25,
+ "kartlar": [
+  {
+   "kart": "sinav-01",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "1\n\nSoru: Korpusu oku ve su konuda ne soylendigini kaynagini gostererek",
+   "girdi_jetonlari": 248,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 2.705
+  },
+  {
+   "kart": "sinav-02",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "[1] Whether the head may decide alone.\n[2] The three channels content may enter through.\n[3] How many refusals the",
+   "girdi_jetonlari": 260,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 2.51
+  },
+  {
+   "kart": "sinav-03",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "1. The head may decide alone.\n2. Whether the head may decide alone.\n3. Whether the head may decide alone.\n4. The",
+   "girdi_jetonlari": 383,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 3.381
+  },
+  {
+   "kart": "sinav-04",
+   "secim": 0,
+   "dogru": true,
+   "uretme_metni": "1. The trail is closed.\n2. The trail is not closed.\n3. The trail is closed.\n4. The trail is not closed",
+   "girdi_jetonlari": 414,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 4.046
+  },
+  {
+   "kart": "sinav-05",
+   "secim": null,
+   "dogru": false,
+   "uretme_metni": "Soru: Korpusu oku ve su konuda ne soylendigini kaynagini gostererek aktar:",
+   "girdi_jetonlari": 409,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 3.446
+  },
+  {
+   "kart": "sinav-06",
+   "secim": 0,
+   "dogru": true,
+   "uretme_metni": "1. The proof claims that the state of the system is not changing.\n2. The state of the system is not changing.\n3. The sta",
+   "girdi_jetonlari": 439,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 3.507
+  },
+  {
+   "kart": "sinav-07",
+   "secim": 0,
+   "dogru": true,
+   "uretme_metni": "1. Releases one output as a copy. Returns the bytes rather than a reference into the workspace, which is the whole point",
+   "girdi_jetonlari": 341,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 3.0
+  },
+  {
+   "kart": "sinav-08",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "1. The tag is one of the four known kinds (\"the set is closed\").\n2. The model does not restate arithmetic.\n3. The",
+   "girdi_jetonlari": 343,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 2.993
+  },
+  {
+   "kart": "sinav-09",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "1. The question is outside the reader's scope (generation, secret hunts).\n2. The route a file takes, given its kind and ",
+   "girdi_jetonlari": 382,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 3.294
+  },
+  {
+   "kart": "sinav-10",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "1. The tag is one of the four known kinds (\"the set is closed\").\n2. The route a file takes, given its kind and name.",
+   "girdi_jetonlari": 317,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 2.824
+  },
+  {
+   "kart": "sinav-11",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "[1] How many activations exist, open or closed.\n[2] Computed by a tool. The model does not restate arithmetic. A",
+   "girdi_jetonlari": 320,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 2.778
+  },
+  {
+   "kart": "sinav-12",
+   "secim": 0,
+   "dogru": false,
+   "uretme_metni": "1. The head may decide alone.\n2. The three channels content may enter through.\n3. How many activations exist, open or cl",
+   "girdi_jetonlari": 288,
+   "cikti_jetonlari": 32,
+   "sure_saniye": 2.701
+  }
+ ],
+ "k2_siniri": {
+  "rakip_cikti_korpusa_girer": false,
+  "rakip_cikti_curriculuma_girer": false,
+  "rakip_ciktinin_tek_yasama_alani": "bu kayit (training/eval/sonuclar/)"
+ },
+ "olculmeyen": [
+  "rakip modelin egitimi/surumu uzerinde hicbir kontrol yok; yalniz yayimlanmis agirliklarin bu kopyasi olculdu",
+  "Lubot puani onceki rekabet kosusundan alindigi icin korpus buyumus olsa bile eski pasaj metinleriyle puanlanmistir; kimlikler ve sik sirasi ayni, metin zamani farkli",
+  "12 kartlik kilitli set kucuktur; oranlar genelleme degil bu setin olcumudur",
+  "enerji tuketimi olculmedi"
+ ]
+}

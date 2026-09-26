@@ -1,0 +1,33 @@
+{
+  "kosucu": "betik",
+  "tarih": "2026-09-23",
+  "is": "decision-latency-is-recorded",
+  "olcut": {
+    "ad": "karar_yolu_50_kez_kosuldu_ve_medyan_sure_kaydedildi",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 0.112,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kanit": "`lubot karar tek evet:0.9` 50 kez kosuldu; medyan 2.237 ms, en dusuk 1.822 ms, en yuksek 3.157 ms.",
+  "gecikme": {
+    "olculen_yol": "lubot karar tek evet:0.9",
+    "kosu_sayisi": 50,
+    "medyan_ms": 2.237,
+    "en_dusuk_ms": 1.822,
+    "en_yuksek_ms": 3.157,
+    "standart_sapma_ms": 0.275,
+    "ikili": "target/debug/lubot"
+  },
+  "uyari": "Olculen sure surec baslatmayi (process spawn) icerir: bu, karar basinin kendi maliyeti degil bir cagiranin odeyecegi ust sinirdir. Egitilmis bir baslik kosuldugunda ayni olcum yeniden alinacak ve ikisi ayri satirlarda duracak.",
+  "olculmeyen": [
+    "egitilmis bir basinin karar maliyeti (agirlik yok, K6)",
+    "uretim yolunun gecikmesi (uretim yuzeyi yok)",
+    "karar basina enerji (olcum duzenegi yok)"
+  ],
+  "not": "Bu bir TABANDIR ve ratchet'e konmadi: duvar saati makineye baglidir, burada olculen sayi daha yavas bir CI makinesinde 'gerileme' gibi gorunurdu. Eksen beyan ediliyor, sayi esik yapilmiyor."
+}

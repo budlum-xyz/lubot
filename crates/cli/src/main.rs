@@ -25,6 +25,14 @@ fn usage() -> String {
     [
         "usage:",
         "  lubot corpus <file.jsonl.gz>...",
+        "  lubot egitim   (trainer self-check: spec, epoch ceiling, measured descent)",
+        "  lubot jetonla --vocab <v.json> --corpus <c.jsonl.gz> [--limit N] [--tam]",
+        "  lubot egitim-veri --corpus <c.jsonl.gz> [--uzunluk N]  (window measurement vs the spec)",
+        "  lubot egitim-karsilastir --corpus <c.jsonl.gz> [--ckpt c.ckpt] [--pencere N]  (f64 vs f32 kernel, measured)",
+        "  lubot egitim-kosu --corpus c.jsonl.gz --damga sha256 --sinav training/eval/sinav-seti.jsonl --ckpt out.ckpt [--rapor f.md] [--kayit f.json] [--adim N] [--iplik N] ...",
+        "  lubot korpus-damgasi --corpus c.jsonl.gz [--vocab v.json]  (the stamp a run declares)",
+        "  lubot cikarim denetle --ckpt <f> --kimlikler 1,2,3  |  cikarim puanla --ckpt <f> --baglam 1,2 --metin 3,4  |  cikarim sirala --ckpt <f> --baglam 1,2 --adaylar a.txt",
+        "  lubot sinav-kosu --ckpt <f> --sinav training/eval/sinav-seti.jsonl --corpus c.jsonl.gz [--aday 4] [--rapor f.md] [--kayit f.json]",
         "  lubot ask --corpus <f1,f2> --reader <r> --effort 0.5x..10.0x [--audit f] [--outputs f] [--book b] <question>",
         "  lubot grant issue --reader <r> --key <k> --expires-at <sec> [--book b]",
         "  lubot grant revoke --reader <r> --key <k> [--book b]",
@@ -39,6 +47,7 @@ fn usage() -> String {
         "  lubot queue list [--file q.jsonl]",
         "  lubot queue run [--file q.jsonl] [--budget n] [--check cmd] [--audit f] [--outputs f] [--book b] [--watch --poll s --idle n]",
         "  lubot queue log [--file q.jsonl] [--limit n]",
+        "  lubot sohbet --ckpt <f> --sorgu \"...\" [--tohum N] [--sicaklik T] [--top-k K] [--top-p P] [--en-cok N] [--tekrar-cezasi C] [--kac-gram N] [--en-az-jeton N] [--kaydirma yeniden|onbellek] [--kayit f.json]",
         "  lubot ratchet [--set] [--baseline training/ratchet.json]",
         "  lubot envanter [--corpus-dir corpus]",
         "  lubot it -m <msg> --path <p> [--path p2 ...] [--dry-run] [--branch b]",
@@ -55,9 +64,25 @@ fn usage() -> String {
         "  lubot indeks --corpus <f1,f2>",
         "  lubot mufredat --corpus <f1,f2> [--out syllabus.jsonl]",
         "  lubot karsilastir --corpus <f1,f2> --reader <r> --effort 0.5x,1.0x,5.0x [--book b] <soru>",
+        "  lubot kosum denetle --reader <r> --corpus <digest> --epoch <n> [--budget n] [--lifetime s] [--restricted-ceiling n] [--scope k1,k2]  (stdin: oncelik<TAB>anahtar<TAB>R|O<TAB>govde)",
+        "  lubot kosum dogrula --record <f.json>",
+        "  lubot olcum mimari",
+        "  lubot olcum esik --members 1,2,3,4 --threshold 3 --signers 2,3,4 [--requester n]",
+        "  lubot olcum takip [--bound n]  (stdin: gorev[,bagimlilik...])",
+        "  lubot odeme yaz --seq n --chain n --fee 1.50 [--open h --close h] [--payout a:10.00:ref,...] [--out f]",
+        "  lubot odeme dogrula --media <f>",
+        "  lubot olcum olcek --up 0.8 --down 0.4 [--cooldown 3 --min 1 --max 10 --step 0.5 --replicas n --window n --load 1.0,0.9,...]",
+        "  lubot olcum sinif --weights kategori=sinyal:agirlik,...;kategori=... --signals ad=gucluluk,... [--floor 0.6]",
         "  lubot sikistir --path <f> [--igne desen ...] [--depo dir]",
         "  lubot sikistir --geri-getir <ozet-dosya> [--depo dir]",
         "  lubot ogren --log <f> [--ogren-dir outputs/ogren]",
+        "  lubot kanaat [doktrin|batarya|ver|defter] ...  (kanittan hukum: yerel karar motoru)",
+        "  lubot sertleme [--zorla] [--derin] [--ayrinti] [--beklenen-sha <hex>] [--dosya <yol>]",
+        "  lubot kodlayici [envanter|kosu|dogrula] --paket <dizin> [--kimlik 1,2,3] [--isaret 0,1] [--tip choice]",
+        "  lubot sozluk [envanter|jetonla|coz] --sozluk <tokenizer.json> [--metin <yazi>] [--ids 1,2,3]",
+        "  lubot sir [maskele|tara] [--dosya <yol>]   (dosya yoksa stdin)",
+        "  lubot gunluk [ozet|oku] --dosya <yol> [--en-agir <0-7>]",
+        "  lubot karar [doktrin|tek <evet|hayir>:<olasilik>|oyla <evet:0.9,hayir:0.7,...>]",
     ]
     .join("\n")
 }
@@ -89,10 +114,19 @@ fn run(args: &[String]) -> Result<(), String> {
         "risk" => cmd_risk(rest),
         "doc" => cmd_doc(rest),
         "queue" => cmd_queue(rest),
+        "sohbet" => lubot::sohbet::cmd_sohbet(rest),
         "ratchet" => cmd_ratchet(rest),
         "envanter" => cmd_envanter(rest),
         "it" => cmd_it(rest),
         "olc" => cmd_olc(rest),
+        "egitim" => cmd_egitim(rest),
+        "jetonla" => cmd_jetonla(rest),
+        "egitim-veri" => cmd_egitim_veri(rest),
+        "egitim-kosu" => lubot::egitim_kosu::cmd_egitim_kosu(rest),
+        "egitim-karsilastir" => lubot::egitim_kosu::cmd_egitim_karsilastir(rest),
+        "cikarim" => lubot::egitim_kosu::cmd_cikarim(rest),
+        "korpus-damgasi" => lubot::egitim_kosu::cmd_korpus_damgasi(rest),
+        "sinav-kosu" => lubot::egitim_kosu::cmd_sinav_kosu(rest),
         "durum" => cmd_durum(rest),
         "guvenlik" => cmd_guvenlik(rest),
         "graf" => cmd_graf(rest),
@@ -102,7 +136,17 @@ fn run(args: &[String]) -> Result<(), String> {
         "indeks" => cmd_indeks(rest),
         "mufredat" => cmd_mufredat(rest),
         "karsilastir" => cmd_karsilastir(rest),
+        "kosum" => lubot::kosum::cmd_kosum(rest),
+        "olcum" => lubot::olcum::cmd_olcum(rest),
+        "odeme" => lubot::odeme::cmd_odeme(rest),
         "sikistir" => lubot::sikistir::cmd_sikistir(rest),
+        "karar" => lubot::karar::cmd_karar(rest),
+        "kanaat" => lubot::kanaat::cmd_kanaat(rest),
+        "kodlayici" => lubot::kodlayici::cmd_kodlayici(rest),
+        "sozluk" => lubot::sozluk::cmd_sozluk(rest),
+        "sir" => lubot::sir::cmd_sir(rest),
+        "gunluk" => lubot::gunluk::cmd_gunluk(rest),
+        "sertleme" => lubot::sertleme::cmd_sertleme(rest),
         "ogren" => lubot::sikistir::cmd_ogren(rest),
         other => Err(format!("unknown command `{other}`\n{}", usage())),
     }
@@ -439,10 +483,11 @@ fn cmd_ara(args: &[String]) -> Result<(), String> {
             .find(|m| m.id == hit.item_id)
             .map(|m| m.licence.as_str())
             .unwrap_or("-");
+        let pasaj = hit.text.trim();
+        let cit = lubot_read::output_schema::fence_for(pasaj);
         md.push_str(&format!(
-            "- `{}` (licence `{licence}`)\n\n```\n{}\n```\n\n",
-            hit.citation(),
-            hit.text.trim()
+            "- `{}` (licence `{licence}`)\n\n{cit}\n{pasaj}\n{cit}\n\n",
+            hit.citation()
         ));
     }
     lubot::validate_output(md.as_bytes(), "ara")?;
@@ -1037,10 +1082,18 @@ fn cmd_ratchet(args: &[String]) -> Result<(), String> {
         ));
     }
     if set {
-        lubot::ratchet::save(&baseline_path, &measured.as_baseline())?;
+        let kept = lubot::ratchet::save_measured_keys(&baseline_path, &measured.as_baseline())?;
         md.push_str(&format!(
-            "\nBaseline rewritten to the measurement ({}).\n",
-            baseline_path.display()
+            "\nBaseline rewritten to the measurement ({}){}.\n",
+            baseline_path.display(),
+            if kept.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; keys this program does not measure kept: {}",
+                    kept.join(", ")
+                )
+            }
         ));
     } else if regressed.is_empty() {
         md.push_str("\nNo regression: every measured number holds its baseline.\n");
@@ -1218,6 +1271,440 @@ fn git_stdout(args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// Trainer self-check: does the from-scratch core forward, back-propagate and
+/// actually descend?
+///
+/// Everything printed here is measured at runtime. The descent runs on a short
+/// in-memory token sequence, so it is evidence that the training path works -
+/// it is not a corpus measurement and is not reported as one. The gradient
+/// itself is checked against finite differences in `lubot-egitim`'s own tests,
+/// not here.
+/// Apply the frozen vocab to the training corpus and print the ids.
+///
+/// This exists so the Rust tokenizer can be cross-checked against the Python
+/// one that cut the vocab: same file, same records, ids compared one by one.
+/// Two tokenizers that agree by convention is not an agreement.
+/// Measure the corpus against the spec's window length.
+///
+/// The spec's `max_seq_len` was chosen from the *surface* corpus (p95 ≈ 246).
+/// This measures the corpus the model will actually train on and says plainly
+/// whether that number still holds. It does not adjust anything: a spec whose
+/// assumption is falsified is a finding, not something to patch in passing.
+fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
+    let mut korpus_yolu: Option<String> = None;
+    let mut vocab_yolu = String::from("training/tokenizer/lubot-bpe-v2.json");
+    let mut uzunluk: Option<usize> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--corpus" => {
+                i += 1;
+                korpus_yolu = args.get(i).cloned();
+            }
+            "--vocab" => {
+                i += 1;
+                vocab_yolu = args.get(i).cloned().unwrap_or(vocab_yolu);
+            }
+            "--uzunluk" => {
+                i += 1;
+                uzunluk = Some(
+                    args.get(i)
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .ok_or_else(|| "--uzunluk bir sayi istiyor".to_string())?,
+                );
+            }
+            other => {
+                return Err(format!(
+                    "egitim-veri: bilinmeyen secenek {other}\n{}",
+                    usage()
+                ))
+            }
+        }
+        i += 1;
+    }
+    let korpus_yolu = korpus_yolu.ok_or_else(|| format!("--corpus zorunlu\n{}", usage()))?;
+    let spec = lubot_egitim::Spec::lubot_a1();
+    let uzunluk = uzunluk.unwrap_or(spec.max_seq_len);
+
+    // Spec'in beyani dosyadan okunur ve Rust sabitiyle karsilastirilir.
+    let spec_metin = std::fs::read_to_string("training/model_spec.json")
+        .map_err(|e| format!("model_spec.json okunamadi: {e}"))?;
+    let spec_json: serde_json::Value = serde_json::from_str(&spec_metin)
+        .map_err(|e| format!("model_spec.json JSON degil: {e}"))?;
+    let beyan = spec_json["max_seq_len"]
+        .as_u64()
+        .ok_or_else(|| "model_spec.json: max_seq_len yok".to_string())? as usize;
+    if beyan != spec.max_seq_len {
+        return Err(format!(
+            "spec beyani {} ama lubot-egitim::Spec {} diyor: iki yer anlasmıyor",
+            beyan, spec.max_seq_len
+        ));
+    }
+
+    let sozluk = lubot_jeton::Sozluk::yukle(std::path::Path::new(&vocab_yolu))
+        .map_err(|e| format!("sozluk reddedildi: {e}"))?;
+    let dosya = std::fs::File::open(&korpus_yolu)
+        .map_err(|e| format!("korpus acilamadi: {korpus_yolu} ({e})"))?;
+    let okuyucu: Box<dyn std::io::BufRead> = if std::path::Path::new(&korpus_yolu)
+        .extension()
+        .is_some_and(|e| e == "gz")
+    {
+        Box::new(std::io::BufReader::new(flate2::read::GzDecoder::new(dosya)))
+    } else {
+        Box::new(std::io::BufReader::new(dosya))
+    };
+    let mut sayilar: Vec<usize> = Vec::new();
+    let mut diziler: Vec<Vec<u32>> = Vec::new();
+    for (sira, satir) in std::io::BufRead::lines(okuyucu).enumerate() {
+        let satir = satir.map_err(|e| format!("korpus okunamadi ({sira}): {e}"))?;
+        let satir = satir.trim();
+        if satir.is_empty() {
+            continue;
+        }
+        let deger: serde_json::Value = serde_json::from_str(satir)
+            .map_err(|e| format!("korpus kaydi {sira} JSON degil: {e}"))?;
+        let metin = deger["text"]
+            .as_str()
+            .ok_or_else(|| format!("korpus kaydi {sira}: `text` alani yok"))?;
+        let kimlikler = sozluk.kodla(metin);
+        sayilar.push(kimlikler.len());
+        diziler.push(kimlikler);
+    }
+    let rapor: lubot_egitim::PencereRaporu = lubot_egitim::pencere_olcu(&sayilar, uzunluk)
+        .map_err(|e| {
+            format!(
+                "pencere olcumu reddedildi: {}",
+                match e {
+                    lubot_egitim::PencereHatasi::SifirUzunluk => "pencere uzunlugu sifir",
+                    lubot_egitim::PencereHatasi::BosKorpus => "korpus bos",
+                }
+            )
+        })?;
+
+    let (paketler, paket_raporu): (Vec<lubot_egitim::PaketPencere>, lubot_egitim::PaketRaporu) =
+        lubot_egitim::paketle(&diziler, uzunluk).map_err(|e| {
+            // Reddin sebebi adıyla söylenir; `{e:?}` reddi bir hata
+            // ayıklama dizesine çevirir, sebebi söylemez.
+            format!(
+                "paketleme reddedildi: {}",
+                match e {
+                    lubot_egitim::PaketHatasi::SifirUzunluk => "pencere uzunlugu sifir",
+                    lubot_egitim::PaketHatasi::BosKorpus => "paketlenecek kayit yok",
+                }
+            )
+        })?;
+    let mut md = String::from("# Egitim veri yolu\n\n| olcu | deger |\n|---|---|\n");
+    md.push_str(&format!(
+        "| korpus | {} kayit, {} jeton |\n",
+        rapor.kayit, rapor.toplam_jeton
+    ));
+    md.push_str(&format!(
+        "| kayit uzunlugu (jeton) | p50 {}, p95 {}, p99 {}, en uzun {} |\n",
+        rapor.p50, rapor.p95, rapor.p99, rapor.en_uzun
+    ));
+    md.push_str(&format!(
+        "| pencere | uzunluk {}, {} tam pencere, {} jeton kapsandi, {} jeton artik kuyruklarda |\n",
+        uzunluk, rapor.pencere, rapor.kapsanan_jeton, rapor.artan_jeton
+    ));
+    let kayit_kapsama = 100.0 * rapor.kapsanan_jeton as f64 / rapor.toplam_jeton as f64;
+    let paket_kapsama = 100.0 * (rapor.paket_pencere * uzunluk) as f64 / rapor.toplam_jeton as f64;
+    md.push_str(&format!(
+        "| kapsama | kayit basina pencereleme {:.4}% ({} jeton atilir); paketleme {:.4}% ({} jeton atilir) |\n",
+        kayit_kapsama,
+        rapor.artan_jeton,
+        paket_kapsama,
+        rapor.paket_artan
+    ));
+    if paket_kapsama - kayit_kapsama > 1.0 {
+        md.push_str(&format!(
+            "| bulgu | kayit basina pencereleme jetonlarin {:.2}%'ini atiyor: medyan kayit {} jeton, pencere {} jeton. Kayitlar arasi paketleme olmadan egitim korpusun kucuk bir parcasiyla kosar |\n",
+            100.0 - kayit_kapsama,
+            rapor.p50,
+            uzunluk
+        ));
+    }
+    let hukum = if rapor.p95 <= beyan {
+        format!(
+            "p95 {} <= spec'in max_seq_len beyani {}: beyan bu korpusta DURUYOR",
+            rapor.p95, beyan
+        )
+    } else {
+        format!(
+            "p95 {} > spec'in max_seq_len beyani {}: beyan bu korpusta YANLIS, spec yeniden dogrulanmali",
+            rapor.p95, beyan
+        )
+    };
+    md.push_str(&format!("| hukum | {hukum} |\n"));
+    md.push_str(&format!(
+        "| paketleme | {} pencere: {} tek kaynakli, {} birden cok kaydi birlestiriyor (bir pencerede en cok {} kayit) |\n",
+        paket_raporu.pencere,
+        paket_raporu.tek_kaynakli,
+        paket_raporu.cok_kaynakli,
+        paket_raporu.en_cok_kaynak
+    ));
+    md.push_str(&format!(
+        "| provenans | her pencere konum basina kaynak izi tasiyor ({} pencere, kimlik ve kaynak dizileri esit uzunlukta); alinti hangi kayda ait oldugunu kaybetmiyor |\n",
+        paketler.len()
+    ));
+    // Paketli adim gerçek korpus verisiyle koşulur: pencere içindeki kayıt
+    // sınırlarında dikkat kesiliyor mu, burada ölçülür. Tek adımın kaybı bir
+    // korpus ölçümü değildir ve öyle raporlanmaz; raporlanan şey, maskenin
+    // kaç konumda devreye girdiği ve adımın sonlu bir kayıp verdiği.
+    let paket_spec = lubot_egitim::Spec {
+        vocab: sozluk.boyut(),
+        d_model: 16,
+        n_layers: 2,
+        n_heads: 2,
+        d_ff: 32,
+        max_seq_len: uzunluk,
+    };
+    paket_spec.dogrula().map_err(|e| {
+        format!(
+            "paketli adim spec reddedildi: {}",
+            match e {
+                lubot_egitim::SpecHatasi::BosBoyut => "sifir boyutlu bir eksen",
+                lubot_egitim::SpecHatasi::BasSayisiBolmuyor => "bas sayisi genisligi bolmuyor",
+            }
+        )
+    })?;
+    let paket_param = lubot_egitim::Parametreler::belirgin_doldur(paket_spec, 20_260_923);
+    let pencere = paketler
+        .first()
+        .ok_or_else(|| "paketleme pencere uretmedi".to_string())?;
+    let girdi: Vec<usize> = pencere.kimlikler.iter().map(|k| *k as usize).collect();
+    let hedef: Vec<usize> = (1..pencere.kimlikler.len())
+        .map(|i| pencere.kimlikler[i] as usize)
+        .chain(std::iter::once(pencere.kimlikler[0] as usize))
+        .collect();
+    let (paket_kayip, _) = lubot_egitim::ileri_ve_geri_paket(
+        paket_spec,
+        &paket_param,
+        &girdi,
+        &hedef,
+        &pencere.kaynak,
+    );
+    if !paket_kayip.is_finite() {
+        return Err(format!("paketli adim sonlu kayip vermedi: {paket_kayip}"));
+    }
+    let sinir = pencere
+        .kaynak
+        .windows(2)
+        .filter(|cift| cift[0] != cift[1])
+        .count();
+    md.push_str(&format!(
+        "| paketli adim | ilk pencere: {} jeton, {} kayit siniri maskelendi, kayip {:.6} (tek adim, korpus olcumu degil) |\n",
+        pencere.kimlikler.len(),
+        sinir,
+        paket_kayip
+    ));
+    md.push_str(
+        "| yontem | yuzdelikler en yakin-rank (rank = ceil(p*n)); spec beyani dosyadan okundu ve Rust sabitiyle karsilastirildi |\n",
+    );
+    lubot::validate_output(md.as_bytes(), "egitim-veri")?;
+    print!("{md}");
+    Ok(())
+}
+
+fn cmd_jetonla(args: &[String]) -> Result<(), String> {
+    let mut vocab_yolu: Option<String> = None;
+    let mut korpus_yolu: Option<String> = None;
+    let mut limit: usize = 250;
+    let mut tam = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--vocab" => {
+                i += 1;
+                vocab_yolu = args.get(i).cloned();
+            }
+            "--corpus" => {
+                i += 1;
+                korpus_yolu = args.get(i).cloned();
+            }
+            "--limit" => {
+                i += 1;
+                limit = args
+                    .get(i)
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .ok_or_else(|| "--limit bir sayi istiyor".to_string())?;
+            }
+            "--tam" => tam = true,
+            other => return Err(format!("jetonla: bilinmeyen secenek {other}\n{}", usage())),
+        }
+        i += 1;
+    }
+    let vocab_yolu = vocab_yolu.ok_or_else(|| format!("--vocab zorunlu\n{}", usage()))?;
+    let korpus_yolu = korpus_yolu.ok_or_else(|| format!("--corpus zorunlu\n{}", usage()))?;
+    let sozluk = lubot_jeton::Sozluk::yukle(std::path::Path::new(&vocab_yolu)).map_err(|e| {
+        // Reddin sebebi adıyla söylenir: "yaklaşık olarak uyguladım" ile
+        // "uygulayamam" aynı cümleyle geçiştirilemez.
+        let tur = match e {
+            lubot_jeton::SozlukHatasi::DesenDesteklenmiyor(_) => "desen-desteklenmiyor",
+            lubot_jeton::SozlukHatasi::DagBozuk { .. } => "birlestirme-dag-bozuk",
+            lubot_jeton::SozlukHatasi::BoyutUyusmuyor { .. } => "boyut-uyusmuyor",
+            lubot_jeton::SozlukHatasi::BilinmeyenBicim(_) => "bilinmeyen-bicim",
+            lubot_jeton::SozlukHatasi::BirlestirmeBicimiBozuk(_) => "birlestirme-bicimi-bozuk",
+            lubot_jeton::SozlukHatasi::EksikAlan(_) => "eksik-alan",
+            lubot_jeton::SozlukHatasi::BozukJson(_) => "bozuk-json",
+            lubot_jeton::SozlukHatasi::Yok(_) => "sozluk-yok",
+        };
+        format!("sozluk reddedildi [{tur}]: {e}")
+    })?;
+
+    let dosya = std::fs::File::open(&korpus_yolu)
+        .map_err(|e| format!("korpus acilamadi: {korpus_yolu} ({e})"))?;
+    let okuyucu: Box<dyn std::io::BufRead> = if std::path::Path::new(&korpus_yolu)
+        .extension()
+        .is_some_and(|e| e == "gz")
+    {
+        Box::new(std::io::BufReader::new(flate2::read::GzDecoder::new(dosya)))
+    } else {
+        Box::new(std::io::BufReader::new(dosya))
+    };
+
+    let mut cikti = String::new();
+    let mut kayit = 0usize;
+    let mut toplam_jeton = 0usize;
+    let mut toplam_on_jeton = 0usize;
+    for (sira, satir) in std::io::BufRead::lines(okuyucu).enumerate() {
+        let satir = satir.map_err(|e| format!("korpus okunamadi ({sira}): {e}"))?;
+        let satir = satir.trim();
+        if satir.is_empty() {
+            continue;
+        }
+        let deger: serde_json::Value = serde_json::from_str(satir)
+            .map_err(|e| format!("korpus kaydi {sira} JSON degil: {e}"))?;
+        let metin = deger["text"]
+            .as_str()
+            .ok_or_else(|| format!("korpus kaydi {sira}: `text` alani yok"))?;
+        let kimlikler = sozluk.kodla(metin);
+        toplam_on_jeton += lubot_jeton::on_token_sayisi(metin);
+        let geri = sozluk
+            .coz(&kimlikler)
+            .map_err(|e| format!("kayit {sira} geri cozulemedi: {e}"))?;
+        if geri != metin {
+            return Err(format!(
+                "kayit {sira}: kodla/coz kayipsiz degil ({} bayt -> {} bayt)",
+                metin.len(),
+                geri.len()
+            ));
+        }
+        toplam_jeton += kimlikler.len();
+        if kayit < limit {
+            if tam {
+                let liste: Vec<String> = kimlikler.iter().map(|k| k.to_string()).collect();
+                cikti.push_str(&format!(
+                    "{{\"i\":{sira},\"n\":{},\"ids\":[{}]}}\n",
+                    kimlikler.len(),
+                    liste.join(",")
+                ));
+            } else {
+                cikti.push_str(&format!("{{\"i\":{sira},\"n\":{}}}\n", kimlikler.len()));
+            }
+        }
+        kayit += 1;
+    }
+    eprintln!(
+        "jetonla: {} kayit, {} on-jeton, {} jeton, sozluk {} ({} birlestirme, boyut {}, desen {})",
+        kayit,
+        toplam_on_jeton,
+        toplam_jeton,
+        sozluk.aile(),
+        sozluk.birlestirme_sayisi(),
+        sozluk.boyut(),
+        lubot_jeton::DESTEKLENEN_DESEN
+    );
+    print!("{cikti}");
+    Ok(())
+}
+
+fn cmd_egitim(args: &[String]) -> Result<(), String> {
+    if !args.is_empty() {
+        return Err(format!("egitim takes no arguments\n{}", usage()));
+    }
+    let spec = lubot_egitim::Spec::lubot_a1();
+    spec.dogrula().map_err(|e| {
+        format!(
+            "egitim spec reddedildi: {}",
+            match e {
+                lubot_egitim::SpecHatasi::BosBoyut => "sifir boyutlu bir eksen",
+                lubot_egitim::SpecHatasi::BasSayisiBolmuyor => "bas sayisi genisligi bolmuyor",
+            }
+        )
+    })?;
+    let tavan = lubot_grant::training::MAX_TRAINING_GRANT_EPOCHS;
+    let mut md = String::from("# Egitim oz-denetimi\n\n| adim | sonuc |\n|---|---|\n");
+    md.push_str(&format!(
+        "| spec | {} parametre, {} katman, d_model {}, {} bas, vocab {} |\n",
+        spec.parametre_sayisi(),
+        spec.n_layers,
+        spec.d_model,
+        spec.n_heads,
+        spec.vocab
+    ));
+    md.push_str(&format!(
+        "| epoch tavani | {} (lubot-grant), istenen 1 -> {} |\n",
+        tavan,
+        lubot_egitim::epoch_butcesi(1)?
+    ));
+    md.push_str(&format!(
+        "| tavan asimi | {} |\n",
+        lubot_egitim::epoch_butcesi(tavan + 1)
+            .map(|n| format!("KABUL EDILDI: {n}"))
+            .unwrap_or_else(|e| format!("reddedildi ({e})"))
+    ));
+
+    // Kisa bir inis: kucuk bir spec, bellek ici dizi.
+    let kucuk = lubot_egitim::Spec {
+        vocab: 64,
+        d_model: 16,
+        n_layers: 2,
+        n_heads: 2,
+        d_ff: 32,
+        max_seq_len: 16,
+    };
+    kucuk
+        .dogrula()
+        .map_err(|e| format!("oz-denetim spec reddedildi: {e:?}"))?;
+    let mut p = lubot_egitim::Parametreler::belirgin_doldur(kucuk, 20_260_923);
+    let girdi = [0usize, 7, 3, 11, 5, 1, 9, 2];
+    let hedef = [7usize, 3, 11, 5, 1, 9, 2, 4];
+    let (baslangic, _) = lubot_egitim::ileri_ve_geri(kucuk, &p, &girdi, &hedef);
+    let adim_sayisi = 30u32;
+    let mut embed_durum = lubot_egitim::Adamw::yeni(p.embedding.len(), 0.05, 0.1)?;
+    let mut wq_durum = lubot_egitim::Adamw::yeni(p.wq.len(), 0.05, 0.1)?;
+    let mut son = baslangic;
+    for _ in 0..adim_sayisi {
+        let (kayip, grad) = lubot_egitim::ileri_ve_geri(kucuk, &p, &girdi, &hedef);
+        son = kayip;
+        embed_durum.adim(&mut p.embedding, &grad.embedding, false)?;
+        wq_durum.adim(&mut p.wq, &grad.wq, true)?;
+    }
+    if !son.is_finite() || son >= baslangic {
+        return Err(format!(
+            "egitim yolu kaybi dusurmedi: {baslangic:.6} -> {son:.6}"
+        ));
+    }
+    md.push_str(&format!(
+        "| inis | {adim_sayisi} adim, kayip {baslangic:.6} -> {son:.6} (bellek ici 8 jetonluk dizi, korpus olcumu degil) |\n"
+    ));
+    md.push_str(&format!(
+        "| LayerNorm eps | {:.0e} (lubot-egitim::LN_EPS) |\n",
+        lubot_egitim::LN_EPS
+    ));
+    md.push_str(&format!(
+        "| gradyan denetimi | lubot-egitim testlerinde: her parametre sonlu farkla karsilastirilir, goreli tolerans {:.0e}, mutlak taban {:.0e} |\n",
+        lubot_egitim::GRADIENT_CHECK_TOLERANCE,
+        lubot_egitim::GRADIENT_CHECK_MUTLAK_TABAN
+    ));
+    md.push_str(
+        "| olculmeyen | egitilmis kontrol noktasi yok (K6): sinav skoru, alinti dogrulugu ve kapisma sonucu bu komutun kapsami disinda |\n",
+    );
+    lubot::validate_output(md.as_bytes(), "egitim")?;
+    print!("{md}");
+    Ok(())
+}
+
 fn cmd_olc(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
         return Err(format!("olc takes no arguments\n{}", usage()));
@@ -1308,6 +1795,17 @@ fn cmd_durum(args: &[String]) -> Result<(), String> {
     let porcelain = git_stdout(&["status", "--porcelain"])?;
     let lines: Vec<&str> = porcelain.lines().filter(|l| !l.trim().is_empty()).collect();
     let mut md = format!("# Durum\n\nbranch: `{branch}`\n\n");
+    // Sertlestirme ozeti buraya girer: kapi raporu her durum cagrisinda
+    // olculur ve tek satirda yazilir, boylece "bu makinede ne goruluyor"
+    // sorusu ayri bir komut hatirlamayi gerektirmez.
+    let sertleme = lubot_sertlestirme::kapi::topla(
+        lubot_sertlestirme::Kip::Bildir,
+        lubot_sertlestirme::izler::hafif_kontrol(),
+    );
+    md.push_str(&format!(
+        "{}\n\n",
+        lubot::sertleme::sertleme_ozeti(&sertleme)
+    ));
     if lines.is_empty() {
         md.push_str("Agac temiz: calisma agaci branch ile ayni.\n");
     } else {

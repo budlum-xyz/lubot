@@ -1,0 +1,12 @@
+{
+  "surum": 1,
+  "not": "Katman 3'un DEGISTIREBILDIGI tek dosya: arama politikasi. Bes sayi; her degisiklik bir deney gibi loglanir ve geri alinabilir.",
+  "arama_politikasi": {
+    "kesif_orani": 0.5,
+    "adim_carpani": 1.0,
+    "sogutma": 0.5,
+    "oncelik_sirasi": ["--ogrenme-orani", "--agirlik-sonumu", "--kirpma", "--isinma", "--yigin"],
+    "geri_donme_esigi": 3
+  },
+  "gecmis": []
+}

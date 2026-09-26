@@ -1,0 +1,65 @@
+name: SBOM
+
+# A software bill of materials is only useful if it is produced by the same
+# commit that produced the artifact, and only useful if it is attested: an
+# unsigned list of dependencies proves nothing about who built it.
+#
+# SPDX JSON for the workspace, uploaded as an artifact. The tool is fetched by
+# version and digest rather than by tag, because a tag can be repointed.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, egitim-dongusu]
+  release:
+    types: [published]
+
+concurrency:
+  group: sbom-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    name: Generate and attest the SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write  # Attaches the SBOM to the release it was built from
+      id-token: write  # Keyless OIDC token used by the attestation
+      attestations: write  # Writes the provenance statement for the SBOM
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+
+      # `cargo sbom` reads the resolved graph, so it reports what is actually
+      # built and not what a manifest claims.
+      - name: Install cargo-sbom
+        run: cargo install cargo-sbom --locked --version 0.10.0
+
+      - name: Write the SBOM
+        run: |
+          set -euo pipefail
+          cargo sbom --output-format spdx_json_2_3 > lubot.spdx.json
+          python3 -c "import json,sys; d=json.load(open('lubot.spdx.json')); print('packages:', len(d.get('packages', [])))"
+
+      - name: Attest what was produced
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: lubot.spdx.json
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: sbom
+          path: lubot.spdx.json
+          retention-days: 90

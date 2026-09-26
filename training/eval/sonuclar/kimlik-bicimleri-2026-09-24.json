@@ -1,0 +1,29 @@
+{
+  "bulgu": null,
+  "is": "Kimlik bilgisi tarayicisi, calisma aninda uretilen fikstur uzerinde olculdu: bilinen bicimler yakalanmali, mention ve yakin kacirmalar yakalanmamali. Fikstur agacta durmaz (aks halde kapi hakli olarak kirmizi yanardi); dosyalar gecici dizinde uretilir ve silinir.",
+  "kanit": {
+    "bicim": 10,
+    "fikstur_dosyada_yok": true,
+    "kacirilan": [],
+    "sure_saniye": 0.04,
+    "temiz_gecen": 12,
+    "temiz_metin": 12,
+    "yakalama_orani": 1.0,
+    "yakalanan": 10,
+    "yanlis_pozitif": [],
+    "yanlis_pozitif_orani": 0.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.04
+  },
+  "kosucu": "guvenlik",
+  "olcut": {
+    "ad": "bilinen_bicimlerin_tamami_yakalandi_ve_yanlis_pozitif_sifir",
+    "sonuc": true
+  },
+  "tarih": "2026-09-24"
+}

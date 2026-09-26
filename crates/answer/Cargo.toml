@@ -3,13 +3,14 @@ name = "lubot-answer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
 license-file.workspace = true
 
 [dependencies]
-lubot-grant = { path = "../grant" }
-lubot-index = { path = "../index" }
-lubot-read = { path = "../read" }
-lubot-tools = { path = "../tools" }
+lubot-grant = { path = "../grant", version = "0.1.0" }
+lubot-index = { path = "../index", version = "0.1.0" }
+lubot-read = { path = "../read", version = "0.1.0" }
+lubot-tools = { path = "../tools", version = "0.1.0" }
 
 [lints]
 workspace = true

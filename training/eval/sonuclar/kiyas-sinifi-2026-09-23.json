@@ -1,0 +1,54 @@
+{
+  "kosucu": "betik",
+  "tarih": "2026-09-23",
+  "is": "comparison-class-is-declared",
+  "olcut": {
+    "ad": "parametre_sayisi_adlandirilmis_en_kucuk_akranin_altinda_ve_her_sinav_sorusunun_pasaji_damgali",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 1.32,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kanit": "Parametre model_spec.json'dan, jeton egitim_butcesi.py --olc'den okundu (ikinci literal yok); sinav seti sayildi ve her sorunun content_id'si eval-only.json damgalariyla karsilastirildi.",
+  "sinif": {
+    "parametre": 924288,
+    "benzersiz_jeton": 361990,
+    "korpus_kayit_sayisi": 5309,
+    "jeton_basina_parametre": 0.391642,
+    "parametre_basina_jeton": 2.5534,
+    "sinir": [
+      {
+        "ad": "SmolLM2-135M",
+        "parametre": 135000000
+      },
+      {
+        "ad": "Qwen3-0.6B",
+        "parametre": 600000000
+      }
+    ]
+  },
+  "eksen_kurali": {
+    "kapisma_iddiasi_yalniz": "gorev-eslenegi",
+    "reddedilen": "parametre-eslenegi",
+    "gerekce": "Parametre-eslenegi katmani ham dil yeterliligini olcer; bu deponun 924.288 parametresi 135M-600M sinifinin ALTINDA. Kapisma iddiasi boyuttan bagimsiz olan gorev ekseninde (alinti dogrulugu + red disiplini) tanimlidir; kucuk olmak dezavantaj degil cunku rakip de kucuk."
+  },
+  "sinav_seti": {
+    "dosya": "training/eval/sinav-seti.jsonl",
+    "soru_sayisi": 12,
+    "siniflar": [
+      "doc"
+    ],
+    "damgasiz_soru": []
+  },
+  "ihlaller": [],
+  "olculmeyen": [
+    "hicbir karsilastirmali sonuc: egitilmis kontrol noktasi yok (K6)",
+    "adlandirilan akranlarin bu makinedeki performansi (kosulmadi)",
+    "gorev ekseninde alinti dogrulugu ve red orani (sinav seti bos)"
+  ],
+  "not": "Bu bir TABAN BEYANIDIR, zafer ilani degil. Sinav seti bos; ilk karsilastirma olculdugunde bu kayit onun sinifini soyleyecek. GG'nin istedigi gibi beyan tek seferlik degil: korpus her buyudugunde kapi yeniden olcer."
+}

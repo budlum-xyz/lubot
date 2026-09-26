@@ -1,0 +1,23 @@
+{
+  "politika_surumu": 2,
+  "karar": {
+    "tarih": "2026-09-26",
+    "kaynak": "operator direktifi: yayinlanan paketlerin icinde surec/workspace belgeleri cikti (v0.2.1 ve apk-v0.2.0 geri cekildi)",
+    "ilke": "Plan ve surec belgeleri korpusta ARSIV olarak durur ama cevap yuzeyine CIKMAZ. Kayit silinmez (provenance ve ratchet gerilemesin), damgalanir: served: false. Damgali kayit ne okuma indeksine girer ne alintilanabilir; geri donus tek satirlik politika degisikligiyle yapilir ve kapida kanitlanir.",
+    "ek": "Surum 2'de iki kural sertlesti: (1) kapsam genisledi - is kuyrugu belgesinin yaninda tur/kunye raporlari ve denetim raporu da surec belgesidir; (2) damga artik **pakete de** uygulanir: `android/korpus_suz.py` served: false kayitlari APK'nin korpusundan cikarir, cunku telefonun tasidigi sey arsiv degil hizmettir. Arsiv depoda kalir."
+  },
+  "servis_disi": [
+    {
+      "path": "YAPILACAKLAR.md",
+      "gerekce": "Is kuyrugu ve plan belgesi: kendini anlatan surec notlari bilgi korpusu degildir. Cevabin kaynagi muhendislik eserleridir — README, TRAINING, docs/ ve kaynak kod. Bu dosyanin satirlari bir sorunun cevabi olamaz, olsa olsa is kaydinin konusu olur."
+    },
+    {
+      "path": "KUYRUK-DURUM.md",
+      "gerekce": "Tur/kunye raporu: hangi isin ne zaman kapandigini anlatir, urunu degil. Bir tur raporu cevap olarak alintilandiginda kullaniciya urun hakkinda degil, onu yazan surec hakkinda bilgi verir."
+    },
+    {
+      "path": "docs/DENETIM-RAPORU.md",
+      "gerekce": "Uyum denetimi raporu: talimatlara uygunlugun kanit dokumu. Denetim kaydi urun bilgisi degildir; cevap yuzeyine ciktiginda hem yanlis bilgi verir hem de okuyani denetim diliyle mesgul eder."
+    }
+  ]
+}

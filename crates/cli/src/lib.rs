@@ -3,7 +3,7 @@
 //!
 //! The library behind the `lubot` binary. It is deliberately thin over the
 //! five crates: load a corpus (with the same fail-closed rules the corpus was
-//! built with), answer through [`Reader::ask`], render through the single
+//! built with), answer through [`lubot_answer::Reader::ask`], render through the single
 //! [`Answer::render_markdown`] exit, and keep a grant book plus an output
 //! audit on disk.
 //!
@@ -24,17 +24,30 @@
 //! kind, citations, decision and refusals - refusals are recorded in the same
 //! shape as allowances, so a log without refusals is a measurement.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod activation;
+pub mod egitim_kosu;
 pub mod graph;
+pub mod gunluk;
+pub mod kanaat;
+pub mod karar;
+pub mod kodlayici;
+pub mod kosum;
+pub mod odeme;
+pub mod olcum;
 pub mod queue;
 pub mod ratchet;
+pub mod sertleme;
 pub mod sikistir;
+pub mod sir;
+pub mod sohbet;
 pub mod soru;
+pub mod sozluk;
 
 use lubot_answer::Answer;
 use lubot_grant::{GrantBook, Seconds, ViewGrant};
@@ -52,8 +65,25 @@ use std::collections::BTreeMap;
 pub const LINES_PER_PASSAGE: usize = 16;
 /// Best passages an answer may carry.
 pub const PASSAGES_PER_ANSWER: usize = 5;
-/// The four record kinds the corpus may hold. Anything else is refused.
-pub const KINDS: [&str; 4] = ["api", "behaviour", "doc", "markdown"];
+/// The record kinds the corpus may hold. Anything else is refused.
+///
+/// The list is closed on purpose: a kind the reader does not know is a
+/// record nobody can cite, so it fails at the door. JJ's structural kinds
+/// (`api-doc-pair`, `trait-impl`, `dependency-edge`), QQ's `diagram`, KK's
+/// `gate-pair` and RR's `gap-report` are here because the builder writes
+/// them and the reader must accept what the builder writes.
+pub const KINDS: [&str; 10] = [
+    "api",
+    "api-doc-pair",
+    "behaviour",
+    "dependency-edge",
+    "diagram",
+    "doc",
+    "gate-pair",
+    "gap-report",
+    "markdown",
+    "trait-impl",
+];
 
 /// One corpus record, as the builder wrote it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +110,15 @@ pub struct Record {
     pub file_tests: u64,
     #[serde(default)]
     pub file_has_readme: bool,
+    /// Operator decision (training/servis-politikasi.json): a record stamped
+    /// `false` stays in the archive but never enters the answer surface.
+    /// Defaults to `true`, so a corpus built by an older builder still loads.
+    #[serde(default = "default_served")]
+    pub served: bool,
+}
+
+fn default_served() -> bool {
+    true
 }
 
 impl Record {
@@ -128,6 +167,9 @@ pub struct LoadedCorpus {
     items: Vec<Item>,
     meta: Vec<ItemMeta>,
     by_id: HashMap<String, usize>,
+    /// Records the builder stamped `served: false`. They load (the archive
+    /// keeps its provenance), but the answer surface never indexes them.
+    servis_disi: HashSet<String>,
 }
 
 impl LoadedCorpus {
@@ -145,6 +187,14 @@ impl LoadedCorpus {
     pub fn meta(&self) -> &[ItemMeta] {
         &self.meta
     }
+
+    /// How many records are archived-but-never-served. A corpus whose every
+    /// record is served reports zero; the policy gate requires this count
+    /// to agree with the builder's own stamp count.
+    #[must_use]
+    pub fn servis_disi(&self) -> usize {
+        self.servis_disi.len()
+    }
 }
 
 impl Corpus for LoadedCorpus {
@@ -154,6 +204,14 @@ impl Corpus for LoadedCorpus {
 
     fn ids(&self) -> Vec<String> {
         self.items.iter().map(|i| i.id.clone()).collect()
+    }
+
+    fn served_ids(&self) -> Vec<String> {
+        self.items
+            .iter()
+            .filter(|i| !self.servis_disi.contains(&i.id))
+            .map(|i| i.id.clone())
+            .collect()
     }
 }
 
@@ -211,6 +269,9 @@ pub fn load_corpus(paths: &[PathBuf]) -> Result<LoadedCorpus, String> {
                 file_tests: record.file_tests,
                 file_has_readme: record.file_has_readme,
             });
+            if !record.served {
+                all.servis_disi.insert(record.content_id.clone());
+            }
             all.by_id.insert(record.content_id, all.items.len());
             all.items.push(item);
         }
@@ -316,14 +377,14 @@ impl BookFile {
     pub fn to_book(&self) -> GrantBook {
         let mut book = GrantBook::new();
         for stored in &self.grants {
-            book.issue(ViewGrant {
+            book.issue(&ViewGrant {
                 key_id: stored.key_id.clone(),
                 grantee: stored.grantee.clone(),
                 expires_at: stored.expires_at,
             });
         }
         for (key_id, grantee) in &self.revoked {
-            book.issue(ViewGrant {
+            book.issue(&ViewGrant {
                 key_id: key_id.clone(),
                 grantee: grantee.clone(),
                 expires_at: 0,
@@ -453,6 +514,9 @@ pub fn doc_records(
             restricted: false,
             file_tests: 0,
             file_has_readme: false,
+            // A document admitted through `doc` is knowledge by decision;
+            // the serving stamp is for process documents in the tree.
+            served: true,
         };
         if let Some(why) = record.refusal() {
             return Err(format!("doc record {}: {why}", index + 1));
@@ -696,6 +760,7 @@ pub fn corpus_summary(corpus: &LoadedCorpus) -> Value {
     }
     serde_json::json!({
         "items": corpus.len(),
+        "servis_disi": corpus.servis_disi(),
         "by_kind": by_kind,
         "by_licence": by_licence,
         "records_with_labels": labelled,
@@ -718,12 +783,12 @@ pub fn corpus_search(
         return Err("ara: question is empty".to_string());
     }
     let mut index = lubot_index::Index::new();
-    for id in corpus.ids() {
+    for id in corpus.served_ids() {
         if let Some(item) = corpus.get(&id) {
             index.add(item, LINES_PER_PASSAGE);
         }
     }
-    let allowed = corpus.ids();
+    let allowed = corpus.served_ids();
     let mut hits = index.search(question, &allowed, limit.clamp(1, 5));
     hits.sort_by_key(|h| h.citation());
     Ok(hits)
@@ -889,6 +954,7 @@ mod tests {
             restricted: false,
             file_tests: 0,
             file_has_readme: false,
+            served: true,
         }
     }
 
@@ -906,6 +972,40 @@ mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("lubot-cli-test-{}-{}", std::process::id(), name))
+    }
+
+    #[test]
+    fn a_stamped_record_is_archived_but_never_served() {
+        let path = tmp("servis-disi.jsonl.gz");
+        let bilgi = record("bilgi", "A view grant names a grantee and a key id.");
+        let mut plan = record("plan", "The work queue says the tokenizer task is open.");
+        plan.served = false;
+        write_gz(&path, &[bilgi, plan]).unwrap();
+        let corpus = load_corpus(std::slice::from_ref(&path)).unwrap();
+        assert_eq!(corpus.len(), 2, "the archive keeps every record");
+        assert_eq!(corpus.servis_disi(), 1);
+        assert_eq!(corpus.served_ids(), vec!["bilgi".to_string()]);
+        let hits = corpus_search(&corpus, "work queue tokenizer task open", 5).unwrap();
+        assert!(hits.is_empty(), "a stamped record can never be searched");
+        let hits = corpus_search(&corpus, "what does a view grant name", 5).unwrap();
+        assert!(!hits.is_empty(), "served records stay reachable");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_record_without_the_served_field_loads_as_served() {
+        let path = tmp("eski-bicim.jsonl");
+        let body = "A view grant names a grantee and a key id.";
+        let line = format!(
+            "{{\"kind\":\"markdown\",\"text\":\"{body}\",\"path\":\"docs/x.md\",\"digest\":\"{}\",\"licence\":\"MIT\",\"attribution\":\"t\",\"content_id\":\"x1\",\"asset_id\":\"{}\"}}",
+            lubot_read::sha256_hex(body.as_bytes()),
+            "a".repeat(64)
+        );
+        std::fs::write(&path, format!("{line}\n")).unwrap();
+        let corpus = load_corpus(std::slice::from_ref(&path)).unwrap();
+        assert_eq!(corpus.servis_disi(), 0, "older corpora predate the stamp");
+        assert_eq!(corpus.served_ids().len(), 1);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -1032,7 +1132,7 @@ mod tests {
         .unwrap();
         assert!(md.starts_with("# Refused"), "{md}");
         assert_eq!(grants.refusals(), 1);
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "8".to_string(),
             grantee: "reader".to_string(),
             expires_at: 100,
@@ -1217,7 +1317,7 @@ mod tests {
         let corpus = load_corpus(std::slice::from_ref(&path)).unwrap();
         let mut grants = GrantBook::default();
         for i in 0..3 {
-            grants.issue(lubot_grant::ViewGrant {
+            grants.issue(&lubot_grant::ViewGrant {
                 key_id: format!("key-{i}"),
                 grantee: "reader".to_string(),
                 expires_at: 9_999_999_999,

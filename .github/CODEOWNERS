@@ -1,0 +1,9 @@
+# Whoever reads a change to the pipelines is not the person who wrote it.
+# Workflows and gates run with a token and decide what the repository accepts,
+# so they are reviewed as code, by name.
+.github/workflows/       @budlum-xyz/maintainers
+.github/                 @budlum-xyz/maintainers
+gates/                   @budlum-xyz/maintainers
+deny.toml                @budlum-xyz/maintainers
+crates/kodlayici/        @budlum-xyz/maintainers
+fuzz/                    @budlum-xyz/maintainers

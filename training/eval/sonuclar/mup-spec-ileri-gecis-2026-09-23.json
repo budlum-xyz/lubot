@@ -1,0 +1,88 @@
+{
+  "is": "mup-spec-ileri-gecis",
+  "kanit": "model_spec.json konfigurasyonu ({'d_model': 64, 'n_layers': 8, 'n_heads': 2, 'd_ff': 256, 'max_seq_len': 256, 'vocab_size': 8192}, sozluk lubot-bpe-v2) tensorsuz sayim formuluyle yeniden sayildi: hesaplanan toplam 924288, spec beyani 924288; donmus sozlukle 256 token kodlanip init ileri gecisi kosuldu, katman profili tekrar uretildi.",
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 3.305
+  },
+  "kosucu": "betik",
+  "not": "Profilin yorumu (theta_1 bandi) kaydin hukmunden ayridir ve spec'i degistirmez: olculen band sonucu theta_1_bandinda=False, son/ilk RMS orani 4.415911. Bant disi ise bu bir BULGUDUR, duzeltme degil: spec metni bu turda degistirilmedi.",
+  "olcum": {
+    "ileri_gecis": {
+      "buyume_son_bolu_ilk": 4.415911,
+      "ilk_katman_rms": 1.222493,
+      "katman_aktivasyon_rms": [
+        1.222493,
+        1.841351,
+        2.130473,
+        2.448978,
+        2.871481,
+        3.195159,
+        3.382799,
+        3.379259,
+        4.028426,
+        4.487109,
+        4.842942,
+        4.991128,
+        5.362955,
+        5.382264,
+        5.339668,
+        5.398421
+      ],
+      "konum_sayisi": 256,
+      "logit_rms": 0.125397,
+      "son_katman_rms": 5.398421,
+      "theta_1_bandinda": false,
+      "varsayimlar": [
+        "pre-norm yerlesim (spec adiyla yazmiyor)",
+        "GELU tanh yaklasimi aktivasyonu (spec adiyla yazmiyor)",
+        "embedding init std 1.0 (spec 'sabit' diyor, degeri sabitlemiyor)"
+      ]
+    },
+    "sayim_hesaplanan": {
+      "dikkat": 133120,
+      "embedding_bagli": 524288,
+      "layernorm": 2176,
+      "mlp": 264704
+    },
+    "sayim_spec_beyani": {
+      "dikkat": 133120,
+      "embedding_bagli": 524288,
+      "layernorm": 2176,
+      "mlp": 264704
+    },
+    "sayim_toplam_beyan": 924288,
+    "sayim_toplam_hesaplanan": 924288,
+    "spec_adi": "lubot-a1-derin-dar",
+    "spec_konfigurasyon": {
+      "d_ff": 256,
+      "d_model": 64,
+      "max_seq_len": 256,
+      "n_heads": 2,
+      "n_layers": 8,
+      "vocab_size": 8192
+    },
+    "token_ilk_on": [
+      494,
+      1664,
+      32,
+      2620,
+      32,
+      2901,
+      10,
+      10,
+      6707,
+      115
+    ],
+    "token_sayisi": 256,
+    "vocab_family": "lubot-bpe-v2"
+  },
+  "olcut": {
+    "ad": "spec_konfigurasyonunda_olculen_katman_profilinin_kayittan_tekrar_uretilmesi",
+    "sonuc": true
+  },
+  "tarih": "2026-09-23"
+}

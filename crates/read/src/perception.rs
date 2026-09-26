@@ -1,4 +1,4 @@
-//! # lubot-read::perception - what Lubot reads, and how much of it
+//! # `lubot-read::perception` - what Lubot reads, and how much of it
 //!
 //! The education report fixes the modality set and its ceilings; this module
 //! is where they live in code, so the rule is measured against, not quoted.
@@ -26,6 +26,7 @@ pub enum PerceptionKind {
 impl PerceptionKind {
     /// Parse the wire tag (1=text, 2=image, 3=audio, 4=video, matching the
     /// chain's perception tags). Anything else is a refusal - fail-closed.
+    #[must_use]
     pub fn parse(tag: u32) -> Option<Self> {
         match tag {
             1 => Some(PerceptionKind::Text),
@@ -90,6 +91,10 @@ impl PerceptionRefusal {
 
 /// The single admission check for a perception request. Unknown kind and
 /// over-ceiling units are both refusals; there is no "clamp" answer.
+///
+/// # Errors
+/// [`PerceptionRefusal`]: the tag names no kind, or the units exceed the
+/// ceiling for the kind that was named.
 pub fn check_units(kind_tag: u32, units: u64) -> Result<PerceptionKind, PerceptionRefusal> {
     let Some(kind) = PerceptionKind::parse(kind_tag) else {
         return Err(PerceptionRefusal::UnknownKind(kind_tag));

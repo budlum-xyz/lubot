@@ -3,19 +3,43 @@ name = "lubot"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
 license-file.workspace = true
 
 [dependencies]
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-lubot-answer = { path = "../answer" }
-lubot-index = { path = "../index" }
-lubot-doc = { path = "../doc" }
-lubot-tools = { path = "../tools" }
-lubot-grant = { path = "../grant" }
-lubot-read = { path = "../read" }
-lubot-sikistir = { path = "../sikistir" }
+sha2 = "0.10"
+lubot-answer = { path = "../answer", version = "0.1.0" }
+lubot-index = { path = "../index", version = "0.1.0" }
+lubot-doc = { path = "../doc", version = "0.1.0" }
+lubot-tools = { path = "../tools", version = "0.1.0" }
+lubot-grant = { path = "../grant", version = "0.1.0" }
+lubot-read = { path = "../read", version = "0.1.0" }
+lubot-sikistir = { path = "../sikistir", version = "0.1.0" }
+lubot-muhur = { path = "../muhur", version = "0.1.0" }
+lubot-denetim = { path = "../denetim", version = "0.1.0" }
+lubot-kuyruk = { path = "../kuyruk", version = "0.1.0" }
+lubot-erisim = { path = "../erisim", version = "0.1.0" }
+lubot-mimari = { path = "../mimari", version = "0.1.0" }
+lubot-esik = { path = "../esik", version = "0.1.0" }
+lubot-takip = { path = "../takip", version = "0.1.0" }
+lubot-anlama = { path = "../anlama", version = "0.1.0" }
+lubot-tomurcuk = { path = "../tomurcuk", version = "0.1.0" }
+lubot-usl = { path = "../usl", version = "0.1.0" }
+lubot-olcek = { path = "../olcek", version = "0.1.0" }
+lubot-izolasyon = { path = "../izolasyon", version = "0.1.0" }
+lubot-kanit = { path = "../kanit", version = "0.1.0" }
+lubot-yetenek = { path = "../yetenek", version = "0.1.0" }
+lubot-egitim = { path = "../egitim", version = "0.1.0" }
+lubot-cikarim = { path = "../cikarim", version = "0.1.0" }
+lubot-jeton = { path = "../jeton", version = "0.1.0" }
+lubot-kanaat = { path = "../kanaat", version = "0.1.0" }
+lubot-sertlestirme = { path = "../sertlestirme", version = "0.1.0" }
+lubot-kodlayici = { path = "../kodlayici", version = "0.1.0" }
+lubot-sir = { path = "../sir", version = "0.1.0" }
+lubot-gunluk = { path = "../gunluk", version = "0.1.0" }
 
 [lints]
 workspace = true

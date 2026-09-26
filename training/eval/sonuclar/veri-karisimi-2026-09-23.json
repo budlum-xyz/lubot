@@ -1,0 +1,55 @@
+{
+  "is": "veri-karisimi-beyan-uyumu",
+  "kanit": "training/veri_karisimi.py --dogrula karisimi beyandan yeniden kurar: 5480 satir, katman sayilari {'mufredat': 88, 'derleyici-hakem': 1122, 'gercek': 4270, 'sentetik': 0}, paylar {'mufredat': 0.016058, 'derleyici-hakem': 0.204745, 'gercek': 0.779197, 'sentetik': 0.0}, bant ihlali 0.",
+  "karisim": {
+    "asamalar": {
+      "derleyici-hakem": 2,
+      "gercek": 3,
+      "mufredat": 1,
+      "sentetik": 4
+    },
+    "atilan_kimlik_sekli": [
+      {
+        "citation": "crates/tools/src/secrets.rs:87-94",
+        "katman": "gercek",
+        "satici": "pem",
+        "sira": 4970,
+        "tur": "private key block"
+      }
+    ],
+    "bant_ihlalleri": [],
+    "beyan_surumu": 1,
+    "paylar": {
+      "derleyici-hakem": 0.204745,
+      "gercek": 0.779197,
+      "mufredat": 0.016058,
+      "sentetik": 0.0
+    },
+    "satir_sayilari": {
+      "derleyici-hakem": 1122,
+      "gercek": 4270,
+      "mufredat": 88,
+      "sentetik": 0
+    },
+    "toplam_satir": 5480,
+    "toprakli_katmanlar": [
+      "derleyici-hakem",
+      "gercek",
+      "kamu-mali"
+    ]
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 116.153
+  },
+  "kosucu": "betik",
+  "not": "sentetik katmani beyan edildi ve bos olculdu: self-instruct (C) egitilmis bir kontrol noktasi gerektirir, henuz yok. Bos beyan koltugu tutar; sablon metnini 'sentetik' diye yazmak olcum degil iddia olurdu.",
+  "olcut": {
+    "ad": "her_satirin_beyan_edilen_bir_katman_tasimasi_ve_paylarin_bant_icinde_kalmasi",
+    "sonuc": true
+  },
+  "tarih": "2026-09-23"
+}

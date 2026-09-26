@@ -3,12 +3,14 @@ name = "lubot-tools"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
 license-file.workspace = true
 
 [dependencies]
+lubot-sir = { path = "../sir", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-lubot-read = { path = "../read" }
+lubot-read = { path = "../read", version = "0.1.0" }
 
 [lints]
 workspace = true

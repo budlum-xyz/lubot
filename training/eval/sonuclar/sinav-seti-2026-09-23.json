@@ -1,0 +1,33 @@
+{
+  "kosucu": "betik",
+  "tarih": "2026-09-23",
+  "is": "exam-set-is-held-out",
+  "olcut": {
+    "ad": "her_sinav_sorusunun_pasaji_damgali_ve_her_damganin_bir_sorusu_var",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 0.0,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kanit": "Sinav seti ile eval-only damga listesi karsilikli okundu: damgasiz soru ve sorusuz damga arandi; make_sft.py damgali pasajlari eledigi icin bu pasajlar egitim satirina donusemiyor.",
+  "sinav_seti": {
+    "dosya": "training/eval/sinav-seti.jsonl",
+    "soru_sayisi": 12,
+    "siniflar": [
+      "doc"
+    ],
+    "damga_sayisi": 12,
+    "secim_kurali": "doc kayitlari, content_id'ye gore sirali, dosya basina en fazla bir soru, sirali liste uzerinden esit aralikla 12 adet"
+  },
+  "ihlaller": [],
+  "olculmeyen": [
+    "hicbir modelin bu setteki skoru (egitilmis kontrol noktasi yok, K6)",
+    "alinti dogrulugu orani (set kuruldu, kosulmadi)",
+    "akil yurutme: bu set yalniz getirme + alinti olcer"
+  ],
+  "not": "Soru metni pasajin kendi ilk satirindan turedigi icin getirme, bir parafraza gore daha kolaydir: bu sete karsi alinacak her skor bir UST SINIRDIR, yetenek tahmini degil. Set bos degil ama skor yok; ikisi ayni sey degil."
+}

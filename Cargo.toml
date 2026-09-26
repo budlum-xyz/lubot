@@ -1,14 +1,53 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/veri",
+    "crates/uc-asama",
+    "crates/transformer",
+    "crates/tasiyici",
+    "crates/sozluk",
+    "crates/sistem",
+    "crates/paralel",
+    "crates/olcum",
+    "crates/nicem",
+    "crates/mu",
+    "crates/kendinden",
+    "crates/karma",
+    "crates/karar",
+    "crates/kapisma",
+    "crates/derin",
+    "crates/bpe-gelismis",
     "crates/grant",
     "crates/read",
     "crates/index",
     "crates/tools",
     "crates/answer",
-    "crates/cli",
+    "crates/cikarim",
+  "crates/cli",
     "crates/doc",
     "crates/sikistir",
+    "crates/sir",
+    "crates/gunluk",
+    "crates/muhur",
+    "crates/usl",
+    "crates/esik",
+    "crates/izolasyon",
+    "crates/kanit",
+    "crates/denetim",
+    "crates/kuyruk",
+    "crates/erisim",
+    "crates/takip",
+    "crates/olcek",
+    "crates/yetenek",
+    "crates/mimari",
+    "crates/anlama",
+    "crates/tomurcuk",
+  "crates/egitim",
+  "crates/jeton",
+  "crates/arayuz",
+  "crates/kanaat",
+  "crates/sertlestirme",
+  "crates/kodlayici",
 ]
 
 # The panic limit: a reader that panics is a reader that stops answering.
@@ -23,3 +62,20 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license-file = "LICENSE.md"
+# Bu depo bir urun agacidir: crate'ler hicbir kayit defterine yayinlanmaz.
+# Isaret yalniz kozmetik degil: cargo-deny, "public" sayilan bir crate'in path
+# bagimliligini wildcard kabul etmez ("crates.io disallows path dependencies")
+# ve butun denetim bu yuzden dusuyordu. `publish = false` hem dogruyu soyler
+# hem de kuralin neden uygulanmadigini kayda gecirir.
+publish = false
+
+# Sertlestirme katmani 1: derleyici. panic = "abort" unwind tablolarini
+# kaldirir, strip sembolleri siler, lto = "fat" ile codegen-units = 1 fonksiyon
+# sinirlarini birbirine karistirir. Maliyeti derleme suresi; kazanci
+# strings/nm ile olculur.
+[profile.release]
+panic = "abort"
+strip = true
+lto = "fat"
+codegen-units = 1
+opt-level = 3

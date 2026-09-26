@@ -10,7 +10,7 @@
 //! 1. strict UTF-8 (no replacement of undecodable bytes);
 //! 2. non-empty after trimming;
 //! 3. heading hierarchy does not skip a level while descending;
-//! 4. code fences are balanced (CommonMark toggling);
+//! 4. code fences are balanced (`CommonMark` toggling);
 //! 5. tables are well formed: separator row after the header, consistent
 //!    column count.
 //!
@@ -81,6 +81,23 @@ fn is_separator_row(line: &str) -> bool {
     })
 }
 
+/// The fence to wrap `text` in so it stays one code block.
+///
+/// A passage being quoted may itself contain fence lines - reading a document
+/// about code means reading fence lines - and `CommonMark` closes a fence only
+/// with a run at least as long as the opener. Choosing the wrapper from the content
+/// keeps the quotation faithful: nothing inside is rewritten, the fence simply
+/// grows around it.
+#[must_use]
+pub fn fence_for(text: &str) -> String {
+    let longest = text
+        .lines()
+        .map(|line| line.trim_start().chars().take_while(|c| *c == '`').count())
+        .max()
+        .unwrap_or(0);
+    "`".repeat(longest.max(2) + 1)
+}
+
 /// Validate a reply against the Markdown schema.
 ///
 /// # Errors
@@ -98,8 +115,15 @@ pub fn validate_markdown_output(bytes: &[u8]) -> Result<(), OutputSchemaError> {
 
     let mut level: usize = 0;
     let mut seen_heading = false;
+    // CommonMark: a fence opened with N backticks is closed only by a line of
+    // backticks at least that long with nothing else on it. Modelling that
+    // faithfully is what lets a quotation contain a shorter fence - a passage
+    // that talks about code may well contain ``` - without the document
+    // silently unbalancing. The alternative, stripping the passage, would
+    // change what was read; the schema refuses rather than rewrites.
     let mut in_fence = false;
     let mut fence_open_line = 0usize;
+    let mut fence_len = 0usize;
     let mut table_buffer: Vec<(usize, String)> = Vec::new();
 
     for (idx, raw) in text.lines().enumerate() {
@@ -107,12 +131,17 @@ pub fn validate_markdown_output(bytes: &[u8]) -> Result<(), OutputSchemaError> {
         let trimmed = raw.trim();
 
         // Fence toggling before anything else: inside a fence nothing is a
-        // heading or a table row.
+        // heading or a table row. A closing fence has to be at least as long as
+        // the opening one and carry nothing else; a shorter run of backticks is
+        // content.
         if trimmed.starts_with("```") {
+            let run = trimmed.chars().take_while(|c| *c == '`').count();
+            let only_backticks = trimmed[run..].trim().is_empty();
             if !in_fence {
                 in_fence = true;
                 fence_open_line = line_no;
-            } else {
+                fence_len = run;
+            } else if run >= fence_len && only_backticks {
                 in_fence = false;
             }
             if !table_buffer.is_empty() {
@@ -237,6 +266,21 @@ mod tests {
     fn balanced_fence_is_accepted_even_with_hash_rows_inside() {
         let doc = "## Title\n\n```\n# not a heading\n```\n";
         assert!(validate_markdown_output(doc.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn a_passage_containing_its_own_fence_is_quoted_in_a_longer_one() {
+        let passage = "here is how:\n```rust\nlet x = 1;\n```\n";
+        let fence = fence_for(passage);
+        let doc = format!("## Passage\n\n{fence}\n{passage}{fence}\n");
+        assert!(validate_markdown_output(doc.as_bytes()).is_ok(), "{doc}");
+        // A wrapper that is not longer than the passage's own fence leaks: the
+        // inner fence closes the outer one and the document ends unbalanced.
+        let naif = format!("## Passage\n\n```\n{passage}```\n");
+        assert!(matches!(
+            validate_markdown_output(naif.as_bytes()),
+            Err(OutputSchemaError::UnbalancedFence { .. })
+        ));
     }
 
     #[test]

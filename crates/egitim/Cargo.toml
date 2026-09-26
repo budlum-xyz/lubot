@@ -1,0 +1,17 @@
+[package]
+name = "lubot-egitim"
+version = "0.1.0"
+edition = "2021"
+description = "Lubot training core: forward, loss, hand-written backward, run loop, checkpoints, epoch discipline."
+license-file.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
+repository = "https://github.com/budlum-xyz/lubot"
+readme = "README.md"
+
+[dependencies]
+lubot-grant = { path = "../grant", version = "0.1.0" }
+serde_json = "1"
+sha2 = "0.10"
+
+[lints]
+workspace = true
