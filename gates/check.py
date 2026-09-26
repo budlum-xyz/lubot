@@ -6948,7 +6948,7 @@ def _hadamard_mlp_denetle(path) -> list:
 
 
 def gate_hadamard_mlp_kapisi() -> str:
-    """Port bileseni 3 (Hadamard/Monarch MLP) olculur halde duruyor: aktivasyon
+    """Hadamard/Monarch MLP olculur halde duruyor: aktivasyon
     crate'in kendisinden, gradyan sonlu farkla (sayim sekle bagli), parametre
     muhasebesi sekilden turetilir, blok-kosegenlik ve inis ayri ayri olculur.
     Ayrica modulun testleri burada kosturulur: kac test varsa o kadari gecmeli."""
