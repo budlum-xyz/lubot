@@ -1749,6 +1749,134 @@ def selftest_model_spec_is_consistent() -> None:
         pass
 
 
+# --------------------------------------------------------------------------
+# gate: the intake line is closed - a manifest is admitted whole, or refused
+# --------------------------------------------------------------------------
+def _alim_refusal(run: subprocess.CompletedProcess[str], needle: str) -> None:
+    """A refusal must fail, and must name the rule it enforced. Both halves
+    matter: an intake that fails without naming the rule leaves the operator
+    to guess which rule spoke."""
+    text = run.stdout + run.stderr
+    if run.returncode == 0:
+        raise SystemExit(f"the intake admitted what it must refuse: {run.stdout[:160]!r}")
+    if needle not in text:
+        raise SystemExit(f"the refusal does not name {needle!r}: {text[:200]!r}")
+
+
+def gate_alim_hatti_kapali() -> str:
+    """`lubot alim dogrula` reads a manifest from storage and admits it whole
+    or refuses it by name: an unadmitted source class (K2), a licence outside
+    the closed set, a path that walks up the tree, a digest that does not
+    match the bytes, a step behind the ledger, and an intake with no ledger at
+    all. The refusals run on the real path - the same binary the operator runs
+    - so this gate measures behaviour, not prose."""
+    import hashlib
+    import json
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        data = root / "veri"
+        data.mkdir()
+        text = "Alım hattı bir kaydı bütün kabul eder ya da hiç kabul etmez.\n"
+        (data / "a.md").write_text(text, encoding="utf-8")
+        digest = hashlib.sha256(text.encode()).hexdigest()
+
+        def manifest_for(name: str, source_class: str, overrides: dict) -> str:
+            record = {
+                "digest": digest,
+                "content_id": digest,
+                "asset_id": hashlib.sha256(b"asset").hexdigest(),
+                "kind": "markdown",
+                "licence": "MIT",
+                "attribution": "lubot",
+                "path": "a.md",
+            }
+            record.update(overrides)
+            manifest = {
+                "schema": 1,
+                "manifest_id": hashlib.sha256(b"manifest").hexdigest(),
+                "source_class": source_class,
+                "loader": "gate",
+                "created_at": 1_700_000_000,
+                "records": [record],
+            }
+            path = root / name
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            return str(path)
+
+        ledger = str(root / "defter.jsonl")
+
+        def admit(*args: str) -> subprocess.CompletedProcess[str]:
+            return _cli("alim", "dogrula", "--veri", str(data), *args)
+
+        ok = admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                   "--defter", ledger, "--adim", "0")
+        if ok.returncode != 0:
+            raise SystemExit(
+                f"the intake refused an admissible manifest: {(ok.stdout + ok.stderr)[:300]!r}"
+            )
+        if "| kabul özeti |" not in ok.stdout:
+            raise SystemExit("the admission printed no admission digest")
+        rows = Path(ledger).read_text(encoding="utf-8").strip().splitlines()
+        if len(rows) != 1:
+            raise SystemExit(f"the intake wrote {len(rows)} provenance row(s) for one record")
+
+        _alim_refusal(
+            admit("--manifest", manifest_for("upload.json", "bud_upload", {}),
+                  "--defter", ledger, "--adim", "1"),
+            "K2",
+        )
+        _alim_refusal(
+            admit("--manifest", manifest_for("lisans.json", "lubot", {"licence": "GPL-3.0"}),
+                  "--defter", ledger, "--adim", "1"),
+            "outside the closed set",
+        )
+        _alim_refusal(
+            admit("--manifest", manifest_for("yol.json", "lubot", {"path": "../a.md"}),
+                  "--defter", ledger, "--adim", "1"),
+            "walks up the tree",
+        )
+        _alim_refusal(
+            admit("--manifest", manifest_for("ok.json", "lubot", {})),
+            "defter",
+        )
+        (data / "a.md").write_text(text + "ek satır\n", encoding="utf-8")
+        _alim_refusal(
+            admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                  "--defter", ledger, "--adim", "1"),
+            "digest mismatch",
+        )
+        (data / "a.md").write_text(text, encoding="utf-8")
+
+        ahead = admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                      "--defter", ledger, "--adim", "4")
+        if ahead.returncode != 0:
+            raise SystemExit(
+                f"the intake refused a step ahead of the ledger: {(ahead.stdout + ahead.stderr)[:200]!r}"
+            )
+        _alim_refusal(
+            admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                  "--defter", ledger, "--adim", "3"),
+            "behind the previous",
+        )
+    return (
+        "the intake admits whole or refuses by name: K2 class, licence, path, "
+        "ledger, digest, step"
+    )
+
+
+def selftest_alim_hatti_kapali() -> None:
+    """The canary: the refusal expectation must reject a run that succeeded,
+    or the gate cannot fire at all."""
+    benign = _cli("ceilings")
+    try:
+        _alim_refusal(benign, "K2")
+        raise AssertionError("the refusal expectation accepted a clean run")
+    except SystemExit as err:
+        assert "must refuse" in str(err)
+
+
 GATES_EXTRA = {
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
@@ -1783,6 +1911,7 @@ GATES_EXTRA = {
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
+    "alim-hatti-kapali": (gate_alim_hatti_kapali, selftest_alim_hatti_kapali),
 }
 
 

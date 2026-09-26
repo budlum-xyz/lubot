@@ -319,6 +319,7 @@ name = "lubot"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "lubot-alim",
  "lubot-answer",
  "lubot-doc",
  "lubot-grant",
@@ -328,6 +329,15 @@ dependencies = [
  "lubot-tools",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lubot-alim"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
