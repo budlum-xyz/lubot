@@ -29,3 +29,32 @@
 ## Deney 3 (2026-09-24T15:29:19) - kaynak: dugme-uzayi
 - oneri: --agirlik-sonumu 0.1 -> 0.037500000000000006 (aile optimizasyon)
 - adim butcesi: 140
+
+# Oturum 2026-09-26T23:00:57 - adim butcesi 140
+
+## Deney 3 (2026-09-26T23:00:57) - kaynak: dugme-uzayi
+- oneri: --agirlik-sonumu 0.1 -> 0.037500000000000006 (aile optimizasyon)
+- adim butcesi: 140
+- ATILDI: skor 6.885977 (mevcut 6.671741, esik 0.001)
+
+# Oturum 2026-09-26T23:02:50 - adim butcesi 140
+
+## Deney 4 (2026-09-26T23:02:50) - kaynak: dugme-uzayi
+- oneri: --agirlik-sonumu 0.1 -> 0.1625 (aile optimizasyon)
+- adim butcesi: 140
+- ATILDI: skor 6.885483 (mevcut 6.671741, esik 0.001)
+
+## Deney 5 (2026-09-26T23:04:40) - kaynak: dugme-uzayi
+- oneri: --kirpma 1.0 -> 1.1875 (aile kararlilik)
+- adim butcesi: 140
+- ATILDI: skor 6.882555 (mevcut 6.671741, esik 0.001)
+- KENDINI GELISTIRME (muhafazakar): adim_carpani 1.0 -> 0.5 (pencere atilma orani 1.0)
+
+## Deney 6 (2026-09-26T23:06:58) - kaynak: dugme-uzayi
+- oneri: --ogrenme-orani 0.01 -> 0.0069375 (aile optimizasyon)
+- adim butcesi: 140
+- ATILDI: skor 7.631849 (mevcut 6.671741, esik 0.001)
+
+## Deney 7 (2026-09-26T23:09:30) - kaynak: dugme-uzayi
+- oneri: --ogrenme-orani 0.01 -> 0.013062500000000001 (aile optimizasyon)
+- adim butcesi: 140
