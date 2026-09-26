@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The tokenizer cross-check: the Rust port against the reference, id by id.
+"""The tokenizer cross-check: the Rust implementation against the reference, id by id.
 
 Why a corpus and not a handful of examples: the interesting behaviour of this
 vocabulary is in the newline runs, the added-token list, the space markers and
-the byte fallback, and those interact. A port can pass ten hand-picked strings
+the byte fallback, and those interact. An implementation can pass ten hand-picked strings
 and fail on the eleventh. This runs both implementations over a corpus and
 compares every id.
 
@@ -26,7 +26,7 @@ import subprocess
 import sys
 
 # The shapes that were measured to be decisive. Each one is here because it
-# exercises a mechanism the port had to get right, and the comment says which.
+# exercises a mechanism the implementation had to get right, and the comment says which.
 ZOR_ORNEKLER = [
     "Merhaba dünya",            # the ordinary path: two words, one merge each
     "hello world",              # ASCII
@@ -146,15 +146,15 @@ def main() -> int:
         if olculen != beklenen:
             uyusmazlik += 1
             # The first disagreement is printed in full, and the rest as a count:
-            # a port that is wrong is wrong in a pattern, and the pattern is
+            # an implementation that is wrong is wrong in a pattern, and the pattern is
             # what the message has to show.
             if uyusmazlik <= 5:
                 print(f"FARK [{sira}] {metin!r}")
                 print(f"   referans: {beklenen[:24]}")
-                print(f"   port    : {olculen[:24]}")
+                print(f"   rust    : {olculen[:24]}")
                 for i, (x, y) in enumerate(zip(beklenen, olculen)):
                     if x != y:
-                        print(f"   ilk fark indeks {i}: referans {x}, port {y}")
+                        print(f"   ilk fark indeks {i}: referans {x}, rust {y}")
                         break
     import os
 

@@ -24,7 +24,7 @@
 //! causal mask; the action head reads **position 0** of the post-head state and
 //! not a mean over positions; and the four features it is concatenated with are
 //! computed from the **detached** distribution, so they cannot be confused with
-//! a gradient path in a port that has no gradients.
+//! a gradient path in a crate that has no gradients.
 //!
 //! The head's own norms carry biases; the encoder's do not. That asymmetry is
 //! in the checkpoint header and is checked at load: `head.layers.0.norm1.bias`
@@ -62,7 +62,7 @@ pub struct KararYapisi {
     ///
     /// This is not a generation knob: it rescales the option scores before the
     /// softmax, and it was fitted after training. All three of this
-    /// checkpoint's values are 1, so a port that ignored it would agree here and
+    /// checkpoint's values are 1, so a reader that ignored it would agree here and
     /// disagree on the next checkpoint; it is implemented and reported anyway.
     pub sicaklik: Vec<f32>,
     /// The accuracy at which acting and escalating cost the same.
@@ -79,8 +79,8 @@ impl KararYapisi {
     ///
     /// # Errors
     /// [`BaslikHatasi::Baslik`] when the file is missing or does not carry the
-    /// keys this port needs. JSON parsing is done by hand rather than by adding
-    /// a dependency: the file has six keys, and the crate is a model port, not
+    /// keys this crate needs. JSON parsing is done by hand rather than by adding
+    /// a dependency: the file has six keys, and the crate is a model reader, not
     /// a configuration framework.
     pub fn oku(paket: &Path) -> Result<Self, BaslikHatasi> {
         let yol = paket.join("rl_agent_config.json");
@@ -93,7 +93,7 @@ impl KararYapisi {
         // `act_costs` is an object whose keys are the costly outcomes; the
         // action head has one output per outcome plus one for acting. The
         // object's keys are counted rather than parsed, because that is all this
-        // port needs from it: the costs themselves are not read anywhere.
+        // crate needs from it: the costs themselves are not read anywhere.
         let eylem_secenek = nesne_anahtar_sayisi(&metin, "act_costs");
         let eylem_sayisi = if eylem_secenek == 0 {
             0
@@ -941,7 +941,7 @@ mod tests {
         // reported choice is invariant under the temperature...
         assert_eq!(s.secim(), t.secim());
         // ...while the expectation is not: the softmax is not linear, and a
-        // flatter distribution puts more mass on the alternatives. A port that
+        // flatter distribution puts more mass on the alternatives. An implementation that
         // scaled after the softmax would leave both unchanged.
         assert!(
             (s.beklenen_indeks() - t.beklenen_indeks()).abs() > 1e-6,

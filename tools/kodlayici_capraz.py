@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Independent cross-check of the Rust port, in numpy.
+"""Independent cross-check of the Rust implementation, in numpy.
 
-Why this file exists: a port checked only against itself proves nothing. This
+Why this file exists: an implementation checked only against itself proves nothing. This
 script reads the same split checkpoint through a *different* path - it opens the
 part files itself, parses the safetensors header, converts half precision with
 numpy's own rules, and computes the encoder, the decision head and the scorer
@@ -13,7 +13,7 @@ architecture will agree. What it catches is transcription errors: wrong tensor
 names, transposed matrices, a norm in the wrong place, a missing residual, a
 doubled one, the wrong position for the type embedding.
 
-Memory matters here as much as it does in the port: the embedding table is 196
+Memory matters here as much as it does in the implementation: the embedding table is 196
 million elements, so only the rows a sequence needs are read, and each layer's
 weights are read one layer at a time and dropped before the next.
 

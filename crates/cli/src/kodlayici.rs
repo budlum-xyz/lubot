@@ -1,4 +1,4 @@
-//! # kodlayici - the ported model, as a command
+//! # kodlayici - the checkpoint reader, as a command
 //!
 //! `lubot kodlayici envanter --paket <dizin>` reads a split checkpoint's header
 //! and prints what is inside it: how many tensors, which types, what the
@@ -205,7 +205,7 @@ fn dogrula(args: &[String]) -> Result<(), String> {
 fn kosu(args: &[String]) -> Result<(), String> {
     let paket = paket(args)?;
     // `--metin` turns the whole path on: the text is tokenized by this
-    // repository's own port of the vocabulary, and the ids it produces are what
+    // repository's own implementation of the vocabulary, and the ids it produces are what
     // the encoder runs on. Without it the command runs on ids given directly,
     // which is what the cross-check compares.
     let metin = match deger(args, "--metin-dosya") {

@@ -9,7 +9,7 @@
 //!
 //! The order matters and is not a convention: normalising *before* the branch
 //! is what makes a deep stack trainable without warm-up, and the residual on
-//! the outside is what keeps the signal from the embedding reachable. A port
+//! the outside is what keeps the signal from the embedding reachable. A reader
 //! that normalised after the addition would produce a model that looks right
 //! for one layer and degrades with depth.
 //!
@@ -846,7 +846,7 @@ mod tests {
     #[test]
     fn the_gate_and_the_value_halves_are_not_interchangeable() {
         // Swapping the halves of Wi must change the output; if it did not, the
-        // split point would be untested and a port could read them backwards.
+        // split point would be untested and an implementation could read them backwards.
         let mut agirliklar = kucuk_agirliklar(1);
         let a = kodla(&agirliklar, &[1, 2, 3]).expect("kodlanmali");
         let h = agirliklar.yapi.hidden_size;
