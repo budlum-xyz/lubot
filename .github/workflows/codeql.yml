@@ -32,8 +32,8 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      security-events: write
-      actions: read
+      security-events: write  # Uploads the analysis as SARIF to code scanning
+      actions: read  # Reads the workflow run that produced this analysis
     strategy:
       fail-fast: false
       matrix:
