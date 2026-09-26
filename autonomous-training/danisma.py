@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -64,9 +65,16 @@ def oy_iste(kart: str, soru: str, secenekler: list[str], ayar: dict,
     """Arka uctan oy ister. Hata bir *oy yoklugu* olarak doner, istisna degil."""
     servis = ayar.get("servis_url", VARSAYILAN_SERVIS)
     govde = json.dumps({"kart": kart, "soru": soru, "secenekler": secenekler}).encode("utf-8")
+    basliklar = {"Content-Type": "application/json"}
+    # Sunucu belirteci (sunucu.py ile ayni ortam degiskeni): danisma sunucusu
+    # belirtecsiz istek kabul etmez; belirtec yoksa istek yine gider, reddi
+    # "oy yoklugu" olarak doner ve karar insana kalir (fail-closed zincir).
+    belirtec = os.environ.get("LUBOT_DANISMA_TOKEN")
+    if belirtec:
+        basliklar["Authorization"] = f"Bearer {belirtec}"
     istek = urllib.request.Request(
         servis.rstrip("/") + "/oy", data=govde,
-        headers={"Content-Type": "application/json"}, method="POST")
+        headers=basliklar, method="POST")
     basla = time.monotonic()
     try:
         with urllib.request.urlopen(istek, timeout=zaman_asimi) as yanit:

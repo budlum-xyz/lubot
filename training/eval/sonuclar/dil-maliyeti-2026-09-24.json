@@ -4,14 +4,14 @@
   "kanit": {
     "bulgu_dil_maliyeti": null,
     "fark_esigi": 0.1,
-    "fark_orani": 0.02979,
+    "fark_orani": 0.029812,
     "siniflar": {
       "en": {
-        "jeton": 220490,
+        "jeton": 220762,
         "jeton_basina_karakter": 2.6147,
-        "karakter": 576513,
-        "karakter_basina_jeton": 0.382455,
-        "kayit": 2628
+        "karakter": 577237,
+        "karakter_basina_jeton": 0.382446,
+        "kayit": 2630
       },
       "karisik": {
         "jeton": 68092,
@@ -29,14 +29,14 @@
       }
     },
     "sozluk_ailesi": "lubot-bpe-v2",
-    "sure_saniye": 1.14
+    "sure_saniye": 1.46
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 1.14
+    "sure_saniye": 1.46
   },
   "kosucu": "betik",
   "olcut": {
