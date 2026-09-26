@@ -22,13 +22,21 @@ ile `dongu.py`'de yazilidir. Anahtar yalnizca ortam degiskeninden okunur
 
 Kullanim:
 
-    python3 training/danisma/sunucu.py --port 8790 --arka-uc otomatik
+    LUBOT_DANISMA_TOKEN=<deger> python3 training/danisma/sunucu.py --port 8790 \
+        --arka-uc otomatik
     python3 training/danisma/sunucu.py --kendini-test      # model yuklemeden
+
+Guvenlik sinirlari (olculu, kendini-test icinde kanaryali): sunucu yalniz
+loopback'te dinler (varsayilan; `--host` baska arayuzu acikca ister), `/oy`
+`Authorization: Bearer <belirtec>` dogrulamasi olmadan 401 doner, belirtec
+ortamda yoksa sunucu hic acilmaz (fail-closed), govde 1 MiB'u asarsa 413,
+8'i asan eszamanli istek 503 doner, bos baglanti 30 s'de dusurulur.
 """
 
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
 import sys
@@ -46,6 +54,13 @@ JEK_MODEL = "jev-1.13.0"
 CHECKPOINT = "convaiinnovations/laya"
 ALT_KLASOR = "multilingual"
 KOSU_DTYPE = "bfloat16"
+
+# --- Sinirlar (Strix bulgusu, lubot PR #9, CWE-306): sunucu kimlik dogrulamasi
+# ve istek sinirlari olmadan acik portta calisamazdi; artik belirtecsiz /oy
+# yok, govde boyutu ve eszamanlilik sinirli, baglanti yalniz loopback'te.
+BELIRTEC_ORTAMI = "LUBOT_DANISMA_TOKEN"
+EN_COK_GOVDE_BAYT = 1_048_576
+EN_COK_ESZAMANLI_ISTEK = 8
 
 _AGENT = None
 _KILIT = threading.Lock()
@@ -181,6 +196,28 @@ def jev_oy(kart: str, soru: str, secenekler: list[str]) -> dict:
             "dagilim": cevap.get("probabilities")}
 
 
+def belirtec() -> str | None:
+    """Sunucu belirteci yalnizca ortamdan okunur; dosyaya yazilmaz, kayda gecmez."""
+    deger = os.environ.get(BELIRTEC_ORTAMI)
+    return deger if deger else None
+
+
+def belirtec_dogrulandi(baslik: str | None) -> bool:
+    """`Authorization: Bearer <belirtec>` basligini sabit zamanli karsilastirir.
+
+    Belirtec tanimli degilse hicbir istek dogrulanmis sayilmaz: sunucu
+    belirtecsiz acilmadigi icin bu yol yalniz derinlemesine savunmadir.
+    """
+    beklenen = belirtec()
+    if not beklenen or not baslik or not baslik.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(baslik[len("Bearer "):], beklenen)
+
+
+def govde_sinir_asildi(uzunluk: int) -> bool:
+    return uzunluk > EN_COK_GOVDE_BAYT
+
+
 def oy_uret(arka_uc: str, kart: str, soru: str, secenekler: list[str]) -> dict:
     if arka_uc not in ("laya", "jev"):
         raise ValueError(f"bilinmeyen arka uc: {arka_uc}")
@@ -190,8 +227,11 @@ def oy_uret(arka_uc: str, kart: str, soru: str, secenekler: list[str]) -> dict:
 # ---------------------------------------------------------------- HTTP
 class Isleyici(BaseHTTPRequestHandler):
     protokol_surumu = "HTTP/1.1"
+    timeout = 30  # bos baglanti siniri: bekleyen istek acik kalamaz
     arka_uc = "laya"
     yukleme_ms = 0
+    _acik_istek = 0
+    _acik_kilidi = threading.Lock()
 
     def _yaz(self, kod: int, govde: dict) -> None:
         veri = json.dumps(govde, ensure_ascii=False).encode("utf-8")
@@ -212,32 +252,55 @@ class Isleyici(BaseHTTPRequestHandler):
         if not self.path.startswith("/oy"):
             self._yaz(404, {"hata": "bilinmeyen yol"})
             return
-        uzunluk = int(self.headers.get("Content-Length") or 0)
-        try:
-            istek = json.loads(self.rfile.read(uzunluk).decode("utf-8"))
-        except ValueError:
-            self._yaz(400, {"hata": "govde JSON degil"})
+        if not belirtec_dogrulandi(self.headers.get("Authorization")):
+            self._yaz(401, {"hata": "belirtec yok ya da yanlis"})
             return
-        kart = istek.get("kart") or "tut_at"
-        soru = istek.get("soru") or ""
-        secenekler = istek.get("secenekler") or ["tut", "at"]
         try:
-            self._yaz(200, oy_uret(self.arka_uc, kart, soru, secenekler))
-        except Exception as hata:  # noqa: BLE001 - oy yoklugu olarak raporlanir
-            self._yaz(503, {"oy": None, "guven": 0.0, "arka_uc": self.arka_uc,
-                            "gerekce": f"{type(hata).__name__}: {hata}"})
+            uzunluk = int(self.headers.get("Content-Length") or "")
+        except ValueError:
+            self._yaz(400, {"hata": "Content-Length gerekli ve sayi olmali"})
+            return
+        if govde_sinir_asildi(uzunluk):
+            self._yaz(413, {"hata": "govde cok buyuk"})
+            return
+        with Isleyici._acik_kilidi:
+            if Isleyici._acik_istek >= EN_COK_ESZAMANLI_ISTEK:
+                self._yaz(503, {"hata": "cok fazla eszamanli istek"})
+                return
+            Isleyici._acik_istek += 1
+        try:
+            try:
+                istek = json.loads(self.rfile.read(uzunluk).decode("utf-8"))
+            except ValueError:
+                self._yaz(400, {"hata": "govde JSON degil"})
+                return
+            kart = istek.get("kart") or "tut_at"
+            soru = istek.get("soru") or ""
+            secenekler = istek.get("secenekler") or ["tut", "at"]
+            try:
+                self._yaz(200, oy_uret(self.arka_uc, kart, soru, secenekler))
+            except Exception as hata:  # noqa: BLE001 - oy yoklugu olarak raporlanir
+                self._yaz(503, {"oy": None, "guven": 0.0, "arka_uc": self.arka_uc,
+                                "gerekce": f"{type(hata).__name__}: {hata}"})
+        finally:
+            with Isleyici._acik_kilidi:
+                Isleyici._acik_istek -= 1
 
     def log_message(self, bicim: str, *args: object) -> None:  # sessiz gunluk
         return
 
 
-def sunucu_kur(port: int, arka_uc: str, on_yukle: bool = True) -> ThreadingHTTPServer:
+def sunucu_kur(port: int, arka_uc: str, on_yukle: bool = True,
+               host: str = "127.0.0.1") -> ThreadingHTTPServer:
+    """Sunucuyu kurar. Varsayilan yalniz loopback'tir: karar portu ag'a acik
+    bir yuzey degildir; baska arayuz gerekiyorsa komut satirinda acikca
+    istenir ve belirtec dogrulamasi yine zorunludur."""
     basla = time.monotonic()
     if arka_uc == "laya" and on_yukle:
         model_yukle()
     Isleyici.arka_uc = arka_uc
     Isleyici.yukleme_ms = int((time.monotonic() - basla) * 1000)
-    return ThreadingHTTPServer(("0.0.0.0", port), Isleyici)
+    return ThreadingHTTPServer((host, port), Isleyici)
 
 
 def kendini_test() -> list[str]:
@@ -275,12 +338,35 @@ def kendini_test() -> list[str]:
         bulgular.append("bilinmeyen arka uc reddi")
     else:
         raise AssertionError("bilinmeyen arka uc kabul edildi")
+    # Sinirlar (CWE-306 onarimi): belirtec dogrulamasi ve govde tavaninin
+    # kendisi de olculur; bunlar kalkarsa kanarya kirmizi yanar.
+    eski_belirtec = os.environ.get(BELIRTEC_ORTAMI)
+    os.environ[BELIRTEC_ORTAMI] = "kanarya-belirteci"
+    try:
+        assert belirtec_dogrulandi("Bearer kanarya-belirteci"), "dogru belirtec reddedildi"
+        assert not belirtec_dogrulandi("Bearer baska"), "yanlis belirtec kabul edildi"
+        assert not belirtec_dogrulandi(None), "bos baslik kabul edildi"
+        assert not belirtec_dogrulandi("kanarya-belirteci"), "Bearer onsuz kabul edildi"
+        del os.environ[BELIRTEC_ORTAMI]
+        assert not belirtec_dogrulandi("Bearer kanarya-belirteci"), (
+            "belirtec tanimsizken istek dogrulanmis sayildi")
+    finally:
+        if eski_belirtec is None:
+            os.environ.pop(BELIRTEC_ORTAMI, None)
+        else:
+            os.environ[BELIRTEC_ORTAMI] = eski_belirtec
+    bulgular.append("belirtec dogrulamasi")
+    assert govde_sinir_asildi(EN_COK_GOVDE_BAYT + 1), "govde tavani isirmdi"
+    assert not govde_sinir_asildi(EN_COK_GOVDE_BAYT), "sinirdaki govde reddedildi"
+    bulgular.append("govde tavani")
     return bulgular
 
 
 def main(argv: list[str]) -> int:
     ayristirici = argparse.ArgumentParser(description=__doc__)
     ayristirici.add_argument("--port", type=int, default=8790)
+    ayristirici.add_argument("--host", default="127.0.0.1",
+                             help="varsayilan loopback; ag arayuzu acik secilmelidir")
     ayristirici.add_argument("--arka-uc", default="otomatik", choices=["laya", "jev", "otomatik"])
     ayristirici.add_argument("--on-yukleme-yok", action="store_true")
     ayristirici.add_argument("--kendini-test", action="store_true")
@@ -288,11 +374,20 @@ def main(argv: list[str]) -> int:
     if args.kendini_test:
         print("self-test OK [danisma-sunucu]: " + ", ".join(kendini_test()))
         return 0
+    if belirtec() is None:
+        # Fail-closed: belirtecsiz sunucu acilmaz. /oy, arka ucu ne olursa
+        # olsun operator adina kaynak harcar (jev'de odemeli anahtar, laya'da
+        # RAM ve CPU); kimlik dogrulamasi olmadan dinlemek kabul edilmez.
+        raise SystemExit(
+            f"{BELIRTEC_ORTAMI} tanimli olmadan danisma sunucusu acilmaz "
+            "(belirtecsiz /oy reddedilecegi icin sunucu hic baslatilmiyor)")
     secilen = arka_uc_sec(args.arka_uc)
-    sunucu = sunucu_kur(args.port, secilen, on_yukle=not args.on_yukleme_yok)
+    sunucu = sunucu_kur(args.port, secilen, on_yukle=not args.on_yukleme_yok,
+                        host=args.host)
     print(json.dumps({"durum": "dinliyor", "port": args.port, "arka_uc": secilen,
+                      "host": args.host, "belirtec": "ortamdan (deger yazdirilmaz)",
                       "yukleme_ms": Isleyici.yukleme_ms,
-                      "url": f"http://127.0.0.1:{args.port}"}, ensure_ascii=False), flush=True)
+                      "url": f"http://{args.host}:{args.port}"}, ensure_ascii=False), flush=True)
     try:
         sunucu.serve_forever()
     except KeyboardInterrupt:

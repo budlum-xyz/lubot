@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import os
 import random
 import json
 import re
@@ -125,9 +126,15 @@ def lubot_puanla(ckpt: str, soru: str, metin: str) -> tuple[float, float, str]:
 
 def servis_oy(sunucu: str, kart: str, soru: str, siklar: list[str]) -> dict | None:
     govde = json.dumps({"kart": kart, "soru": soru, "secenekler": siklar}).encode("utf-8")
+    basliklar = {"Content-Type": "application/json"}
+    # Danisma sunucusu belirtec dogrulamasi yapar (sunucu.py, CWE-306 onarimi);
+    # belirtec ortamdansa gonderilir, degilse sunucu 401 verir ve oy None doner.
+    belirtec = os.environ.get("LUBOT_DANISMA_TOKEN")
+    if belirtec:
+        basliklar["Authorization"] = f"Bearer {belirtec}"
     istek = urllib.request.Request(
         f"{sunucu.rstrip('/')}/oy", data=govde,
-        headers={"Content-Type": "application/json"})
+        headers=basliklar)
     try:
         with urllib.request.urlopen(istek, timeout=300) as yanit:
             return json.loads(yanit.read())

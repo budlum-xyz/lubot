@@ -146,6 +146,6 @@ sub-byte quantization), only the method was taken and is named as such.
 | `karma` | 286 | 11 | Cross-stage token accounting: how the real/synthetic/compiler/curriculum strata are interleaved across the three stages, with per-stage token totals that add up to the declared mix. |
 | `sistem` | 263 | 11 | The training system named as components: what exists, what is measured, what is still skeleton - a transparency report the repository can recompute rather than re-assert. |
 | `nicem` | 2697 | 61 | Sub-byte weight quantization from first principles: a binary16 codec checked against all 65536 patterns, in-place Hadamard normalisation, analytic Lloyd-Max codebooks for 1-8 bits and ternary, and bit packing whose inverse is exact. |
-| `tasiyici` | 1725 | 32 | A weight container read in place: a fixed magic, structure verified at open, byte-identical output for identical input, and a depth ladder that refuses a machine that cannot hold step zero rather than pretending depth zero. |
+| `tasiyici` | 1768 | 33 | A weight container read in place: a fixed magic, structure verified at open, byte-identical output for identical input, and a depth ladder that refuses a machine that cannot hold step zero rather than pretending depth zero. |
 | `sir` | 623 | 15 | Secrets are masked on the write path, not on the way out: what reaches storage is already masked, so a read path has nothing to leak. |
 | `gunluk` | 439 | 16 | Operator logs parsed into records, passed through `sir` first: a log line that carries a secret shape enters masked or not at all. |
