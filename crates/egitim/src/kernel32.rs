@@ -63,12 +63,16 @@ pub struct Parametreler32 {
     pub bq: Vec<f32>,
     /// Per layer: query taps, `[n_layers * qkv_dokunus * d_model]`.
     pub q_dokunus: Vec<f32>,
+    /// Per layer: QK-norm query scale, `[n_layers * d_k]`.
+    pub q_norm_olcek: Vec<f32>,
     /// Per layer: key weights.
     pub wk: Vec<f32>,
     /// Per layer: key biases.
     pub bk: Vec<f32>,
     /// Per layer: key taps, `[n_layers * qkv_dokunus * d_kv]`.
     pub k_dokunus: Vec<f32>,
+    /// Per layer: QK-norm key scale, `[n_layers * d_k]`.
+    pub k_norm_olcek: Vec<f32>,
     /// Per layer: value weights.
     pub wv: Vec<f32>,
     /// Per layer: value biases.
@@ -111,9 +115,11 @@ impl Parametreler32 {
             wq: k(&p.wq),
             bq: k(&p.bq),
             q_dokunus: k(&p.q_dokunus),
+            q_norm_olcek: k(&p.q_norm_olcek),
             wk: k(&p.wk),
             bk: k(&p.bk),
             k_dokunus: k(&p.k_dokunus),
+            k_norm_olcek: k(&p.k_norm_olcek),
             wv: k(&p.wv),
             bv: k(&p.bv),
             v_dokunus: k(&p.v_dokunus),
@@ -144,9 +150,11 @@ impl Parametreler32 {
             wq: k(&self.wq),
             bq: k(&self.bq),
             q_dokunus: k(&self.q_dokunus),
+            q_norm_olcek: k(&self.q_norm_olcek),
             wk: k(&self.wk),
             bk: k(&self.bk),
             k_dokunus: k(&self.k_dokunus),
+            k_norm_olcek: k(&self.k_norm_olcek),
             wv: k(&self.wv),
             bv: k(&self.bv),
             v_dokunus: k(&self.v_dokunus),
@@ -173,9 +181,11 @@ impl Parametreler32 {
             wq: vec![0.0; self.wq.len()],
             bq: vec![0.0; self.bq.len()],
             q_dokunus: vec![0.0; self.q_dokunus.len()],
+            q_norm_olcek: vec![0.0; self.q_norm_olcek.len()],
             wk: vec![0.0; self.wk.len()],
             bk: vec![0.0; self.bk.len()],
             k_dokunus: vec![0.0; self.k_dokunus.len()],
+            k_norm_olcek: vec![0.0; self.k_norm_olcek.len()],
             wv: vec![0.0; self.wv.len()],
             bv: vec![0.0; self.bv.len()],
             v_dokunus: vec![0.0; self.v_dokunus.len()],
@@ -200,6 +210,7 @@ impl Parametreler32 {
         let d = spec.d_model;
         let kv = spec.d_kv();
         let dok = spec.qkv_dokunus;
+        let qkn = usize::from(spec.qk_norm) * spec.d_k();
         let l = spec.n_layers;
         let f = spec.d_ff;
         self.embedding.len() == spec.vocab * d
@@ -208,9 +219,11 @@ impl Parametreler32 {
             && self.wq.len() == l * d * d
             && self.bq.len() == l * d
             && self.q_dokunus.len() == l * dok * d
+            && self.q_norm_olcek.len() == l * qkn
             && self.wk.len() == l * d * kv
             && self.bk.len() == l * kv
             && self.k_dokunus.len() == l * dok * kv
+            && self.k_norm_olcek.len() == l * qkn
             && self.wv.len() == l * d * kv
             && self.bv.len() == l * kv
             && self.v_dokunus.len() == l * dok * kv
@@ -277,6 +290,9 @@ struct KatmanBellek32 {
     q_ham: Vec<f32>,
     k_ham: Vec<f32>,
     v_ham: Vec<f32>,
+    /// QK-norm girdisi; `qk_norm == false` iken bos.
+    qn_girdi: Vec<f32>,
+    kn_girdi: Vec<f32>,
     agirlik: Vec<f32>,
     attn: Vec<f32>,
     kalinti1: Vec<f32>,
@@ -443,6 +459,22 @@ fn katman_ileri32(
     let (q, q_ham) = dokunus_ve_ham32(spec, q, l, &p.q_dokunus, d, t, kaynak);
     let (k, k_ham) = dokunus_ve_ham32(spec, k, l, &p.k_dokunus, kv, t, kaynak);
     let (v, v_ham) = dokunus_ve_ham32(spec, v, l, &p.v_dokunus, kv, t, kaynak);
+    // QK-norm, f64 cekirdekle ayni kural ve ayni toplama sirasiyla; norm
+    // kapaliyken hizli yol gecer (olcek dizileri bos).
+    let (q, qn_girdi) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let (q, girdi) = qk_norm_uygula32(spec, q, &p.q_norm_olcek[l * dks..(l + 1) * dks], d, t);
+        (q, Some(girdi))
+    } else {
+        (q, None)
+    };
+    let (k, kn_girdi) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let (k, girdi) = qk_norm_uygula32(spec, k, &p.k_norm_olcek[l * dks..(l + 1) * dks], kv, t);
+        (k, Some(girdi))
+    } else {
+        (k, None)
+    };
     let (attn, agirlik) = dikkat_ileri32(spec, &q, &k, &v, t, kaynak);
     let cikti = matmul32(
         &attn,
@@ -495,6 +527,8 @@ fn katman_ileri32(
             q_ham,
             k_ham,
             v_ham,
+            qn_girdi: qn_girdi.unwrap_or_default(),
+            kn_girdi: kn_girdi.unwrap_or_default(),
             agirlik,
             attn,
             kalinti1,
@@ -590,9 +624,31 @@ fn katman_geri32(
     }
     let (dq_attn, dk_attn, dv_attn) = dikkat_geri32(spec, &dattn, c, t, kaynak);
 
-    // Dokunus geri gecisi, f64 cekirdekle ayni sirayla.
+    // QK-norm geri gecisi, f64 cekirdekle ayni sirayla.
     let kv = spec.d_kv();
     let dok = spec.qkv_dokunus;
+    let (dq_attn, dk_attn) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let dq = qk_norm_geri32(
+            &dq_attn,
+            &c.qn_girdi,
+            &p.q_norm_olcek[l * dks..(l + 1) * dks],
+            &mut grad.q_norm_olcek[l * dks..(l + 1) * dks],
+            d,
+            t,
+        );
+        let dk = qk_norm_geri32(
+            &dk_attn,
+            &c.kn_girdi,
+            &p.k_norm_olcek[l * dks..(l + 1) * dks],
+            &mut grad.k_norm_olcek[l * dks..(l + 1) * dks],
+            kv,
+            t,
+        );
+        (dq, dk)
+    } else {
+        (dq_attn, dk_attn)
+    };
     let (dq, dk, dv) = if dok == 0 {
         (dq_attn, dk_attn, dv_attn)
     } else {
@@ -782,6 +838,72 @@ fn ln_geri32(
         }
     }
     (dx, dg, db)
+}
+
+/// [`crate::qk_norm_uygula`] dizisinin f32 ikizi.
+fn qk_norm_uygula32(
+    spec: crate::Spec,
+    x: Vec<f32>,
+    olcek: &[f32],
+    genislik: usize,
+    t: usize,
+) -> (Vec<f32>, Vec<f32>) {
+    if !spec.qk_norm {
+        return (x, Vec::new());
+    }
+    let dk = spec.d_k();
+    let kafa = genislik / dk;
+    let girdi = x;
+    let mut y = vec![0.0f32; t * genislik];
+    for i in 0..t {
+        for h in 0..kafa {
+            let dilim = &girdi[i * genislik + h * dk..i * genislik + (h + 1) * dk];
+            let mut toplam = 0.0f32;
+            for deger in dilim {
+                toplam += deger * deger;
+            }
+            let r = 1.0 / (toplam / (dk as f32) + crate::QK_NORM_EPS as f32).sqrt();
+            for m in 0..dk {
+                y[i * genislik + h * dk + m] = (1.0 + olcek[m]) * dilim[m] * r;
+            }
+        }
+    }
+    (y, girdi)
+}
+
+/// [`crate::qk_norm_geri`] dizisinin f32 ikizi.
+fn qk_norm_geri32(
+    dy: &[f32],
+    girdi: &[f32],
+    olcek: &[f32],
+    golcek: &mut [f32],
+    genislik: usize,
+    t: usize,
+) -> Vec<f32> {
+    let dk = golcek.len();
+    let kafa = genislik / dk;
+    let mut dx = vec![0.0f32; t * genislik];
+    for i in 0..t {
+        for h in 0..kafa {
+            let taban = i * genislik + h * dk;
+            let mut toplam = 0.0f32;
+            for m in 0..dk {
+                toplam += girdi[taban + m] * girdi[taban + m];
+            }
+            let r = 1.0 / (toplam / (dk as f32) + crate::QK_NORM_EPS as f32).sqrt();
+            let r3 = r * r * r;
+            let mut s = 0.0f32;
+            for m in 0..dk {
+                s += dy[taban + m] * (1.0 + olcek[m]) * girdi[taban + m];
+            }
+            for m in 0..dk {
+                let g = dy[taban + m] * (1.0 + olcek[m]);
+                dx[taban + m] = g * r - s * r3 * girdi[taban + m] / (dk as f32);
+                golcek[m] += dy[taban + m] * girdi[taban + m] * r;
+            }
+        }
+    }
+    dx
 }
 
 /// [`crate::dokunus_ve_ham`] dizisinin f32 ikizi: ayni maske kurali, ayni
@@ -1034,6 +1156,7 @@ mod testler {
             n_heads: 2,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 12,
             max_seq_len: 24,
         }
@@ -1193,6 +1316,56 @@ mod testler {
         }
     }
 
+    /// Capraz dogrulama, tum kombinasyon acikken (gruplu KV + dokunuslar +
+    /// QK-norm): f32, f64 ile ayni sayilari vermek zorunda.
+    #[test]
+    fn f32_qk_normlu_gradyani_f64_ile_uyusur() {
+        let spec = crate::Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        let p64 = crate::Parametreler::belirgin_doldur(spec, 7);
+        let p32 = Parametreler32::indir(&p64);
+        assert!(p32.sekil_dogru(spec));
+        let kayit: Vec<usize> = (0..16).map(|i| (i * 3 + 1) % spec.vocab).collect();
+        let (girdi, hedef) = girdi_hedef(&kayit);
+        let kaynak = vec![0u32; girdi.len()];
+
+        let (k64, g64) = crate::ileri_ve_geri_paket(spec, &p64, &girdi, &hedef, &kaynak);
+        let (k32, g32) = ileri_ve_geri_paket_32(spec, &p32, &girdi, &hedef, &kaynak);
+
+        assert!(
+            (k64 - f64::from(k32)).abs() < 1e-3,
+            "qk-normlu kayip ayristi: f64 {k64}, f32 {k32}"
+        );
+
+        let g32_f64 = g32.geri_f64();
+        for (ad, a, b) in [
+            ("embedding", &g64.embedding, &g32_f64.embedding),
+            ("wq", &g64.wq, &g32_f64.wq),
+            ("q_dokunus", &g64.q_dokunus, &g32_f64.q_dokunus),
+            ("q_norm_olcek", &g64.q_norm_olcek, &g32_f64.q_norm_olcek),
+            ("k_norm_olcek", &g64.k_norm_olcek, &g32_f64.k_norm_olcek),
+            ("wk", &g64.wk, &g32_f64.wk),
+            ("wo", &g64.wo, &g32_f64.wo),
+            ("w1", &g64.w1, &g32_f64.w1),
+            ("lnf_sapma", &g64.lnf_sapma, &g32_f64.lnf_sapma),
+        ] {
+            let en_buyuk = a.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+            let fark = a
+                .iter()
+                .zip(b.iter())
+                .fold(0.0f64, |m, (x, y)| m.max((x - y).abs()));
+            let oran = fark / en_buyuk.max(1e-6);
+            assert!(
+                oran < 2e-3,
+                "qk-normlu {ad}: f64 ile f32 ayristi, fark {fark}, buyukluk {en_buyuk}, oran {oran}"
+            );
+        }
+    }
+
     /// Same shape of check for the loss alone, over a window that forces the
     /// mask to matter (two records in one window).
     #[test]
@@ -1289,6 +1462,7 @@ mod testler {
             n_heads: 4,
             n_kv_heads: 4,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 512,
             max_seq_len: 128,
         };

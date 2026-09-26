@@ -683,6 +683,7 @@ mod tests {
             n_heads: 2,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 32,
             max_seq_len: 8,
         }
@@ -984,7 +985,7 @@ mod tests {
         let adlar: Vec<&str> = p.bloklar_adli().iter().map(|(a, _)| *a).collect();
         assert_eq!(adlar.len(), BLOK_ADLARI.len());
         assert_eq!(adlar, Parametreler::blok_adlari());
-        assert_eq!(p.bloklar().len(), 22);
+        assert_eq!(p.bloklar().len(), 24);
         let maske = p.sonum_maskesi();
         assert_eq!(maske.len(), p.toplam_ogeler());
         assert!(p.sekil_dogru(spec));

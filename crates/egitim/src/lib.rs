@@ -49,8 +49,17 @@ pub const GRADIENT_CHECK_TOLERANCE: f64 = 1e-6;
 /// 8.6e-5. So the check is relative where the gradient is resolvable and
 /// absolute where it is not, instead of reporting noise as a wrong gradient.
 pub const GRADIENT_CHECK_MUTLAK_TABAN: f64 = 1e-9;
+/// QK-norm olcek dizisinin katman basina uzunlugu: norm acikken `d_k`,
+/// kapaliyken sifir (varsayilan yol hic ayirma yapmaz).
+fn qkn(spec: Spec) -> usize {
+    usize::from(spec.qk_norm) * spec.d_k()
+}
+
 /// LayerNorm epsilon.
 pub const LN_EPS: f64 = 1e-5;
+/// QK-norm epsilon: kafa RMS'lerinin sifira yaklastigi yerde bolen patlar,
+/// referanstaki deger.
+pub const QK_NORM_EPS: f64 = 1e-6;
 
 /// The architecture, as the spec states it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +83,13 @@ pub struct Spec {
     /// that would read across a record boundary is masked to zero, the same
     /// rule attention obeys.
     pub qkv_dokunus: usize,
+    /// Per-head RMS normalisation of q and k, after the taps and before the
+    /// scores ("QK-norm"): each head vector is scaled to unit root-mean-square
+    /// and multiplied by `(1 + scale)`, the scale zero-initialised so the
+    /// norm starts as the plain normalisation. Off - the default - skips the
+    /// code entirely. Deep stacks keep training because q/k magnitudes stop
+    /// drifting; the cost is two `d_k`-wide scale vectors per layer.
+    pub qk_norm: bool,
     /// MLP inner width.
     pub d_ff: usize,
     /// Longest sequence the model is built for, as the spec states it.
@@ -102,6 +118,7 @@ impl Spec {
             n_heads: 2,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 256,
             max_seq_len: 256,
         }
@@ -155,7 +172,12 @@ impl Spec {
         let mlp = self.n_layers * (2 * d * self.d_ff + self.d_ff + d);
         let ln = self.n_layers * 4 * d + 2 * d;
         let dokunus = self.n_layers * self.qkv_dokunus * (d + 2 * kv);
-        embedding + dikkat + mlp + ln + dokunus
+        let qkn = if self.qk_norm {
+            self.n_layers * 2 * self.d_k()
+        } else {
+            0
+        };
+        embedding + dikkat + mlp + ln + dokunus + qkn
     }
 }
 
@@ -191,12 +213,17 @@ pub struct Parametreler {
     /// at zero (tap 0 is one, the rest zero) so the convolution starts as a
     /// no-op the run has to earn its way out of.
     pub q_dokunus: Vec<f64>,
+    /// Per layer: QK-norm query scale, `[n_layers * d_k]`, zero-initialised -
+    /// the norm multiplies by `(1 + scale)`, so zero is the plain norm.
+    pub q_norm_olcek: Vec<f64>,
     /// Per layer: key weights, `[n_layers * d_model * d_kv]`.
     pub wk: Vec<f64>,
     /// Per layer: key biases, `[n_layers * d_kv]`.
     pub bk: Vec<f64>,
     /// Per layer: key taps, `[n_layers * qkv_dokunus * d_kv]`.
     pub k_dokunus: Vec<f64>,
+    /// Per layer: QK-norm key scale, `[n_layers * d_k]`, zero-initialised.
+    pub k_norm_olcek: Vec<f64>,
     /// Per layer: value weights, `[n_layers * d_model * d_kv]`.
     pub wv: Vec<f64>,
     /// Per layer: value biases, `[n_layers * d_kv]`.
@@ -236,9 +263,11 @@ impl Parametreler {
             wq: vec![0.0; self.wq.len()],
             bq: vec![0.0; self.bq.len()],
             q_dokunus: vec![0.0; self.q_dokunus.len()],
+            q_norm_olcek: vec![0.0; self.q_norm_olcek.len()],
             wk: vec![0.0; self.wk.len()],
             bk: vec![0.0; self.bk.len()],
             k_dokunus: vec![0.0; self.k_dokunus.len()],
+            k_norm_olcek: vec![0.0; self.k_norm_olcek.len()],
             wv: vec![0.0; self.wv.len()],
             bv: vec![0.0; self.bv.len()],
             v_dokunus: vec![0.0; self.v_dokunus.len()],
@@ -283,11 +312,13 @@ impl Parametreler {
             // denetiminin gercek (kimlik olmayan) dokunus degerleriyle
             // kosmasi gerekir.
             q_dokunus: (0..katman * dokunus * d).map(|_| sonraki() * 0.1).collect(),
+            q_norm_olcek: (0..katman * qkn(spec)).map(|_| sonraki() * 0.1).collect(),
             wk: (0..katman * d * kv).map(|_| sonraki() * 0.1).collect(),
             bk: vec![0.0; katman * kv],
             k_dokunus: (0..katman * dokunus * kv)
                 .map(|_| sonraki() * 0.1)
                 .collect(),
+            k_norm_olcek: (0..katman * qkn(spec)).map(|_| sonraki() * 0.1).collect(),
             wv: (0..katman * d * kv).map(|_| sonraki() * 0.1).collect(),
             bv: vec![0.0; katman * kv],
             v_dokunus: (0..katman * dokunus * kv)
@@ -447,6 +478,10 @@ struct KatmanBellek {
     q_ham: Vec<f64>,
     k_ham: Vec<f64>,
     v_ham: Vec<f64>,
+    /// QK-norm girdisi (dokunus cikisi): normun geri gecisi bunlarla
+    /// yazilabilir. `qk_norm == false` iken bos.
+    qn_girdi: Vec<f64>,
+    kn_girdi: Vec<f64>,
     agirlik: Vec<f64>,
     attn: Vec<f64>,
     kalinti1: Vec<f64>,
@@ -507,6 +542,23 @@ fn katman_ileri(
     let (q, q_ham) = dokunus_ve_ham(spec, q, l, &p.q_dokunus, d, t, kaynak);
     let (k, k_ham) = dokunus_ve_ham(spec, k, l, &p.k_dokunus, kv, t, kaynak);
     let (v, v_ham) = dokunus_ve_ham(spec, v, l, &p.v_dokunus, kv, t, kaynak);
+    // QK-norm: dokunus cikisindaki her kafa vektoru birim RMS'ye cekilir ve
+    // (1 + olcek) ile carpilir. qk_norm == false iken hizli yol gecer ve
+    // olcek dizileri bos oldugundan dilim de alinmaz.
+    let (q, qn_girdi) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let (q, girdi) = qk_norm_uygula(spec, q, &p.q_norm_olcek[l * dks..(l + 1) * dks], d, t);
+        (q, Some(girdi))
+    } else {
+        (q, None)
+    };
+    let (k, kn_girdi) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let (k, girdi) = qk_norm_uygula(spec, k, &p.k_norm_olcek[l * dks..(l + 1) * dks], kv, t);
+        (k, Some(girdi))
+    } else {
+        (k, None)
+    };
     let (attn, agirlik) = dikkat_ileri(spec, &q, &k, &v, t, kaynak);
     let cikti = matmul(
         &attn,
@@ -559,6 +611,8 @@ fn katman_ileri(
             q_ham,
             k_ham,
             v_ham,
+            qn_girdi: qn_girdi.unwrap_or_default(),
+            kn_girdi: kn_girdi.unwrap_or_default(),
             agirlik,
             attn,
             kalinti1,
@@ -654,10 +708,31 @@ fn katman_geri(
     }
     let (dq_attn, dk_attn, dv_attn) = dikkat_geri(spec, &dattn, c, t, kaynak);
 
-    // Dokunus geri gecisi: dikkatten gelen gradyanlar konvolusyon cikisina
-    // aittir; hamlara tasinir, dokunuslarin kendi gradyani burada birikir.
+    // QK-norm geri gecisi: dikkatten gelen q/k gradyanlari norm cikisina
+    // aittir; norm girdisine tasinir, olcek gradyanlari burada birikir.
     let kv = spec.d_kv();
     let dok = spec.qkv_dokunus;
+    let (dq_attn, dk_attn) = if spec.qk_norm {
+        let dq = qk_norm_geri(
+            &dq_attn,
+            &c.qn_girdi,
+            &p.q_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            &mut grad.q_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            d,
+            t,
+        );
+        let dk = qk_norm_geri(
+            &dk_attn,
+            &c.kn_girdi,
+            &p.k_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            &mut grad.k_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            kv,
+            t,
+        );
+        (dq, dk)
+    } else {
+        (dq_attn, dk_attn)
+    };
     let (dq, dk, dv) = if dok == 0 {
         (dq_attn, dk_attn, dv_attn)
     } else {
@@ -848,6 +923,85 @@ fn layer_norm_geri(
         }
     }
     (dx, dg, db)
+}
+
+/// Kafa basina RMS normalizasyonu (QK-norm), dokunus ile skor arasinda.
+///
+/// Her `(konum, kafa)` cifti kendi `d_k` genisligindeki dilimi birim
+/// karekök-ortalama kare (RMS) degerine cekilir ve `(1 + olcek[m])` ile
+/// carpilir: `y = (1 + s) * x / rms(x)`; buradaki olcek sifirla baslar, yani sifir
+/// olcek saf norm demektir - carpim `(1 + 0) = 1`'dir. Derin kulelerde q/k
+/// buyukluklerinin kaymasini durdurur; skorlarin olcegi boylece kafadan
+/// kafaya sabit kalir.
+///
+/// `qk_norm == false` iken girdi oldugu gibi doner ve girdi kopyasi
+/// ayrilmaz: varsayilan yol hicbir ek ayirma yapmaz.
+fn qk_norm_uygula(
+    spec: Spec,
+    x: Vec<f64>,
+    olcek: &[f64],
+    genislik: usize,
+    t: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    if !spec.qk_norm {
+        return (x, Vec::new());
+    }
+    let dk = spec.d_k();
+    let kafa = genislik / dk;
+    let girdi = x;
+    let mut y = vec![0.0f64; t * genislik];
+    for i in 0..t {
+        for h in 0..kafa {
+            let dilim = &girdi[i * genislik + h * dk..i * genislik + (h + 1) * dk];
+            let mut toplam = 0.0;
+            for deger in dilim {
+                toplam += deger * deger;
+            }
+            let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+            for m in 0..dk {
+                y[i * genislik + h * dk + m] = (1.0 + olcek[m]) * dilim[m] * r;
+            }
+        }
+    }
+    (y, girdi)
+}
+
+/// [`qk_norm_uygula`] dizisinin geri gecisi: dikkatten gelen `dy` (norm
+/// cikisina gore) norm girdisine tasinir ve olcek gradyanlari `golcek`'e
+/// eklenir. Turev: `y_m = (1+s_m) x_m r`, `r = (mean(x^2)+eps)^{-1/2}`
+/// ile `dx_j = g_j r - (sum_m g_m x_m) r^3 x_j / dk`, `ds_m += dy_m x_m r`.
+fn qk_norm_geri(
+    dy: &[f64],
+    girdi: &[f64],
+    olcek: &[f64],
+    golcek: &mut [f64],
+    genislik: usize,
+    t: usize,
+) -> Vec<f64> {
+    let dk = golcek.len();
+    let kafa = genislik / dk;
+    let mut dx = vec![0.0f64; t * genislik];
+    for i in 0..t {
+        for h in 0..kafa {
+            let taban = i * genislik + h * dk;
+            let mut toplam = 0.0;
+            for m in 0..dk {
+                toplam += girdi[taban + m] * girdi[taban + m];
+            }
+            let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+            let r3 = r * r * r;
+            let mut s = 0.0;
+            for m in 0..dk {
+                s += dy[taban + m] * (1.0 + olcek[m]) * girdi[taban + m];
+            }
+            for m in 0..dk {
+                let g = dy[taban + m] * (1.0 + olcek[m]);
+                dx[taban + m] = g * r - s * r3 * girdi[taban + m] / (dk as f64);
+                golcek[m] += dy[taban + m] * girdi[taban + m] * r;
+            }
+        }
+    }
+    dx
 }
 
 /// Bir projeksiyon cikisinin nedensel dokunuslu kopyasi ve geri gecis icin
@@ -1452,16 +1606,18 @@ pub const INIT_STD_EMBEDDING: f64 = 1.0;
 /// match on both sides), the weight-decay mask (which tensors are decayed), and
 /// the shape check. Three copies of this list would be three chances to
 /// disagree about what "the model" is.
-pub const BLOK_ADLARI: [&str; 22] = [
+pub const BLOK_ADLARI: [&str; 24] = [
     "embedding",
     "ln1_olcek",
     "ln1_sapma",
     "wq",
     "bq",
     "q_dokunus",
+    "q_norm_olcek",
     "wk",
     "bk",
     "k_dokunus",
+    "k_norm_olcek",
     "wv",
     "bv",
     "v_dokunus",
@@ -1533,9 +1689,13 @@ impl Parametreler {
             // bir model yine de "dikkat alir"; konvolusyon, egitim onunda
             // davranisi degistirmeyen bir secenek olmali.
             q_dokunus: kimlik_dokunus(katman, spec.qkv_dokunus, d),
+            // QK-norm olcekleri sifir: norm (1 + s) ile carpar, sifir saf
+            // norm demektir - sifir bir model yine de birim olcekle baslar.
+            q_norm_olcek: vec![0.0; katman * qkn(spec)],
             wk: vec![0.0; katman * d * kv],
             bk: vec![0.0; katman * kv],
             k_dokunus: kimlik_dokunus(katman, spec.qkv_dokunus, kv),
+            k_norm_olcek: vec![0.0; katman * qkn(spec)],
             wv: vec![0.0; katman * d * kv],
             bv: vec![0.0; katman * kv],
             v_dokunus: kimlik_dokunus(katman, spec.qkv_dokunus, kv),
@@ -1585,7 +1745,7 @@ impl Parametreler {
 
     /// The blocks in the format's order.
     #[must_use]
-    pub fn bloklar(&self) -> [&[f64]; 22] {
+    pub fn bloklar(&self) -> [&[f64]; 24] {
         [
             &self.embedding,
             &self.ln1_olcek,
@@ -1593,9 +1753,11 @@ impl Parametreler {
             &self.wq,
             &self.bq,
             &self.q_dokunus,
+            &self.q_norm_olcek,
             &self.wk,
             &self.bk,
             &self.k_dokunus,
+            &self.k_norm_olcek,
             &self.wv,
             &self.bv,
             &self.v_dokunus,
@@ -1614,7 +1776,7 @@ impl Parametreler {
 
     /// The blocks, mutable, in the same order.
     #[must_use]
-    pub fn bloklar_mut(&mut self) -> [&mut [f64]; 22] {
+    pub fn bloklar_mut(&mut self) -> [&mut [f64]; 24] {
         [
             &mut self.embedding,
             &mut self.ln1_olcek,
@@ -1622,9 +1784,11 @@ impl Parametreler {
             &mut self.wq,
             &mut self.bq,
             &mut self.q_dokunus,
+            &mut self.q_norm_olcek,
             &mut self.wk,
             &mut self.bk,
             &mut self.k_dokunus,
+            &mut self.k_norm_olcek,
             &mut self.wv,
             &mut self.bv,
             &mut self.v_dokunus,
@@ -1680,6 +1844,7 @@ impl Parametreler {
         let d = spec.d_model;
         let kv = spec.d_kv();
         let dokunus = spec.qkv_dokunus;
+        let qkn = qkn(spec);
         let katman = spec.n_layers;
         self.embedding.len() == spec.vocab * d
             && self.ln1_olcek.len() == katman * d
@@ -1687,9 +1852,11 @@ impl Parametreler {
             && self.wq.len() == katman * d * d
             && self.bq.len() == katman * d
             && self.q_dokunus.len() == katman * dokunus * d
+            && self.q_norm_olcek.len() == katman * qkn
             && self.wk.len() == katman * d * kv
             && self.bk.len() == katman * kv
             && self.k_dokunus.len() == katman * dokunus * kv
+            && self.k_norm_olcek.len() == katman * qkn
             && self.wv.len() == katman * d * kv
             && self.bv.len() == katman * kv
             && self.v_dokunus.len() == katman * dokunus * kv
@@ -2025,6 +2192,7 @@ mod tests {
             n_heads: 2,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 6,
             max_seq_len: 16,
         }
@@ -2037,8 +2205,10 @@ mod tests {
             ("embedding", p.embedding.clone()),
             ("wq", p.wq.clone()),
             ("q_dokunus", p.q_dokunus.clone()),
+            ("q_norm_olcek", p.q_norm_olcek.clone()),
             ("wk", p.wk.clone()),
             ("k_dokunus", p.k_dokunus.clone()),
+            ("k_norm_olcek", p.k_norm_olcek.clone()),
             ("wv", p.wv.clone()),
             ("v_dokunus", p.v_dokunus.clone()),
             ("wo", p.wo.clone()),
@@ -2066,8 +2236,10 @@ mod tests {
             "embedding" => &mut p.embedding,
             "wq" => &mut p.wq,
             "q_dokunus" => &mut p.q_dokunus,
+            "q_norm_olcek" => &mut p.q_norm_olcek,
             "wk" => &mut p.wk,
             "k_dokunus" => &mut p.k_dokunus,
+            "k_norm_olcek" => &mut p.k_norm_olcek,
             "wv" => &mut p.wv,
             "v_dokunus" => &mut p.v_dokunus,
             "wo" => &mut p.wo,
@@ -2180,6 +2352,7 @@ mod tests {
             n_heads: 4,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 8,
             max_seq_len: 8,
         };
@@ -2284,6 +2457,61 @@ mod tests {
             (kayip_paket - beklenen).abs() < 1e-12,
             "dokunuslu paketli kayip {kayip_paket:.12} ama parcalar {beklenen:.12}: dokunus siniri asiyor"
         );
+    }
+
+    /// Tam kombinasyon gradyan denetimi: gruplu KV + dokunuslar + QK-norm
+    /// ayni spec'te. Her mekanizma ayri ayri olculdu; birlikte kosmak, ara
+    /// yuzlerin (norm <-> konvolusyon <-> dikkat) turevlerini de yakalar.
+    #[test]
+    fn qk_normlu_gradyanlar_sonlu_farklarla_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        gradients_match_finite_differences(spec).unwrap();
+    }
+
+    /// QK-norm acikken her kafa diliminin RMS'i bire esit olmali (olcek
+    /// sifir iken carpim birdir) ve olcek degisince cikti ayni oranda
+    /// degismeli: normun ne yaptigi, neyi iddia ettigiyle ayni mi?
+    #[test]
+    fn qk_norm_kafa_rms_bir_yapar_ve_olcek_isler() {
+        let spec = Spec {
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        let t = 5;
+        let x: Vec<f64> = (0..t * spec.d_model)
+            .map(|i| ((i * 7) as f64 * 0.31 - 2.0))
+            .collect();
+        let p = Parametreler::sifir(spec); // olcekler sifir
+        let dk = spec.d_k();
+        let (y, girdi) = qk_norm_uygula(spec, x.clone(), &p.q_norm_olcek[..dk], spec.d_model, t);
+        assert_eq!(girdi, x, "norm girdisi korunmali");
+        for i in 0..t {
+            for h in 0..spec.n_heads {
+                let mut toplam = 0.0;
+                for m in 0..dk {
+                    let v = y[i * spec.d_model + h * dk + m];
+                    toplam += v * v;
+                }
+                let rms = (toplam / (dk as f64)).sqrt();
+                // eps=1e-6 boleni Buyuktur ortalama kare oldugundan rms
+                // bire "yaklasir": sapma ~ eps / (2 * ortalama_kare).
+                assert!(
+                    (rms - 1.0).abs() < QK_NORM_EPS,
+                    "konum {i} kafa {h}: rms {rms}, bire yeterince yakin degil"
+                );
+            }
+        }
+        // Katmani isle: ayni girdi, olcek 1.0 -> cikti (1+1)/1 = 2 kat.
+        let olcek: Vec<f64> = vec![1.0; dk];
+        let (y2, _) = qk_norm_uygula(spec, x, &olcek, spec.d_model, t);
+        for (a, b) in y.iter().zip(y2.iter()) {
+            assert!((b - 2.0 * a).abs() < 1e-12, "olcek carpani islemedi");
+        }
     }
 
     /// GQA spec'inde parametre muhasebesi: dikkat artik 2d^2 (q, o) + 2dkv
