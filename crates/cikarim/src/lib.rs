@@ -124,8 +124,13 @@ pub struct Cikarim {
 /// Per-layer keys and values for the positions read so far.
 #[derive(Debug, Clone)]
 struct Onbellek {
+    /// Konvolusyon oncesi (ham) k degerleri, konum konum.
     k: Vec<Vec<f64>>,
+    /// Konvolusyon oncesi (ham) v degerleri.
     v: Vec<Vec<f64>>,
+    /// Ham q halkasi: yalniz son `qkv_dokunus` konumun ham q'su tutulur,
+    /// dokunuslu q ancak o kadar gecmise bakar.
+    q_ham: Vec<Vec<f64>>,
     uzunluk: usize,
 }
 
@@ -134,6 +139,7 @@ impl Onbellek {
         Self {
             k: vec![Vec::new(); spec.n_layers],
             v: vec![Vec::new(); spec.n_layers],
+            q_ham: vec![Vec::new(); spec.n_layers],
             uzunluk: 0,
         }
     }
@@ -452,8 +458,20 @@ impl Cikarim {
                 d,
                 kv,
             );
+            // Onbellek ham degerleri tutar: dokunuslu k/v, okuma aninda
+            // hamlardan kurulur (asagida dikkat_konum). Ham q icin yalniz
+            // son qkv_dokunus konum gerekir - halka.
             onbellek.k[katman].extend_from_slice(&k);
             onbellek.v[katman].extend_from_slice(&v);
+            let dok = self.spec.qkv_dokunus;
+            let q = if dok == 0 {
+                q
+            } else {
+                onbellek.q_ham[katman].extend_from_slice(&q);
+                let fazlalik = onbellek.q_ham[katman].len().saturating_sub(dok * d);
+                onbellek.q_ham[katman].drain(..fazlalik);
+                self.dokunuslu_q(&onbellek.q_ham[katman], katman)
+            };
             let attn = self.dikkat_konum(&q, katman, onbellek, dk);
             let cikti = self.matmul_katman(
                 &attn,
@@ -496,6 +514,44 @@ impl Cikarim {
         Ok(lnf)
     }
 
+    /// Ham k/v ogelerinden dokunuslu k/v: `y[p][c] = sum_j t[j][c] *
+    /// ham[p-j][c]`, j sirasi egitim cekirdegiyle ayni (artan). Dizinin
+    /// basindan onceye bakmak sifir dolgudur: katki sifir.
+    fn dokunuslu_kv(&self, ham: &[f64], dokunus: &[f64], genislik: usize, t: usize) -> Vec<f64> {
+        let mut y = vec![0.0f64; t * genislik];
+        for p in 0..t {
+            for (j, satir) in dokunus.chunks_exact(genislik).enumerate() {
+                if j > p {
+                    continue;
+                }
+                for c in 0..genislik {
+                    y[p * genislik + c] += satir[c] * ham[(p - j) * genislik + c];
+                }
+            }
+        }
+        y
+    }
+
+    /// Halkadaki (son konumlarin) ham q degerlerinden guncel konumun
+    /// dokunuslu q'su. Halkanin basindan onceye bakmak sifir dolgudur.
+    fn dokunuslu_q(&self, halka: &[f64], katman: usize) -> Vec<f64> {
+        let d = self.spec.d_model;
+        let n = self.spec.qkv_dokunus;
+        let dokunus = &self.parametreler.q_dokunus[katman * n * d..(katman + 1) * n * d];
+        let mut y = vec![0.0f64; d];
+        for (j, satir) in dokunus.chunks_exact(d).enumerate() {
+            let konum = halka.len() as isize - (j as isize + 1) * d as isize;
+            if konum < 0 {
+                continue;
+            }
+            let konum = konum as usize;
+            for c in 0..d {
+                y[c] += satir[c] * halka[konum + c];
+            }
+        }
+        y
+    }
+
     /// Attention for the newest position over everything the cache holds.
     ///
     /// Causal by construction: the cache only ever contains positions up to and
@@ -509,8 +565,22 @@ impl Cikarim {
         let kvd = self.spec.d_kv();
         let grup = h / self.spec.n_kv_heads;
         let t = onbellek.uzunluk + 1; // guncel konum dahil
-        let k = &onbellek.k[katman];
-        let v = &onbellek.v[katman];
+                                      // Dokunuslu k/v: qkv_dokunus == 0 iken hamlar oldugu gibi okunur
+                                      // (kopya yok); acikken konvolusyon hamlardan kurulur - egitim
+                                      // cekirdeginin dokunus_ve_ham'i ile ayni j sirasiyla.
+        let n = self.spec.qkv_dokunus;
+        let k: std::borrow::Cow<[f64]> = if n == 0 {
+            std::borrow::Cow::Borrowed(&onbellek.k[katman])
+        } else {
+            let dokunus = &self.parametreler.k_dokunus[katman * n * kvd..(katman + 1) * n * kvd];
+            std::borrow::Cow::Owned(self.dokunuslu_kv(&onbellek.k[katman], dokunus, kvd, t))
+        };
+        let v: std::borrow::Cow<[f64]> = if n == 0 {
+            std::borrow::Cow::Borrowed(&onbellek.v[katman])
+        } else {
+            let dokunus = &self.parametreler.v_dokunus[katman * n * kvd..(katman + 1) * n * kvd];
+            std::borrow::Cow::Owned(self.dokunuslu_kv(&onbellek.v[katman], dokunus, kvd, t))
+        };
         let olcek = 1.0 / (dk as f64).sqrt();
         let mut cikti = vec![0.0f64; d];
         for head in 0..h {
@@ -732,6 +802,7 @@ mod tests {
             n_layers: 2,
             n_heads: 2,
             n_kv_heads: 2,
+            qkv_dokunus: 0,
             d_ff: 16,
             max_seq_len: 16,
         }
@@ -818,6 +889,30 @@ mod tests {
         assert!(
             rapor.en_buyuk_fark_egitim < 1e-12,
             "paylasimli dikkatte egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
+            rapor.en_buyuk_fark_egitim,
+            rapor.onbellekli,
+            rapor.tam_gecis,
+            rapor.egitim_cekirdegi
+        );
+    }
+
+    /// Ayni ucuncu gorus, dokunuslu ve paylasimli spec'te (3 tap, 2:1 grup):
+    /// cikarim yolu, egitim cekirdeginin dokunuslu yoluyla ayni sayiyi
+    /// vermeli - onbellekteki halka ve anlik konvolusyon, egitimin tek
+    /// gecisindeki konvolusyonla ayni degerleri uretmeli.
+    #[test]
+    fn dokunuslu_spec_cikarim_egitim_gecisine_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            ..kucuk_spec()
+        };
+        spec.dogrula().expect("dokunuslu spec");
+        let c = cikarim(spec, 11);
+        let rapor = c.onbellek_denetimi(&dizi(12)).expect("measurement");
+        assert!(
+            rapor.en_buyuk_fark_egitim < 1e-12,
+            "dokunuslu spec'te egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
             rapor.en_buyuk_fark_egitim,
             rapor.onbellekli,
             rapor.tam_gecis,

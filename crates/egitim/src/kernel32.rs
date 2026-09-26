@@ -61,14 +61,20 @@ pub struct Parametreler32 {
     pub wq: Vec<f32>,
     /// Per layer: query biases.
     pub bq: Vec<f32>,
+    /// Per layer: query taps, `[n_layers * qkv_dokunus * d_model]`.
+    pub q_dokunus: Vec<f32>,
     /// Per layer: key weights.
     pub wk: Vec<f32>,
     /// Per layer: key biases.
     pub bk: Vec<f32>,
+    /// Per layer: key taps, `[n_layers * qkv_dokunus * d_kv]`.
+    pub k_dokunus: Vec<f32>,
     /// Per layer: value weights.
     pub wv: Vec<f32>,
     /// Per layer: value biases.
     pub bv: Vec<f32>,
+    /// Per layer: value taps, `[n_layers * qkv_dokunus * d_kv]`.
+    pub v_dokunus: Vec<f32>,
     /// Per layer: output projection weights.
     pub wo: Vec<f32>,
     /// Per layer: output projection biases.
@@ -104,10 +110,13 @@ impl Parametreler32 {
             ln1_sapma: k(&p.ln1_sapma),
             wq: k(&p.wq),
             bq: k(&p.bq),
+            q_dokunus: k(&p.q_dokunus),
             wk: k(&p.wk),
             bk: k(&p.bk),
+            k_dokunus: k(&p.k_dokunus),
             wv: k(&p.wv),
             bv: k(&p.bv),
+            v_dokunus: k(&p.v_dokunus),
             wo: k(&p.wo),
             bo: k(&p.bo),
             ln2_olcek: k(&p.ln2_olcek),
@@ -134,10 +143,13 @@ impl Parametreler32 {
             ln1_sapma: k(&self.ln1_sapma),
             wq: k(&self.wq),
             bq: k(&self.bq),
+            q_dokunus: k(&self.q_dokunus),
             wk: k(&self.wk),
             bk: k(&self.bk),
+            k_dokunus: k(&self.k_dokunus),
             wv: k(&self.wv),
             bv: k(&self.bv),
+            v_dokunus: k(&self.v_dokunus),
             wo: k(&self.wo),
             bo: k(&self.bo),
             ln2_olcek: k(&self.ln2_olcek),
@@ -160,10 +172,13 @@ impl Parametreler32 {
             ln1_sapma: vec![0.0; self.ln1_sapma.len()],
             wq: vec![0.0; self.wq.len()],
             bq: vec![0.0; self.bq.len()],
+            q_dokunus: vec![0.0; self.q_dokunus.len()],
             wk: vec![0.0; self.wk.len()],
             bk: vec![0.0; self.bk.len()],
+            k_dokunus: vec![0.0; self.k_dokunus.len()],
             wv: vec![0.0; self.wv.len()],
             bv: vec![0.0; self.bv.len()],
+            v_dokunus: vec![0.0; self.v_dokunus.len()],
             wo: vec![0.0; self.wo.len()],
             bo: vec![0.0; self.bo.len()],
             ln2_olcek: vec![0.0; self.ln2_olcek.len()],
@@ -184,6 +199,7 @@ impl Parametreler32 {
     pub fn sekil_dogru(&self, spec: crate::Spec) -> bool {
         let d = spec.d_model;
         let kv = spec.d_kv();
+        let dok = spec.qkv_dokunus;
         let l = spec.n_layers;
         let f = spec.d_ff;
         self.embedding.len() == spec.vocab * d
@@ -191,10 +207,13 @@ impl Parametreler32 {
             && self.ln1_sapma.len() == l * d
             && self.wq.len() == l * d * d
             && self.bq.len() == l * d
+            && self.q_dokunus.len() == l * dok * d
             && self.wk.len() == l * d * kv
             && self.bk.len() == l * kv
+            && self.k_dokunus.len() == l * dok * kv
             && self.wv.len() == l * d * kv
             && self.bv.len() == l * kv
+            && self.v_dokunus.len() == l * dok * kv
             && self.wo.len() == l * d * d
             && self.bo.len() == l * d
             && self.ln2_olcek.len() == l * d
@@ -254,6 +273,10 @@ struct KatmanBellek32 {
     q: Vec<f32>,
     k: Vec<f32>,
     v: Vec<f32>,
+    /// Konvolusyon oncesi (ham) q/k/v; `qkv_dokunus == 0` iken bos.
+    q_ham: Vec<f32>,
+    k_ham: Vec<f32>,
+    v_ham: Vec<f32>,
     agirlik: Vec<f32>,
     attn: Vec<f32>,
     kalinti1: Vec<f32>,
@@ -415,6 +438,11 @@ fn katman_ileri32(
         kv,
         t,
     );
+    // Nedensel dokunuslar, f64 cekirdekle ayni kural ve ayni toplama
+    // sirasiyla: qkv_dokunus == 0 iken hizli yol hicbir sey yapmaz.
+    let (q, q_ham) = dokunus_ve_ham32(spec, q, l, &p.q_dokunus, d, t, kaynak);
+    let (k, k_ham) = dokunus_ve_ham32(spec, k, l, &p.k_dokunus, kv, t, kaynak);
+    let (v, v_ham) = dokunus_ve_ham32(spec, v, l, &p.v_dokunus, kv, t, kaynak);
     let (attn, agirlik) = dikkat_ileri32(spec, &q, &k, &v, t, kaynak);
     let cikti = matmul32(
         &attn,
@@ -464,6 +492,9 @@ fn katman_ileri32(
             q,
             k,
             v,
+            q_ham,
+            k_ham,
+            v_ham,
             agirlik,
             attn,
             kalinti1,
@@ -557,10 +588,45 @@ fn katman_geri32(
             }
         }
     }
-    let (dq, dk, dv) = dikkat_geri32(spec, &dattn, c, t, kaynak);
+    let (dq_attn, dk_attn, dv_attn) = dikkat_geri32(spec, &dattn, c, t, kaynak);
+
+    // Dokunus geri gecisi, f64 cekirdekle ayni sirayla.
+    let kv = spec.d_kv();
+    let dok = spec.qkv_dokunus;
+    let (dq, dk, dv) = if dok == 0 {
+        (dq_attn, dk_attn, dv_attn)
+    } else {
+        let dq = dokunus_geri32(
+            &dq_attn,
+            &c.q_ham,
+            &p.q_dokunus[l * dok * d..(l + 1) * dok * d],
+            &mut grad.q_dokunus[l * dok * d..(l + 1) * dok * d],
+            d,
+            t,
+            kaynak,
+        );
+        let dk = dokunus_geri32(
+            &dk_attn,
+            &c.k_ham,
+            &p.k_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            &mut grad.k_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            kv,
+            t,
+            kaynak,
+        );
+        let dv = dokunus_geri32(
+            &dv_attn,
+            &c.v_ham,
+            &p.v_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            &mut grad.v_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            kv,
+            t,
+            kaynak,
+        );
+        (dq, dk, dv)
+    };
 
     // Q/K/V projections: K ve V gradyanlari KV genisliginde.
-    let kv = spec.d_kv();
     let dln1 = matmul_t32(&dq, &p.wq[l * d * d..(l + 1) * d * d], d, d, t);
     let dk_katkisi = matmul_t32(&dk, &p.wk[l * d * kv..(l + 1) * d * kv], d, kv, t);
     let dv_katkisi = matmul_t32(&dv, &p.wv[l * d * kv..(l + 1) * d * kv], d, kv, t);
@@ -716,6 +782,64 @@ fn ln_geri32(
         }
     }
     (dx, dg, db)
+}
+
+/// [`crate::dokunus_ve_ham`] dizisinin f32 ikizi: ayni maske kurali, ayni
+/// toplama sirasi, yarim genislik.
+fn dokunus_ve_ham32(
+    spec: crate::Spec,
+    x: Vec<f32>,
+    l: usize,
+    dokunus: &[f32],
+    genislik: usize,
+    t: usize,
+    kaynak: &[u32],
+) -> (Vec<f32>, Vec<f32>) {
+    let n = spec.qkv_dokunus;
+    if n == 0 {
+        return (x, Vec::new());
+    }
+    let ham = x;
+    let mut y = vec![0.0f32; t * genislik];
+    for i in 0..t {
+        for j in 0..n {
+            if j > 0 && (i < j || kaynak[i - j] != kaynak[i]) {
+                continue;
+            }
+            for c in 0..genislik {
+                y[i * genislik + c] +=
+                    dokunus[l * n * genislik + j * genislik + c] * ham[(i - j) * genislik + c];
+            }
+        }
+    }
+    (y, ham)
+}
+
+/// [`crate::dokunus_geri`] dizisinin f32 ikizi.
+fn dokunus_geri32(
+    dy: &[f32],
+    ham: &[f32],
+    dokunus: &[f32],
+    gdok: &mut [f32],
+    genislik: usize,
+    t: usize,
+    kaynak: &[u32],
+) -> Vec<f32> {
+    let n = dokunus.len() / genislik;
+    let mut dx = vec![0.0f32; t * genislik];
+    for i in 0..t {
+        for j in 0..n {
+            if j > 0 && (i < j || kaynak[i - j] != kaynak[i]) {
+                continue;
+            }
+            for c in 0..genislik {
+                let d = dy[i * genislik + c];
+                gdok[j * genislik + c] += d * ham[(i - j) * genislik + c];
+                dx[(i - j) * genislik + c] += d * dokunus[j * genislik + c];
+            }
+        }
+    }
+    dx
 }
 
 /// Causal grouped-query attention forward, the f32 twin of [`crate::dikkat_ileri`]
@@ -909,6 +1033,7 @@ mod testler {
             n_layers: 2,
             n_heads: 2,
             n_kv_heads: 2,
+            qkv_dokunus: 0,
             d_ff: 12,
             max_seq_len: 24,
         }
@@ -1017,6 +1142,57 @@ mod testler {
         }
     }
 
+    /// Ayni capraz dogrulama, dokunuslu ve paylasimli spec'te (3 tap, 2:1
+    /// grup): f32'in varlik sebebi f64 ile ayni sayilari vermek ise, konvol-
+    /// usyon ve paylasim acikken de vermek zorunda.
+    #[test]
+    fn f32_dokunuslu_gradyani_f64_ile_uyusur() {
+        let spec = crate::Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            ..kucuk_spec()
+        };
+        let p64 = crate::Parametreler::belirgin_doldur(spec, 7);
+        let p32 = Parametreler32::indir(&p64);
+        assert!(p32.sekil_dogru(spec));
+        let kayit: Vec<usize> = (0..16).map(|i| (i * 3 + 1) % spec.vocab).collect();
+        let (girdi, hedef) = girdi_hedef(&kayit);
+        let kaynak = vec![0u32; girdi.len()];
+
+        let (k64, g64) = crate::ileri_ve_geri_paket(spec, &p64, &girdi, &hedef, &kaynak);
+        let (k32, g32) = ileri_ve_geri_paket_32(spec, &p32, &girdi, &hedef, &kaynak);
+
+        assert!(
+            (k64 - f64::from(k32)).abs() < 1e-3,
+            "dokunuslu kayip ayristi: f64 {k64}, f32 {k32}"
+        );
+
+        let g32_f64 = g32.geri_f64();
+        for (ad, a, b) in [
+            ("embedding", &g64.embedding, &g32_f64.embedding),
+            ("wq", &g64.wq, &g32_f64.wq),
+            ("q_dokunus", &g64.q_dokunus, &g32_f64.q_dokunus),
+            ("wk", &g64.wk, &g32_f64.wk),
+            ("k_dokunus", &g64.k_dokunus, &g32_f64.k_dokunus),
+            ("v_dokunus", &g64.v_dokunus, &g32_f64.v_dokunus),
+            ("wo", &g64.wo, &g32_f64.wo),
+            ("w1", &g64.w1, &g32_f64.w1),
+            ("w2", &g64.w2, &g32_f64.w2),
+            ("lnf_sapma", &g64.lnf_sapma, &g32_f64.lnf_sapma),
+        ] {
+            let en_buyuk = a.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+            let fark = a
+                .iter()
+                .zip(b.iter())
+                .fold(0.0f64, |m, (x, y)| m.max((x - y).abs()));
+            let oran = fark / en_buyuk.max(1e-6);
+            assert!(
+                oran < 2e-3,
+                "dokunuslu {ad}: f64 ile f32 ayristi, fark {fark}, buyukluk {en_buyuk}, oran {oran}"
+            );
+        }
+    }
+
     /// Same shape of check for the loss alone, over a window that forces the
     /// mask to matter (two records in one window).
     #[test]
@@ -1112,6 +1288,7 @@ mod testler {
             n_layers: 4,
             n_heads: 4,
             n_kv_heads: 4,
+            qkv_dokunus: 0,
             d_ff: 512,
             max_seq_len: 128,
         };
