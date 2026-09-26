@@ -6889,6 +6889,118 @@ def selftest_crate_manifest_politikasi() -> None:
     yorum = "# lubot-mu = { path = \"../mu\" }\n"
     assert _yol_bagimliliklari(yorum) == [], "a comment was read as a dependency"
 
+def _gruplu_dikkat_denetle(path) -> list:
+    """Port bilesen 2'nin olculebilir sozlesmesi. Duzeltilebilir bir metin
+    denetimidir: ihlal listesi doner, bos liste gecer demektir. Kaynak yolu
+    disaridan verilir ki self-test ayni denetimi kasitli bozuk bir kopyada
+    kosturabilsin."""
+    ihlaller = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Kayit siniri hem dikkatte hem kivrimda: iki ileri yol, bes geri yol.
+    ileri_sinir = metin.count("kaynak[j] != kaynak[i]")
+    geri_sinir = metin.count("bellek.kaynak[j] != bellek.kaynak[i]")
+    if ileri_sinir < 2:
+        ihlaller.append(f"ileri geciste kayit siniri denetimi {ileri_sinir} yerde (en az 2 gerekir)")
+    if geri_sinir < 5:
+        ihlaller.append(f"geri geciste kayit siniri denetimi {geri_sinir} yerde (en az 5 gerekir)")
+    # 2) Gradyan iddiasi olculur: sonlu fark denetimi ve deponun toleranslari.
+    for iz in (
+        "gradyan_sonlu_farkla_uyusur",
+        "girdi_gradyani_da_sonlu_farkla_uyusur",
+        "GRADIENT_CHECK_MUTLAK_TABAN",
+        "GRADIENT_CHECK_TOLERANCE",
+    ):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    # 3) Parametre sayimi sekliden turetilir ve denetlenen gradyan sayisina baglanir.
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 4) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 5) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_gruplu_dikkat_kapisi() -> str:
+    """Port bilesen 2 (gruplu-sorgu dikkati + nedensel kivrim dokunuslari)
+    olculur halde duruyor: kayit siniri hem dikkatte hem kivrimda korunuyor,
+    gradyan sonlu farkla denetleniyor, parametre sayimi kendi seklinden
+    turetiyor ve modul hicbir ucuncu taraf adi tasimiyor. Ayrica modulun
+    testleri burada kosturulur: kac test varsa o kadari gecmeli."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "dikkat_gruplu.rs"
+    ihlaller = _gruplu_dikkat_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("gruplu dikkat sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-p", "lubot-egitim", "dikkat_gruplu"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(
+            f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var"
+        )
+    return (
+        f"gruplu dikkat olculur: {gecen} test, kayit siniri {metin.count('kaynak[j] != kaynak[i]')}+"
+        f"{metin.count('bellek.kaynak[j] != bellek.kaynak[i]')} yerde, gradyan sonlu farkla bagli"
+    )
+
+
+def selftest_gruplu_dikkat_kapisi() -> None:
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "dikkat_gruplu.rs"
+    if _gruplu_dikkat_denetle(gercek):
+        raise SystemExit("saglam modul denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "dikkat_gruplu.rs"
+        # 1) kayit siniri kivrimdan cikarilirsa yakalanmali
+        metin = gercek.read_text(encoding="utf-8")
+        kirpik = metin.replace(
+            "            if kaynak[j] != kaynak[i] {\n                continue;\n            }\n",
+            "", 1)
+        if kirpik == metin:
+            raise SystemExit("kanarya kurulamadi: kayit siniri deseni bulunamadi")
+        bozuk.write_text(kirpik, encoding="utf-8")
+        if not _gruplu_dikkat_denetle(bozuk):
+            raise SystemExit("kayit siniri sokulmus kopya yakalanmadi")
+        # 2) ucuncu taraf adi sokulursa yakalanmali
+        bozuk.write_text(metin + "\n// torch\n", encoding="utf-8")
+        if not _gruplu_dikkat_denetle(bozuk):
+            raise SystemExit("ucuncu taraf adi tasiyan kopya yakalanmadi")
+        # 3) gradyan bagi sokulursa yakalanmali
+        bozuk.write_text(metin.replace("denetlenen != spec.parametre_sayisi()", "false", 1),
+                         encoding="utf-8")
+        if not _gruplu_dikkat_denetle(bozuk):
+            raise SystemExit("gradyan bagi sokulmus kopya yakalanmadi")
+
 
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
@@ -7007,6 +7119,7 @@ GATES_EXTRA = {
     "guvenlik-workflowlari": (gate_guvenlik_workflowlari, selftest_guvenlik_workflowlari),
     "apk-sozlesmesi": (gate_apk_sozlesmesi, selftest_apk_sozlesmesi),
     "elf-sertlestirme": (gate_elf_sertlestirme, selftest_elf_sertlestirme),
+    "gruplu-dikkat-kapisi": (gate_gruplu_dikkat_kapisi, selftest_gruplu_dikkat_kapisi),
 }
 
 

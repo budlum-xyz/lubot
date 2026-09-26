@@ -93,6 +93,12 @@ cikarim:KvCache
 derin:AgirlikBaglama
 derin:ModelSpec
 derin:Oran
+# dikkat_gruplu (port bileseni 2): kural kararlastirildi, cagiran bekliyor.
+egitim:DOKUNUS_UST_SINIRI
+egitim:Gradyanlar
+egitim:GrupHatasi
+egitim:GrupSpec
+egitim:kayip_gradyan
 egitim:EgitimConfig
 egitim:EgitimDongusu
 gunluk:NginxSatiri
