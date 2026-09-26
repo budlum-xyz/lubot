@@ -85,7 +85,7 @@ each one shows it to hold, not a claim about how it was written.
 
 | crate | lines | tests | what it holds |
 |---|---|---|---|
-| `cli` | 11300 | 147 | The runnable binary, and the only crate that reaches everything else. `kodlayici envanter` prints what is inside a package and which tensors nothing read; `kodlayici kosu` runs the encoder and, with `--isaret`, the head; `kodlayici dogrula` streams the parts through SHA-256 and compares the digest with one given, so a run can say which artifact it ran. |
+| `cli` | 12083 | 161 | The runnable binary, and the only crate that reaches everything else. `kodlayici envanter` prints what is inside a package and which tensors nothing read; `kodlayici kosu` runs the encoder and, with `--isaret`, the head; `kodlayici dogrula` streams the parts through SHA-256 and compares the digest with one given, so a run can say which artifact it ran. |
 
 Four modules carry the wiring:
 
