@@ -337,6 +337,7 @@ impl Kontrol {
                 "d_model": spec.d_model,
                 "n_layers": spec.n_layers,
                 "n_heads": spec.n_heads,
+                "n_kv_heads": spec.n_kv_heads,
                 "d_ff": spec.d_ff,
                 "max_seq_len": spec.max_seq_len,
             },
@@ -629,11 +630,21 @@ fn spec_oku(baslik: &serde_json::Value) -> Result<Spec, KontrolHatasi> {
             .map(|v| v as usize)
             .ok_or_else(|| KontrolHatasi::Baslik(format!("spec.{ad} yok")))
     };
+    let n_heads = alan("n_heads")?;
+    // Eski kontrol noktalarinda KV paylasimi yoktu: alan yoksa tam dikkat
+    // demektir ve dosya oldugu gibi okunmaya devam eder. Yeni alan yalnizca
+    // paylasimli bir spec yazildiginda anlami vardir.
+    let n_kv_heads = baslik
+        .get("spec")
+        .and_then(|s| s.get("n_kv_heads"))
+        .and_then(serde_json::Value::as_u64)
+        .map_or(n_heads, |v| v as usize);
     let spec = Spec {
         vocab: alan("vocab")?,
         d_model: alan("d_model")?,
         n_layers: alan("n_layers")?,
-        n_heads: alan("n_heads")?,
+        n_heads,
+        n_kv_heads,
         d_ff: alan("d_ff")?,
         max_seq_len: alan("max_seq_len")?,
     };
@@ -754,6 +765,7 @@ mod tests {
             d_model: 8,
             n_layers: 1,
             n_heads: 2,
+            n_kv_heads: 2,
             d_ff: 16,
             max_seq_len: 8,
         }
