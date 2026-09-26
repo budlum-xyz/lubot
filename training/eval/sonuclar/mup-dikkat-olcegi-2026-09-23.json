@@ -6,7 +6,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 2.975
+    "sure_saniye": 3.305
   },
   "kosucu": "betik",
   "not": "Hukum olcumun kendisi hakkindadir: komiteli spec'in 1/d_head olcegi, sqrt(2/fan_in) init ile logitleri d_head buyudukce kucultur (1/sqrt(d_head)); genislikten bagimsiz logit isteyen bir okuma icin 1/sqrt(d_head) gerekir. Bu bir cozulmemis karardir, kayit onu degistirmez: spec metni bu turda degistirilmedi (mimari karar, operator onayi bekler).",
@@ -176,7 +176,7 @@
       "egitim dinamigi ve LR transferinin gercek kosudaki davranisi",
       "tam model (d_model 64, 8 katman, vocab 8192) ve GPU olcumu"
     ],
-    "sure_saniye": 2.975,
+    "sure_saniye": 3.305,
     "turetilen": {
       "etiket": "turetilmis: base_lr * P / n; bu makinede olculmedi",
       "lr_transferi_base_lr_carpani": {

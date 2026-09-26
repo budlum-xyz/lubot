@@ -4,44 +4,44 @@
   "kanit": {
     "bulgu_dil_maliyeti": null,
     "fark_esigi": 0.1,
-    "fark_orani": 0.057966,
+    "fark_orani": 0.02979,
     "siniflar": {
       "en": {
-        "jeton": 4641941,
-        "jeton_basina_karakter": 2.0811,
-        "karakter": 9660550,
-        "karakter_basina_jeton": 0.480505,
-        "kayit": 9390
+        "jeton": 220490,
+        "jeton_basina_karakter": 2.6147,
+        "karakter": 576513,
+        "karakter_basina_jeton": 0.382455,
+        "kayit": 2628
       },
       "karisik": {
-        "jeton": 100965,
-        "jeton_basina_karakter": 2.0021,
-        "karakter": 202143,
-        "karakter_basina_jeton": 0.499473,
-        "kayit": 2269
+        "jeton": 68092,
+        "jeton_basina_karakter": 2.5573,
+        "karakter": 174131,
+        "karakter_basina_jeton": 0.391039,
+        "kayit": 2232
       },
       "tr": {
-        "jeton": 9564736,
-        "jeton_basina_karakter": 2.2018,
-        "karakter": 21059424,
-        "karakter_basina_jeton": 0.454178,
-        "kayit": 71731
+        "jeton": 73136,
+        "jeton_basina_karakter": 2.5368,
+        "karakter": 185531,
+        "karakter_basina_jeton": 0.394198,
+        "kayit": 447
       }
     },
     "sozluk_ailesi": "lubot-bpe-v2",
-    "sure_saniye": 39.8
+    "sure_saniye": 1.14
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 39.8
+    "sure_saniye": 1.14
   },
   "kosucu": "betik",
   "olcut": {
     "ad": "iki_dilin_jeton_maliyeti_sinif_bazinda_beyan_edildi",
     "sonuc": true
   },
-  "tarih": "2026-09-25"
+  "tarih": "2026-09-26"
 }

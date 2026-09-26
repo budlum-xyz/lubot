@@ -4,6 +4,23 @@ Decisions behind the pipeline, the measured corpus, the gates, and what is
 still open. Everything the pipeline learns from is Lubot's own tree: the
 corpus is built from this repository and from nothing outside it.
 
+> **Mimari değişiklik (2026-09-26, sahip kararı):** Eğitim verisi artık
+> repoda tutulmaz. `veri/kamu-mali.jsonl.gz` (78.103 kamu malı kayıt, 8,7 MB)
+> dal ucundan silindi; veri geçmiş PR ref'lerinde aynen durur. Korpus
+> yalnızca kendi ağaçtan kurulur: `python3 training/corpus_insa.py
+> --kamu-mali-yok` — ölçülü: 5.302 kayıt, 360.724 benzersiz jeton. Bu karar
+> ratchet'in `corpus`/`tokens` tabanlarını aşağı çekti (gizlenmedi: eski
+> 81.673/14.185.482 → yeni 5.302/360.724); `tests`/`gates` tabanları yukarı
+> yürüdü (1.120 test, 88 kapı).
+>
+> Hedeflenen düzen (sahip senaryosu, tasarım aşamasında): Lubot eğitim
+> verisini BUD'dan (merkeziyetsiz depolama) akış olarak alır; veri geldikçe
+> validator'lardan geçerek özümsenir, repoya yazılmaz. Model parametrelerinin
+> de BUD'da durması ve cihazda ek depolama olmaması planlanır: Lubot ya
+> lokalde validator'lerle ya da BUD'dan uygun parçaları alarak çalışır.
+> Bu akışın kodlanması sıradaki iştir; bu depodaki iş "sıkı çalışma
+> sistemi"ne (kapılar, CI, disiplin) odaklanır.
+
 ## Decisions
 
 | # | Decision |

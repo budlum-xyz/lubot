@@ -2,25 +2,29 @@
   "bulgu_alintisiz_iddia": null,
   "is": "`ask` cevaplarindaki her madde bir iddia sayildi; kaynagi (dosya yolu ya da `dosya:satir`) tasiyan maddeler ile tasimayanlar ayrildi ve tasimayan bir madde, alintili bir maddenin metninde geciyorsa kapsanmis sayildi. Sinav setinin tamami soruldu; model cagrilmaz, jeton sifirdir.",
   "kanit": {
-    "alintisiz": 6,
+    "alintisiz": 7,
     "audit_kaynaksiz": [],
     "cevap_etiketleri": {
       "grounded": 10,
       "not-found": 2
     },
     "esik": 0.5,
-    "iddia": 18,
+    "iddia": 19,
     "metinde_alintisiz": [
       "sinav-04",
       "sinav-06",
       "sinav-08",
       "sinav-11"
     ],
-    "oran": 0.3333,
+    "oran": 0.3684,
     "ornekler": [
       {
         "madde": "Pick boolean flags out of `args`, leaving everything else (including other flags) untouched. A boolean flag never consum",
         "soru_kimligi": "sinav-04"
+      },
+      {
+        "madde": "| crate | lines | tests | the rule it holds | |---|---|---|---| | `sozluk` | 548 | 20 | A deterministic BPE tokenizer fo",
+        "soru_kimligi": "sinav-05"
       },
       {
         "madde": "What the proof claims. Opaque here; the registry does not interpret it and therefore cannot be fooled by it. The proof's",
@@ -33,26 +37,22 @@
       {
         "madde": "A supervised run: activation, capability, queue, audit and seal in one loop. # What this module is for The crates behind",
         "soru_kimligi": "sinav-08"
-      },
-      {
-        "madde": "Computed by a tool. The model does not restate arithmetic. A tool recognised the question and could not answer it. Passa",
-        "soru_kimligi": "sinav-11"
       }
     ],
     "soru": 12,
-    "sure_saniye": 3.86
+    "sure_saniye": 110.37
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 3.86
+    "sure_saniye": 110.37
   },
   "kosucu": "ask",
   "olcut": {
     "ad": "her_grounded_cevap_audit_kaydinda_alinti_tasir",
     "sonuc": true
   },
-  "tarih": "2026-09-24"
+  "tarih": "2026-09-26"
 }
