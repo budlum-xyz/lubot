@@ -3,6 +3,7 @@
 //! the audit. `ask` writes ONLY the rendered Markdown to stdout; everything
 //! else goes to stderr or to files, so a pipeline can trust stdout.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -58,6 +59,8 @@ fn usage() -> String {
         "  lubot sikistir --path <f> [--igne desen ...] [--depo dir]",
         "  lubot sikistir --geri-getir <ozet-dosya> [--depo dir]",
         "  lubot ogren --log <f> [--ogren-dir outputs/ogren]",
+        "  lubot alim dogrula --manifest <f.json> --veri <dir> --defter <f.jsonl> [--adim n]",
+        "  lubot alim defter --defter <f.jsonl> [--limit n]",
     ]
     .join("\n")
 }
@@ -102,6 +105,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "indeks" => cmd_indeks(rest),
         "mufredat" => cmd_mufredat(rest),
         "karsilastir" => cmd_karsilastir(rest),
+        "alim" => cmd_alim(rest),
         "sikistir" => lubot::sikistir::cmd_sikistir(rest),
         "ogren" => lubot::sikistir::cmd_ogren(rest),
         other => Err(format!("unknown command `{other}`\n{}", usage())),
@@ -1515,5 +1519,170 @@ fn cmd_audit(args: &[String]) -> Result<(), String> {
     for line in lines {
         println!("{line}");
     }
+    Ok(())
+}
+
+/// `lubot alim` - the intake line: admit a manifest, or read the ledger an
+/// admission wrote. Two verbs, because an intake has exactly two outcomes.
+fn cmd_alim(args: &[String]) -> Result<(), String> {
+    let Some(verb) = args.first() else {
+        return Err(format!("alim: missing verb\n{}", usage()));
+    };
+    match verb.as_str() {
+        "dogrula" => cmd_alim_dogrula(&args[1..]),
+        "defter" => cmd_alim_defter(&args[1..]),
+        other => Err(format!("alim: unknown verb `{other}`\n{}", usage())),
+    }
+}
+
+/// The refusal, rendered as the operator reads it: which rule spoke, and what
+/// it refused. The Markdown is printed on the way out even when the command
+/// fails, so a pipe sees the same shape for an answer and a refusal.
+fn refuse_alim(refusal: &lubot_alim::Refusal, manifest_path: &Path) -> Result<(), String> {
+    let manifest = manifest_path.display();
+    let rule = refusal.rule();
+    let message = refusal.message();
+    let md = format!(
+        "# Alım\n\n| alan | değer |\n|---|---|\n| manifest | {manifest} |\n| kural | {rule} |\n| ret | {message} |\n"
+    );
+    lubot::validate_output(md.as_bytes(), "alim")?;
+    println!("{md}");
+    Err(format!("alim: {message}"))
+}
+
+/// The refusing conversion the command layer uses, so a `Refusal` reaches the
+/// operator as its own message rather than as a `Debug` rendering.
+fn alim_message(refusal: lubot_alim::Refusal) -> String {
+    refusal.message()
+}
+
+/// Resolve the bytes a manifest points at, under the data root.
+///
+/// Resolution is not the place to invent a policy: a path that is not safe and
+/// relative is left unresolved, and the admission refuses it by name.
+fn resolve_records(
+    manifest: &lubot_alim::manifest::Manifest,
+    data_root: &Path,
+) -> BTreeMap<String, Vec<u8>> {
+    let mut texts = BTreeMap::new();
+    for entry in &manifest.records {
+        if !lubot_alim::is_safe_relative(&entry.path) {
+            continue;
+        }
+        if let Ok(bytes) = std::fs::read(data_root.join(&entry.path)) {
+            texts.insert(entry.path.clone(), bytes);
+        }
+    }
+    texts
+}
+
+fn cmd_alim_dogrula(args: &[String]) -> Result<(), String> {
+    let (found, leftover) = flags(args, &["--manifest", "--veri", "--defter", "--adim"]);
+    if !leftover.is_empty() {
+        return Err(format!("alim dogrula: unexpected `{}`", leftover[0]));
+    }
+    let Some(manifest_arg) = one(&found, "--manifest") else {
+        return Err(format!("alim dogrula: missing --manifest\n{}", usage()));
+    };
+    let Some(data_arg) = one(&found, "--veri") else {
+        return Err(format!("alim dogrula: missing --veri\n{}", usage()));
+    };
+    let Some(ledger_arg) = one(&found, "--defter") else {
+        // An intake that is not recorded is not an intake: there would be no
+        // answer to "which training step did this data enter" (K3).
+        return Err(format!(
+            "alim dogrula: missing --defter: an intake that is not recorded is not an intake\n{}",
+            usage()
+        ));
+    };
+    let step = match one(&found, "--adim") {
+        Some(text) => text
+            .parse::<u64>()
+            .map_err(|error| format!("alim dogrula: --adim: {error}"))?,
+        None => 0,
+    };
+    let manifest_path = PathBuf::from(manifest_arg);
+    let data_root = PathBuf::from(data_arg);
+    let ledger_path = PathBuf::from(ledger_arg);
+
+    // The ledger is read before the bytes are: a step behind what already
+    // happened is refused without touching the manifest at all.
+    let existing = if ledger_path.is_file() {
+        lubot_alim::provenance::read(&ledger_path).map_err(alim_message)?
+    } else {
+        Vec::new()
+    };
+    lubot_alim::provenance::check_step(&existing, step).map_err(alim_message)?;
+
+    let raw = std::fs::read(&manifest_path)
+        .map_err(|error| format!("alim dogrula: {}: {error}", manifest_path.display()))?;
+    let manifest = match lubot_alim::manifest::parse(&raw) {
+        Ok(manifest) => manifest,
+        Err(refusal) => return refuse_alim(&refusal, &manifest_path),
+    };
+    let texts = resolve_records(&manifest, &data_root);
+    let admitted = match lubot_alim::manifest::admit(&manifest, &texts) {
+        Ok(admitted) => admitted,
+        Err(refusal) => return refuse_alim(&refusal, &manifest_path),
+    };
+
+    let verified_at = now_seconds()?;
+    let rows = lubot_alim::provenance::rows_for(&admitted, verified_at, step);
+    lubot_alim::provenance::append(&ledger_path, &rows).map_err(alim_message)?;
+
+    let manifest_id = admitted.manifest_id;
+    let class = admitted.source_class.label();
+    let loader = admitted.loader;
+    let records = admitted.records.len();
+    let digest = admitted.admission_digest;
+    let ledger = ledger_path.display();
+    let rows_written = rows.len();
+    let md = format!(
+        "# Alım\n\n| alan | değer |\n|---|---|\n| manifest | {manifest_id} |\n| sınıf | {class} |\n| yükleyici | {loader} |\n| kayıt | {records} |\n| kabul özeti | {digest} |\n| adım | {step} |\n| defter | {ledger} ({rows_written} satır eklendi) |\n"
+    );
+    lubot::validate_output(md.as_bytes(), "alim")?;
+    println!("{md}");
+    Ok(())
+}
+
+fn cmd_alim_defter(args: &[String]) -> Result<(), String> {
+    let (found, leftover) = flags(args, &["--defter", "--limit"]);
+    if !leftover.is_empty() {
+        return Err(format!("alim defter: unexpected `{}`", leftover[0]));
+    }
+    let Some(ledger_arg) = one(&found, "--defter") else {
+        return Err(format!("alim defter: missing --defter\n{}", usage()));
+    };
+    let limit = match one(&found, "--limit") {
+        Some(text) => text
+            .parse::<usize>()
+            .map_err(|error| format!("alim defter: --limit: {error}"))?,
+        None => usize::MAX,
+    };
+    let path = PathBuf::from(ledger_arg);
+    let rows = lubot_alim::provenance::read(&path).map_err(alim_message)?;
+    let shown = rows.len().min(limit);
+    let hidden = rows.len() - shown;
+    let mut md = String::from(
+        "# Alım defteri\n\n| manifest | yükleyici | doğrulandı | adım | yol | tür | lisans |\n|---|---|---|---|---|---|---|\n",
+    );
+    for row in &rows[hidden..] {
+        md.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} |\n",
+            row.manifest_id,
+            row.loader,
+            row.verified_at,
+            row.admitted_step,
+            row.path,
+            row.kind,
+            row.licence
+        ));
+    }
+    let total = rows.len();
+    md.push_str(&format!(
+        "\nToplam {total} satır; gösterilen {shown}, gizlenen {hidden}.\n"
+    ));
+    lubot::validate_output(md.as_bytes(), "alim")?;
+    println!("{md}");
     Ok(())
 }

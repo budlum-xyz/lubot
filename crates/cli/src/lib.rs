@@ -1246,4 +1246,13 @@ mod tests {
         assert!(err.contains("duplicate"), "{err}");
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn the_intake_and_the_loader_admit_the_same_closed_sets() {
+        // Two crates enforce one rule. If the sets ever drift, one of them is
+        // admitting what the other refuses, and the corpus would grow through
+        // whichever door was left open.
+        assert_eq!(KINDS, lubot_alim::manifest::KINDS);
+        assert_eq!(ALLOWED_LICENCES, lubot_alim::manifest::LICENCES);
+    }
 }
