@@ -62,6 +62,12 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license-file = "LICENSE.md"
+# Bu depo bir urun agacidir: crate'ler hicbir kayit defterine yayinlanmaz.
+# Isaret yalniz kozmetik degil: cargo-deny, "public" sayilan bir crate'in path
+# bagimliligini wildcard kabul etmez ("crates.io disallows path dependencies")
+# ve butun denetim bu yuzden dusuyordu. `publish = false` hem dogruyu soyler
+# hem de kuralin neden uygulanmadigini kayda gecirir.
+publish = false
 
 # Sertlestirme katmani 1: derleyici. panic = "abort" unwind tablolarini
 # kaldirir, strip sembolleri siler, lto = "fat" ile codegen-units = 1 fonksiyon
