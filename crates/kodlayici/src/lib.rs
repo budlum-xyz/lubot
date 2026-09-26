@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! # kodlayici - a checkpoint read, checked and run from Rust
 //!
-//! This crate is the port: the checkpoint's own configuration, its weights read
+//! This crate runs a foreign checkpoint: its own configuration, its weights read
 //! from split part files, and the arithmetic a forward pass is made of. The
 //! modules are split by what can be checked independently.
 //!
@@ -19,7 +19,7 @@
 //! An agreed accuracy on real decisions: the stack runs, and the reference
 //! agreement of the tokenizer and the encoder is measured, but nothing here has
 //! been scored against a labelled set of decisions. That number is the one that
-//! says whether the port is *useful*, as opposed to correct, and it is not
+//! says whether the crate is *useful*, as opposed to correct, and it is not
 //! claimed until it is measured.
 //!
 //! # Numbers

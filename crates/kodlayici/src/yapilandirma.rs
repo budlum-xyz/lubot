@@ -5,9 +5,9 @@
 //! Every number a forward pass needs is in the file next to the weights: how
 //! many layers, how wide, which layers attend globally and which attend inside
 //! a window, the rope base, the vocabulary size. Hard-coding them would make
-//! the port correct for exactly one checkpoint and silently wrong for the next
+//! the crate correct for exactly one checkpoint and silently wrong for the next
 //! one, and the failure would show up as slightly different numbers rather than
-//! as an error. A field the port does not understand is kept and reported, not
+//! as an error. A field the reader does not understand is kept and reported, not
 //! dropped: an unknown key is a hint that the checkpoint expects behaviour this
 //! build does not have.
 //!
@@ -15,7 +15,7 @@
 //!
 //! The head is trained by reinforcement, and its file carries the economics
 //! rather than only the shapes: what an escalation costs, what a wrong action
-//! costs. Those numbers are what a policy is *for*; a port that read the shapes
+//! costs. Those numbers are what a policy is *for*; a reader that read the shapes
 //! and ignored the costs would run the head and have no way to say whether its
 //! output was good.
 

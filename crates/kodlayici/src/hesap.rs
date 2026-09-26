@@ -6,7 +6,7 @@
 //! carried its own copy, a mistake in the normalisation would appear in
 //! twenty-two places and be invisible; here it appears once and has one test.
 //! The functions take slices and return vectors rather than tensors: a tensor
-//! type would be a second vocabulary for the same idea, and the port does not
+//! type would be a second vocabulary for the same idea, and this crate does not
 //! need one yet.
 //!
 //! # The convention that matters
@@ -79,7 +79,7 @@ pub fn matris_vektor(w: &[f32], x: &[f32], y: &mut [f32], girdi: usize) -> Resul
 /// Layer normalisation with a weight and no bias, as the checkpoint stores it.
 ///
 /// The mean is subtracted, which is the difference between this and an RMS
-/// normalisation: a port that used the root-mean-square form would produce
+/// normalisation: a reader that used the root-mean-square form would produce
 /// numbers that look right on symmetric inputs and drift on the rest.
 ///
 /// # Errors
@@ -110,7 +110,7 @@ pub fn katman_norm(x: &mut [f32], agirlik: &[f32], epsilon: f32) -> Result<(), S
 /// The tanh-form GELU, which is the activation this checkpoint was trained with.
 ///
 /// The exact form and the tanh approximation differ in the fourth decimal; the
-/// coded derivative of the coded function is what matters for a training port,
+/// coded derivative of the coded function is what matters for a training implementation,
 /// and for inference the difference is far below the tolerance of any
 /// comparison against a reference that used the same form.
 #[must_use]
@@ -224,7 +224,7 @@ pub fn softmax(x: &mut [f32]) -> Result<(), SekilHatasi> {
 /// Rotary position embedding applied to one head's `(x, y)` pairs in place.
 ///
 /// The rotation is applied to consecutive pairs of the head vector, which is
-/// how the checkpoint's weights were trained; a port that rotated
+/// how the checkpoint's weights were trained; an implementation that rotated
 /// `(first half, second half)` instead would be a different model with the same
 /// tensor names.
 ///

@@ -1,7 +1,7 @@
 //! # sozluk - the checkpoint's own tokenizer, written from Rust
 //!
 //! The model reads ids, not text. This module is the step that turns one into
-//! the other, and it is ported rather than borrowed: the vocabulary file ships
+//! the other, and it is re-implemented rather than borrowed: the vocabulary file ships
 //! with the checkpoint, and the pipeline around it - a replacing normaliser, a
 //! space-marking pre-tokenizer, a byte-fallback BPE and a template
 //! post-processor - is reimplemented here so the whole path from a sentence to
@@ -14,7 +14,7 @@
 //!    they are matched in the raw text before anything else happens. That is
 //!    not a detail: the list includes the newline runs, so `"a\nb"` is
 //!    `a` + `"\n"` + `b` and not one three-character word. Measured:
-//!    `"a\nb"` -> `["▁a", "\n", "▁b"]`. A port that normalises first gets a
+//!    `"a\nb"` -> `["▁a", "\n", "▁b"]`. A reader that normalises first gets a
 //!    single `"▁a\nb"` piece and a different id list that still looks
 //!    plausible.
 //! 2. **Every space becomes the word marker** (`▁`, U+2581).

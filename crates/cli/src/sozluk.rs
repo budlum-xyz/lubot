@@ -3,7 +3,7 @@
 //! Three subcommands, and each of them exists because a claim needs a command
 //! behind it: `envanter` says what is in the vocabulary file, `jetonla` turns
 //! text into ids and prints them, and `coz` turns ids back into text. The id
-//! line of `jetonla` is the format the cross-check tool reads, so the port and
+//! line of `jetonla` is the format the cross-check tool reads, so the crate and
 //! the reference are compared through the same surface the operator uses.
 
 use std::path::{Path, PathBuf};
