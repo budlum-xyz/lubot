@@ -40,7 +40,7 @@ pub mod uretim;
 use std::path::Path;
 
 use lubot_egitim::kontrol::{Kontrol, KontrolHatasi, OptimizerDurumu};
-use lubot_egitim::{ileri_ve_geri_paket, Parametreler, Spec, LN_EPS};
+use lubot_egitim::{ileri_ve_geri_paket, Parametreler, Spec, LN_EPS, QK_NORM_EPS};
 
 /// Largest absolute difference the cached and recomputed paths may show.
 ///
@@ -472,6 +472,13 @@ impl Cikarim {
                 onbellek.q_ham[katman].drain(..fazlalik);
                 self.dokunuslu_q(&onbellek.q_ham[katman], katman)
             };
+            // QK-norm: konvolusyondan sonra, skorlardan once - egitim
+            // cekirdegiyle ayni yer. qk_norm == false iken hizli yol gecer.
+            let q = if self.spec.qk_norm {
+                self.qk_normlu_q(&q, katman)
+            } else {
+                q
+            };
             let attn = self.dikkat_konum(&q, katman, onbellek, dk);
             let cikti = self.matmul_katman(
                 &attn,
@@ -512,6 +519,49 @@ impl Cikarim {
         onbellek.uzunluk += 1;
         let (lnf, _, _) = self.layer_norm(&x, 0, 0);
         Ok(lnf)
+    }
+
+    /// Guncel konumun dokunuslu q'suna kafa basina RMS normu: her kafa
+    /// dilimi birim RMS'ye cekilir ve `(1 + olcek[m])` ile carpilir.
+    fn qk_normlu_q(&self, q: &[f64], katman: usize) -> Vec<f64> {
+        let d = self.spec.d_model;
+        let dk = self.spec.d_k();
+        let olcek = &self.parametreler.q_norm_olcek[katman * dk..(katman + 1) * dk];
+        let mut y = vec![0.0f64; d];
+        for h in 0..self.spec.n_heads {
+            let mut toplam = 0.0;
+            for m in 0..dk {
+                let v = q[h * dk + m];
+                toplam += v * v;
+            }
+            let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+            for m in 0..dk {
+                y[h * dk + m] = (1.0 + olcek[m]) * q[h * dk + m] * r;
+            }
+        }
+        y
+    }
+
+    /// Onbellekteki (dokunuslu) k degerlerine kafa basina RMS normu.
+    fn qk_normlu_kv(&self, k: &[f64], olcek: &[f64], t: usize) -> Vec<f64> {
+        let kvd = self.spec.d_kv();
+        let dk = self.spec.d_k();
+        let kafa = kvd / dk;
+        let mut y = vec![0.0f64; t * kvd];
+        for p in 0..t {
+            for h in 0..kafa {
+                let taban = p * kvd + h * dk;
+                let mut toplam = 0.0;
+                for m in 0..dk {
+                    toplam += k[taban + m] * k[taban + m];
+                }
+                let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+                for m in 0..dk {
+                    y[taban + m] = (1.0 + olcek[m]) * k[taban + m] * r;
+                }
+            }
+        }
+        y
     }
 
     /// Ham k/v ogelerinden dokunuslu k/v: `y[p][c] = sum_j t[j][c] *
@@ -580,6 +630,15 @@ impl Cikarim {
         } else {
             let dokunus = &self.parametreler.v_dokunus[katman * n * kvd..(katman + 1) * n * kvd];
             std::borrow::Cow::Owned(self.dokunuslu_kv(&onbellek.v[katman], dokunus, kvd, t))
+        };
+        // QK-norm k icin de: konvolusyon cikisindaki her kafa dilimi
+        // birim RMS'ye cekilir (v normlanmaz).
+        let k: Vec<f64> = if self.spec.qk_norm {
+            let dks = self.spec.d_k();
+            let olcek = &self.parametreler.k_norm_olcek[katman * dks..(katman + 1) * dks];
+            self.qk_normlu_kv(&k, olcek, t)
+        } else {
+            k.into_owned()
         };
         let olcek = 1.0 / (dk as f64).sqrt();
         let mut cikti = vec![0.0f64; d];
@@ -803,6 +862,7 @@ mod tests {
             n_heads: 2,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 16,
             max_seq_len: 16,
         }
@@ -913,6 +973,29 @@ mod tests {
         assert!(
             rapor.en_buyuk_fark_egitim < 1e-12,
             "dokunuslu spec'te egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
+            rapor.en_buyuk_fark_egitim,
+            rapor.onbellekli,
+            rapor.tam_gecis,
+            rapor.egitim_cekirdegi
+        );
+    }
+
+    /// Ucuncu gorus, QK-norm acikken (gruplu KV + dokunuslar + norm): cikarim
+    /// yolu, egitim cekirdegiyle ayni sayiyi vermeli.
+    #[test]
+    fn qk_normlu_spec_cikarim_egitim_gecisine_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        spec.dogrula().expect("qk-normlu spec");
+        let c = cikarim(spec, 11);
+        let rapor = c.onbellek_denetimi(&dizi(12)).expect("measurement");
+        assert!(
+            rapor.en_buyuk_fark_egitim < 1e-12,
+            "qk-normlu spec'te egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
             rapor.en_buyuk_fark_egitim,
             rapor.onbellekli,
             rapor.tam_gecis,

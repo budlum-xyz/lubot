@@ -339,6 +339,7 @@ impl Kontrol {
                 "n_heads": spec.n_heads,
                 "n_kv_heads": spec.n_kv_heads,
                 "qkv_dokunus": spec.qkv_dokunus,
+                "qk_norm": spec.qk_norm,
                 "d_ff": spec.d_ff,
                 "max_seq_len": spec.max_seq_len,
             },
@@ -669,6 +670,12 @@ fn spec_oku(baslik: &serde_json::Value) -> Result<Spec, KontrolHatasi> {
         .and_then(|s| s.get("qkv_dokunus"))
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(0) as usize;
+    // QK-norm da ayni kural: alani olmayan eski dosya "norm yok" demektir.
+    let qk_norm = baslik
+        .get("spec")
+        .and_then(|s| s.get("qk_norm"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     let spec = Spec {
         vocab: alan("vocab")?,
         d_model: alan("d_model")?,
@@ -676,6 +683,7 @@ fn spec_oku(baslik: &serde_json::Value) -> Result<Spec, KontrolHatasi> {
         n_heads,
         n_kv_heads,
         qkv_dokunus,
+        qk_norm,
         d_ff: alan("d_ff")?,
         max_seq_len: alan("max_seq_len")?,
     };
@@ -814,6 +822,7 @@ mod tests {
             n_heads: 2,
             n_kv_heads: 2,
             qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 16,
             max_seq_len: 8,
         }
@@ -888,6 +897,10 @@ mod tests {
         let mut dokunuslu = temel.clone();
         dokunuslu["spec"]["qkv_dokunus"] = serde_json::json!(3);
         assert_eq!(spec_oku(&dokunuslu).expect("yeni baslik").qkv_dokunus, 3);
+        assert!(!spec_oku(&temel).expect("eski baslik").qk_norm);
+        let mut normlu = temel.clone();
+        normlu["spec"]["qk_norm"] = serde_json::json!(true);
+        assert!(spec_oku(&normlu).expect("normlu baslik").qk_norm);
     }
 
     /// Dokunuslu ve paylasimli bir kontrol noktasi gezinir: bloklar, dokunus
