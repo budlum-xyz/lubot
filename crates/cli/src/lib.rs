@@ -38,6 +38,7 @@ pub mod kanaat;
 pub mod karar;
 pub mod kodlayici;
 pub mod kosum;
+pub mod nicem;
 pub mod odeme;
 pub mod olcum;
 pub mod queue;
@@ -48,6 +49,7 @@ pub mod sir;
 pub mod sohbet;
 pub mod soru;
 pub mod sozluk;
+pub mod tasiyici;
 
 use lubot_answer::Answer;
 use lubot_grant::{GrantBook, Seconds, ViewGrant};

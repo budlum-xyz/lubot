@@ -43,6 +43,12 @@ kuyruk:QueueError
 mimari:Component
 muhur:LINK_HEX_LEN
 muhur:SEAL_TAG
+# nicem:paketle_ucdeger is the ternary packer. Its caller inside the crate is the
+# quantiser; its caller outside it is the reader that maps a container and
+# rebuilds weights, which is not written yet. Deleting the packer would leave a
+# public unpacker with no public counterpart, so this is the second case in the
+# note above: an item waiting for a caller, and the fix is to write the caller.
+nicem:paketle_ucdeger
 olcek:PolicyError
 read:MAX_OUTPUT_BYTES
 read:PerceptionKind
@@ -161,32 +167,7 @@ kodlayici:rope_tablosu
 mu:MuP
 mu:MuSpec
 mu:Olcek
-nicem:EN_KUCUK_GRUP
-nicem:HadamardHatasi
-nicem:Kodkitabi
-nicem:KodkitabiHatasi
-nicem:NicemHatasi
-nicem:TRIT_BASINA_BAYT
-nicem:VARSAYILAN_BIT
-nicem:VARSAYILAN_GRUP
-nicem:YARIM_EN_BUYUK
-nicem:YARIM_EN_KUCUK_NORMAL
-nicem:YARIM_EN_KUCUK_SUBNORMAL
-nicem:agirlik_basina_bit_ucdeger
-nicem:bayt_sayisi
-nicem:bolge_kutleleri
-nicem:coz_ham
-nicem:coz_ucdeger
-nicem:coz_ucdeger_ham
-nicem:enerji
-nicem:f32_to_yarim
-nicem:kosullari_sagliyor
 nicem:paketle_ucdeger
-nicem:ucdeger_bayt_sayisi
-nicem:wht
-nicem:yarim_to_f32
-nicem:yogun_matris
-nicem:yuvarla
 olcum:BataryaAdi
 olcum:BataryaSonuc
 olcum:BilgiBoslugu
@@ -209,21 +190,6 @@ sozluk:Dilim
 sozluk:DilimTuru
 sozluk:Kodlama
 sozluk:kod_mu
-tasiyici:BASLIK_BAYT
-tasiyici:BicimHatasi
-tasiyici:HIZA
-tasiyici:IMZA
-tasiyici:Kademe
-tasiyici:Kapsayici
-tasiyici:Merdiven
-tasiyici:MerdivenHatasi
-tasiyici:Tavan
-tasiyici:VARSAYILAN_PAY
-tasiyici:Yazici
-tasiyici:YaziciHatasi
-tasiyici:genislik_coz
-tasiyici:genislik_kodu
-tasiyici:hizala
 transformer:Dikkat
 uc-asama:Asama
 uc-asama:AsamaDetay

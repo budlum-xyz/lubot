@@ -83,6 +83,11 @@ fn usage() -> String {
         "  lubot sir [maskele|tara] [--dosya <yol>]   (dosya yoksa stdin)",
         "  lubot gunluk [ozet|oku] --dosya <yol> [--en-agir <0-7>]",
         "  lubot karar [doktrin|tek <evet|hayir>:<olasilik>|oyla <evet:0.9,hayir:0.7,...>]",
+        "  lubot tasiyici olc --dosya <ham.f32> --son-eksen N [--bit 1..8|ucdeger] [--grup G] [--yaz f.lubotncm]",
+        "  lubot tasiyici incele --dosya <f.lubotncm> [--dogrula]",
+        "  lubot tasiyici tavan --dosya <f.lubotncm> [--bellek BAYT] [--pay 0.66]",
+        "  lubot nicem kitap [--bit 1..8|ucdeger] [--ham]  |  nicem butce --agirlik N [--grup G]",
+        "  lubot nicem dondur --dosya <ham.f32> [--grup G] [--matris N]  |  nicem yarim [--deger X]",
     ]
     .join("\n")
 }
@@ -115,6 +120,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "doc" => cmd_doc(rest),
         "queue" => cmd_queue(rest),
         "sohbet" => lubot::sohbet::cmd_sohbet(rest),
+        "tasiyici" => lubot::tasiyici::cmd_tasiyici(rest),
+        "nicem" => lubot::nicem::cmd_nicem(rest),
         "ratchet" => cmd_ratchet(rest),
         "envanter" => cmd_envanter(rest),
         "it" => cmd_it(rest),
