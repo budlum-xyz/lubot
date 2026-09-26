@@ -15,7 +15,6 @@
 # the main caller of the libraries, so excluding it from the search would make
 # every item it calls look unused.
 anlama:Abstention
-anlama:CALIBRATION_BUCKETS
 anlama:ClassifierError
 anlama:Signal
 anlama:TIE_EPSILON
@@ -190,7 +189,6 @@ nicem:yuvarla
 olcum:BataryaAdi
 olcum:BataryaSonuc
 olcum:BilgiBoslugu
-olcum:Kalibrasyon
 olcum:KapismaSonuc
 olcum:OlcumMotoru
 paralel:BatchHesap
