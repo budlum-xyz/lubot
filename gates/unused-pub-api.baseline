@@ -93,6 +93,16 @@ cikarim:KvCache
 derin:AgirlikBaglama
 derin:ModelSpec
 derin:Oran
+# mlp_hadamard (port bileseni 3): sekil ve gradyan sozlesmesi kararlastirildi,
+# egitim cagrisini bekliyor. Cagri yazilinca bu satirlar silinir (liste kisalir).
+egitim:BLOK_UST_SINIRI
+egitim:HadamardAgirliklar
+egitim:HadamardBellek
+egitim:HadamardGradyanlar
+egitim:HadamardSekilHatasi
+egitim:HadamardSpec
+egitim:kayip_gradyan
+egitim:sgd_adimi
 egitim:EgitimConfig
 egitim:EgitimDongusu
 gunluk:NginxSatiri

@@ -6890,6 +6890,128 @@ def selftest_crate_manifest_politikasi() -> None:
     assert _yol_bagimliliklari(yorum) == [], "a comment was read as a dependency"
 
 
+
+def _hadamard_mlp_denetle(path) -> list:
+    """Hadamard/Monarch MLP adayinin olculebilir sozlesmesi. Duzeltilebilir bir
+    metin denetimidir: ihlal listesi doner, bos liste gecer demektir. Kaynak yolu
+    disaridan verilir ki self-test ayni denetimi kasitli bozuk kopyalarda
+    kosturabilsin."""
+    ihlaller = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Aktivasyon crate'in kendisinden gelir: ikinci bir kopya, tanh bicimli
+    #    fonksiyonun tureviyle uyusmamasinin klasik yoludur.
+    if "use crate::{gelu, gelu_turev};" not in metin:
+        ihlaller.append("aktivasyon crate'in kendisinden alinmiyor (gelu/gelu_turev)")
+    # 2) Gradyan iddiasi olculur: iki sonlu fark denetimi + deponun toleranslari.
+    for iz in (
+        "gradyan_sonlu_farkla_uyusur",
+        "girdi_gradyani_da_sonlu_farkla_uyusur",
+        "gelu_turevi_kodlanan_fonksiyonun_turevi",
+        "GRADIENT_CHECK_MUTLAK_TABAN",
+        "GRADIENT_CHECK_TOLERANCE",
+    ):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    # 3) Sayim bagi: denetlenen gradyan sayisi seklin parametre sayisina bagli.
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 4) Parametre muhasebesi sekilden turetilir; sabit sayi yazilmaz.
+    if "fn parametre_sayisi(&self) -> usize" not in metin:
+        ihlaller.append("parametre sayisi sekilden turetilmiyor")
+    if "standart_mlp_parametre_sayisi" not in metin:
+        ihlaller.append("karsilastirma (standart MLP muhasebesi) yok")
+    # 5) Iki davranis da olculur: blok-kosegenlik ve inis.
+    for iz in ("blok_kosegenligi_bayt_duzeyinde_olculur", "inis_olculur"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # 6) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    # "monarch" listede yok: bu deponun kendi tasarim notu (MIMARI-PORT-TASARIM.md
+    # 3.1) matris sinifini adiyla aniyor; yasak olan sey proje/kutuphane adi.
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 7) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_hadamard_mlp_kapisi() -> str:
+    """Port bileseni 3 (Hadamard/Monarch MLP) olculur halde duruyor: aktivasyon
+    crate'in kendisinden, gradyan sonlu farkla (sayim sekle bagli), parametre
+    muhasebesi sekilden turetilir, blok-kosegenlik ve inis ayri ayri olculur.
+    Ayrica modulun testleri burada kosturulur: kac test varsa o kadari gecmeli."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "mlp_hadamard.rs"
+    ihlaller = _hadamard_mlp_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("hadamard MLP sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-p", "lubot-egitim", "mlp_hadamard"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"hadamard MLP olculur: {gecen} test, gradyan sonlu farkla, blok-kosegenlik "
+        f"ve inis ayri ayri kayitli"
+    )
+
+
+def selftest_hadamard_mlp_kapisi() -> None:
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "mlp_hadamard.rs"
+    if _hadamard_mlp_denetle(gercek):
+        raise SystemExit("saglam modul denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "mlp_hadamard.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) sayim bagi sokulursa yakalanmali
+        bozuk.write_text(metin.replace("denetlenen != spec.parametre_sayisi()", "false", 1),
+                         encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("sayim bagi sokulmus kopya yakalanmadi")
+        # 2) ucuncu taraf adi sokulursa yakalanmali
+        bozuk.write_text(metin + "\n// megatron\n", encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("ucuncu taraf adi tasiyan kopya yakalanmadi")
+        # 3) blok-kosegenlik olcumu sokulursa yakalanmali
+        bozuk.write_text(metin.replace("blok_kosegenligi_bayt_duzeyinde_olculur", "x", 1),
+                         encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("blok olcumu sokulmus kopya yakalanmadi")
+        # 4) aktivasyon crate'ten alinmazsa yakalanmali
+        bozuk.write_text(metin.replace("use crate::{gelu, gelu_turev};", "// kendi gelu", 1),
+                         encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("aktivasyon kopyasi yakalanmadi")
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -7007,6 +7129,7 @@ GATES_EXTRA = {
     "guvenlik-workflowlari": (gate_guvenlik_workflowlari, selftest_guvenlik_workflowlari),
     "apk-sozlesmesi": (gate_apk_sozlesmesi, selftest_apk_sozlesmesi),
     "elf-sertlestirme": (gate_elf_sertlestirme, selftest_elf_sertlestirme),
+    "hadamard-mlp-kapisi": (gate_hadamard_mlp_kapisi, selftest_hadamard_mlp_kapisi),
 }
 
 

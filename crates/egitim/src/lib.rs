@@ -32,6 +32,7 @@ pub mod dongu;
 pub mod kernel32;
 pub mod kontrol;
 pub mod kosu;
+pub mod mlp_hadamard;
 pub mod olcum;
 pub mod veri;
 
