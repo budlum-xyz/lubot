@@ -14,7 +14,7 @@
     "nll_fit": 0.666879,
     "nll_ham": 0.776325,
     "sicaklik": 3.419455,
-    "sure_saniye": 0.21,
+    "sure_saniye": 0.19,
     "yesil_alt": 0.7
   },
   "kaynaklar": {
@@ -22,7 +22,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.21
+    "sure_saniye": 0.19
   },
   "kosucu": "betik",
   "olculmeyen": [
