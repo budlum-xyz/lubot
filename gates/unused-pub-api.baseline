@@ -102,6 +102,18 @@ egitim:HadamardSekilHatasi
 egitim:HadamardSpec
 egitim:kayip_gradyan
 egitim:sgd_adimi
+# cok_serit (bilesen 5): cok-seritli artik baglanti adayi; olcumleri kendi
+# modulunde durur, egitim cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:CokSeritSpec
+egitim:SERIT_UST_SINIRI
+egitim:SeritAgirliklar
+egitim:SeritDurumu
+egitim:SeritGradyanlar
+egitim:SeritSekilHatasi
+egitim:kimlik_doldur
+egitim:rms
+egitim:rms_profili
+egitim:tohumlu_doldur
 egitim:EgitimConfig
 egitim:EgitimDongusu
 gunluk:NginxSatiri
@@ -228,7 +240,6 @@ uc-asama:AsamaDetay
 uc-asama:UcAsamaSistem
 uc-asama:VeriKovasi
 veri:DerleyiciHakem
-veri:Karisim
 veri:KayitTuru
 veri:Kaynak
 veri:SentetikUretim
