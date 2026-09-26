@@ -1456,6 +1456,7 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
         n_layers: 2,
         n_heads: 2,
         n_kv_heads: 2,
+        qkv_dokunus: 0,
         d_ff: 32,
         max_seq_len: uzunluk,
     };
@@ -1668,6 +1669,7 @@ fn cmd_egitim(args: &[String]) -> Result<(), String> {
         n_layers: 2,
         n_heads: 2,
         n_kv_heads: 2,
+        qkv_dokunus: 0,
         d_ff: 32,
         max_seq_len: 16,
     };
