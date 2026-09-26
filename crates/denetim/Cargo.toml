@@ -3,10 +3,11 @@ name = "lubot-denetim"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
 license-file.workspace = true
 
 [dependencies]
-lubot-muhur = { path = "../muhur" }
+lubot-muhur = { path = "../muhur", version = "0.1.0" }
 
 [lints]
 workspace = true

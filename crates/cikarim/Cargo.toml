@@ -3,7 +3,8 @@ name = "lubot-cikarim"
 version = "0.1.0"
 edition = "2021"
 description = "Lubot inference surface: score and rank with a trained checkpoint, never generate."
-license = "PolyForm-Shield-1.0.0"
+license-file.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
 repository = "https://github.com/budlum-xyz/lubot"
 readme = "README.md"
 
