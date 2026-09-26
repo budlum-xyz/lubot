@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      issues: write
+      issues: write  # A crash that survives ten minutes becomes an issue
     strategy:
       fail-fast: false
       matrix:
@@ -52,9 +52,14 @@ jobs:
         run: cargo install cargo-fuzz --locked --version 0.13.2
 
       - name: Fuzz for ten minutes per target
+        env:
+          # The matrix value reaches the shell through the environment, never
+          # through the command text: a workflow that interpolates a value into
+          # a script is one edited matrix away from running it as code.
+          FUZZ_HEDEFI: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cargo fuzz run ${{ matrix.target }} -- -max_total_time=600 -rss_limit_mb=2048
+          cargo fuzz run "$FUZZ_HEDEFI" -- -max_total_time=600 -rss_limit_mb=2048
 
       - name: Keep any crashing input
         if: failure()

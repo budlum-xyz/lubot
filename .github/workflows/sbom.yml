@@ -14,6 +14,10 @@ on:
   release:
     types: [published]
 
+concurrency:
+  group: sbom-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
 
@@ -23,9 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: write  # Attaches the SBOM to the release it was built from
+      id-token: write  # Keyless OIDC token used by the attestation
+      attestations: write  # Writes the provenance statement for the SBOM
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
