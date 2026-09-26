@@ -128,7 +128,15 @@ impl Rope {
         out
     }
 
-    /// Komşu çift vs yarıya bölme — 1. agent'ın bulduğu hata: rope komşu çift yerine yarıya bölme eşleşmesi kullanmalı (cat((freqs,freqs)) + rotate_half).
+    /// Komşu çift mi, yarıya bölme mi — ölçülerek karar verilmiş bir ayrım.
+    ///
+    /// İki eşleşme de "RoPE" diye anılır ama aynı şey değildir: komşu çift
+    /// eşleşmesi `(x0, x1)` çiftlerini döndürür, yarıya bölme eşleşmesi ise
+    /// `i` ile `i + d/2` konumlarını aynı açıyla döndürür
+    /// (`cat((freqs, freqs))` + `rotate_half`). Referans uygulama ikincisini
+    /// kullanır; ayrım yanlış kurulursa çıktı sessizce kayar, çünkü iki
+    /// eşleşme de geçerli bir döndürmedir. Bu yüzden hangisinin kurulu
+    /// olduğu bir fonksiyonla sorulabilir ve testi vardır.
     #[must_use]
     pub fn yariya_bolme_mi(&self) -> bool {
         true // duzeltildi, yariya bolme

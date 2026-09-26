@@ -54,11 +54,16 @@ test -f "$SO" || { echo "cdylib üretilmedi: $SO"; exit 1; }
 cp "$SO" "$CIKTI/stage/lib/$ABI/"
 echo "   $(du -h "$SO" | cut -f1)  liblubot_arayuz.so"
 
-echo "== 3/8 korpus varlığı =="
+echo "== 3/8 korpus varlığı ve süzme =="
 KORPUS="$KOK/corpus/knowledge-self.jsonl.gz"
-test -f "$KORPUS" || { echo "korpus kurulmamış: $KORPUS (training/build_corpus.py koş)"; exit 1; }
-cp "$KORPUS" "$CIKTI/stage/assets/korpus/"
-echo "   $(du -h "$KORPUS" | cut -f1)  knowledge-self.jsonl.gz"
+test -f "$KORPUS" || { echo "korpus kurulmamış: $KORPUS (training/corpus_insa.py koş)"; exit 1; }
+# Depodaki korpus arşivdir; pakete giden kopya **hizmet**tir. Süreç belgeleri
+# (`served: false`) arşivde kalır, cihaza inmez: bkz. android/korpus_suz.py.
+SUZULMUS="$CIKTI/suzulmus-korpus.jsonl.gz"
+python3 "$KOK/android/korpus_suz.py" "$KORPUS" "$SUZULMUS" > "$CIKTI/korpus-suzme.json"
+cat "$CIKTI/korpus-suzme.json"
+cp "$SUZULMUS" "$CIKTI/stage/assets/korpus/knowledge-self.jsonl.gz"
+echo "   $(du -h "$SUZULMUS" | cut -f1)  knowledge-self.jsonl.gz (süzülmüş)"
 
 echo "== 4/8 kaynaklar (aapt2) =="
 find "$KOK/android/res" -type f \( -name '*.xml' -o -name '*.png' \) -print0 \

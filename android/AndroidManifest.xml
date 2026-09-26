@@ -21,7 +21,9 @@
   demektir.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="dev.budlum.lubot">
+    package="dev.budlum.lubot"
+    android:versionCode="1"
+    android:versionName="0.1.0">
 
     <uses-permission android:name="android.permission.INTERNET" />
 

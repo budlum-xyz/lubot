@@ -562,6 +562,29 @@ def _begins_with_heading(text: str) -> bool:
     return stripped.startswith("# ")
 
 
+
+def _ikili_hazirla() -> Path:
+    """`target/debug/lubot` ikilisini hazir eder, gerekirse derler.
+
+    Bazi kapilar ve `training/` altindaki olcum betikleri **derlenmis ikiliyi**
+    cagirir (`target/debug/lubot`). Ikili yoksa kapi "olcum kosmadi" deyip
+    duser; bu dogru bir teshis ama bos bir kapi kosusudur - kapi kendi
+    malzemesini kurmuyorsa, neden kosmadigini soylemekle kalir. Bu yardimci iki
+    yerde cagrilir: `--all` kosusunun basinda ve tek basina kosulan olcum
+    kapilarinin icinde. Boylece temiz bir agacta (ya da yeni bir sandbox'ta)
+    kapi malzeme yoklugundan degil, gercek bir olcumden konusur.
+    """
+    ikili = ROOT / "target" / "debug" / "lubot"
+    if ikili.is_file():
+        return ikili
+    derleme = subprocess.run(
+        ["cargo", "build", "-p", "lubot", "--bin", "lubot"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if derleme.returncode != 0 or not ikili.is_file():
+        raise SystemExit(f"ikili derlenemedi (target/debug/lubot): {derleme.stderr[-200:]}")
+    return ikili
+
 def _cli_in(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     """The binary with the repository manifest, run inside `cwd` - for path-
     sensitive commands that must see a fixture tree instead of the repo."""
@@ -5816,6 +5839,9 @@ def gate_repeat_cost_is_measured() -> str:
     bulgu = _eval_run_finding(kayit)
     if bulgu:
         raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    # Tek basina kosuldugunda da malzeme hazir olsun: `--all` bunu kendi
+    # basinda yapar, ama bu kapi tek basina cagrildiginda da konusmali.
+    _ikili_hazirla()
     kosu = subprocess.run(
         [sys.executable, str(ROOT / "training" / "tekrar_maliyeti.py"), "--olc"],
         cwd=ROOT, capture_output=True, text=True, check=False,
@@ -6536,12 +6562,266 @@ def selftest_apk_sozlesmesi() -> None:
     assert "threshold" in re.sub(r"//[^\n]*", "", kodda), "kodda iz bulunamadi"
     # Kapi, kendi kanaryasinin yazdigi gecici agacta agirlik aramaz; asagisi
     # yalnizca arama mantiginin calistigini gosterir.
+    # Korpus suzme kanaryasi: iki sentetik korpus kurulur. Damgali kayit
+    # suzulur, damgasiz kayit kalir. Boylece "served" denetimi dolu bir ada
+    # bakmiyor, gercekten kayit atiyor.
+    import gzip as _gz
+    import json as _json2
+
+    with tempfile.TemporaryDirectory() as d:
+        ham = Path(d) / "ham.jsonl.gz"
+        suzulmus = Path(d) / "suz.jsonl.gz"
+        kayitlar = [
+            {"path": "crates/a.rs", "text": "gercek kayit"},
+            {"path": "YAPILACAKLAR.md", "text": "surec notu", "served": False},
+        ]
+        with _gz.open(ham, "wt", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(_json2.dumps(k, ensure_ascii=False) + "\n")
+        suzucu_yolu = ROOT / "android" / "korpus_suz.py"
+        suzucu_modulu = suzucu_yolu.read_text(encoding="utf-8")
+        cevre: dict = {"__name__": "kanarya", "__file__": str(suzucu_yolu)}
+        exec(compile(suzucu_modulu, str(suzucu_yolu), "exec"), cevre)  # noqa: S102 - kendi dosyamiz
+        ozet = cevre["suz"](ham, suzulmus)
+        assert ozet["atilan"] == 1, f"damgali kayit suzulmedi: {ozet}"
+        assert ozet["kalan"] == 1, f"damgasiz kayit dustu: {ozet}"
+        with _gz.open(suzulmus, "rt", encoding="utf-8") as f:
+            kalanlar = [ _json2.loads(s) for s in f if s.strip() ]
+        assert kalanlar[0]["path"] == "crates/a.rs", "yanlis kayit kaldi"
+
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "model.safetensors.part-00"
         p.write_bytes(b"x")
         bulunan = [y for y in Path(d).rglob("*.safetensors*")]
         assert len(bulunan) == 1, "agirlik taramasi bozuk"
 
+
+
+# --------------------------------------------------------------------------
+# gate: the release binary is hardened, measured from its own ELF header
+# --------------------------------------------------------------------------
+# Sertlestirme katmani 3: ikilinin **kendisi** neyi garanti ediyor? Bu kapi
+# iddiayi sozle degil bayttan okur. Harici arac yok: ELF basligi ve program
+# basliklari `struct` ile ayristirilir, boylece kapi NDK'siz, `readelf`siz
+# makinelerde de kosar. Android `.so` ayni olcumun icinde anilir ama
+# olculemiyorsa **soylenir**, iddia edilmez.
+PT_GNU_STACK = 0x6474E551
+PT_GNU_RELRO = 0x6474E552
+PT_DYNAMIC = 2
+PF_X = 0x1
+ET_DYN = 3
+DT_FLAGS = 0x1E
+DT_FLAGS_1 = 0x6FFFFFFB
+DF_BIND_NOW = 0x8
+DF_1_NOW = 0x1
+SHT_SYMTAB = 2
+
+
+def _elf_olc(yol: Path) -> dict:
+    """ELF64/LSB bir ikiliden sertlestirme bayraklarini okur.
+
+    Okunan sey az ve nettir: konumdan bagimsiz mi, yigin yurutulebilir mi,
+    salt-okunur sonrasi var mi, GOT erken mi baglaniyor, sembol tablosu duruyor
+    mu. Bunlarin hepsi basliktaki sayilardir; tahmin yok.
+    """
+    import struct
+
+    veri = yol.read_bytes()
+    if veri[:4] != b"\x7fELF":
+        raise SystemExit(f"ELF degil: {yol}")
+    if veri[4] != 2 or veri[5] != 1:
+        raise SystemExit(f"ELF64/LSB beklenir: {yol} (sinif {veri[4]}, veri {veri[5]})")
+    tip = struct.unpack_from("<H", veri, 16)[0]
+    phoff = struct.unpack_from("<Q", veri, 32)[0]
+    shoff = struct.unpack_from("<Q", veri, 40)[0]
+    phentsize = struct.unpack_from("<H", veri, 54)[0]
+    phnum = struct.unpack_from("<H", veri, 56)[0]
+    shentsize = struct.unpack_from("<H", veri, 58)[0]
+    shnum = struct.unpack_from("<H", veri, 60)[0]
+    yigin_yurutulebilir = None
+    relro = False
+    dinamik_ofset = None
+    for i in range(phnum):
+        off = phoff + i * phentsize
+        p_tip, p_bayrak = struct.unpack_from("<II", veri, off)
+        if p_tip == PT_GNU_STACK:
+            yigin_yurutulebilir = bool(p_bayrak & PF_X)
+        elif p_tip == PT_GNU_RELRO:
+            relro = True
+        elif p_tip == PT_DYNAMIC:
+            dinamik_ofset = struct.unpack_from("<Q", veri, off + 8)[0]
+    # Dinamik girdiler: BIND_NOW tam RELRO'nun isaretidir - GOT ilk cozumlemede
+    # baglanir ve sonrasinda yazilamaz.
+    bind_now = False
+    if dinamik_ofset is not None:
+        imlec = dinamik_ofset
+        while imlec + 16 <= len(veri):
+            d_tip, d_deger = struct.unpack_from("<qQ", veri, imlec)
+            if d_tip == 0:
+                break
+            if (d_tip == DT_FLAGS and d_deger & DF_BIND_NOW) or (
+                d_tip == DT_FLAGS_1 and d_deger & DF_1_NOW
+            ):
+                bind_now = True
+            imlec += 16
+    # Sembol tablosu: `.symtab` varsa adlar ikilinin icinde duruyor demektir;
+    # `strip` uygulanmis mi sorusunun cevabi budur.
+    symtab = False
+    for i in range(shnum):
+        off = shoff + i * shentsize
+        s_tip = struct.unpack_from("<I", veri, off + 4)[0]
+        if s_tip == SHT_SYMTAB:
+            symtab = True
+    return {
+        "pie": tip == ET_DYN,
+        "yigin_yurutulebilir": yigin_yurutulebilir,
+        "relro": relro,
+        "bind_now": bind_now,
+        "symtab": symtab,
+        "boyut": len(veri),
+    }
+
+
+def gate_elf_sertlestirme() -> str:
+    """Surum ikilisi sertlestirilmis mi - bayttan okunur.
+
+    Dort sey aranir ve dordu de **zorunludur**: PIE (sabit adres yok), NX
+    (yigin yurutulemez), RELRO (GOT salt-okunur sonrasi) ve BIND_NOW (tam
+    RELRO). Sembol tablosu ayrica bildirilir ama zorunlu tutulmaz: `strip`
+    bir tercihtir, ve zorunlu kilmak bir gun hata ayiklamayi imkansiz kilardi.
+    """
+    import subprocess as _sp
+
+    ikili = ROOT / "target" / "release" / "lubot"
+    if not ikili.is_file():
+        derleme = _sp.run(
+            ["cargo", "build", "--release", "--bin", "lubot"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if derleme.returncode != 0 or not ikili.is_file():
+            raise SystemExit(f"surum ikilisi derlenemedi: {derleme.stderr[-200:]}")
+    olcum = _elf_olc(ikili)
+    eksik = [
+        ad
+        for ad, iyi in (
+            ("PIE", olcum["pie"]),
+            ("NX", olcum["yigin_yurutulebilir"] is False),
+            ("RELRO", olcum["relro"]),
+            ("BIND_NOW", olcum["bind_now"]),
+        )
+        if not iyi
+    ]
+    if eksik:
+        raise SystemExit(f"ikili sertlestirmesi eksik: {', '.join(eksik)} ({ikili})")
+    # Android yuzeyi ayni olcumle anilir; NDK yoksa **soylenir**.
+    android_not = "android .so: NDK yok, olculmedi"
+    ndk_so = ROOT / "target" / "aarch64-linux-android" / "release" / "liblubot_arayuz.so"
+    if ndk_so.is_file():
+        so = _elf_olc(ndk_so)
+        so_eksik = [
+            ad
+            for ad, iyi in (
+                ("PIE", so["pie"]),
+                ("NX", so["yigin_yurutulebilir"] is False),
+                ("RELRO", so["relro"]),
+                ("BIND_NOW", so["bind_now"]),
+            )
+            if not iyi
+        ]
+        if so_eksik:
+            raise SystemExit(f"android .so sertlestirmesi eksik: {', '.join(so_eksik)}")
+        android_not = f"android .so: PIE+NX+RELRO+BIND_NOW ({so['boyut']} bayt)"
+    return (
+        f"PIE + NX + RELRO + BIND_NOW, sembol tablosu "
+        f"{'var' if olcum['symtab'] else 'yok (strip)'}; {android_not}"
+    )
+
+
+def selftest_elf_sertlestirme() -> None:
+    """Kanarya: ayristirici dogru okuyor mu - dort sentetik baslikla.
+
+    Once saglam bir ELF64/LSB basligi kurulur ve olcum onu sertlestirilmis
+    bulur; sonra her kural tek tek bozulur ve **o** kuralin dustugu gorulur.
+    Boylece kapi, gercek ikilide yesil kalirken kor bir ayristirici olmaz.
+    """
+    import struct
+    import tempfile
+
+    def baslik_kur(*, tip=ET_DYN, yigin_bayrak=6, relro=True, bind_now=True, symtab=False):
+        # Program basliklari: PT_GNU_STACK (RW), PT_GNU_RELRO, PT_DYNAMIC.
+        phnum = 3
+        phoff = 64
+        dinamik_off = phoff + phnum * 56
+        parcalar = []
+        parcalar.append(struct.pack("<II", PT_GNU_STACK, yigin_bayrak) + b"\x00" * 48)
+        parcalar.append(
+            (struct.pack("<II", PT_GNU_RELRO, 4) + b"\x00" * 48)
+            if relro
+            else b"\x00" * 56
+        )
+        # ELF64 program basligi 56 bayttir: p_type+p_flags (8) ve bes adet
+        # 8 baytlik alan. Eksik birakmak, dinamik bolumu yanlis ofsete koyar ve
+        # kanarya bunu "BIND_NOW yok" diye yakalar - ilk yazimda tam da o oldu.
+        parcalar.append(
+            struct.pack("<IIQQQQQQ", PT_DYNAMIC, 6, dinamik_off, 0, 0, 32, 32, 0)
+        )
+        assert len(parcalar[-1]) == 56, "program basligi 56 bayt olmali"
+        govde = b"".join(parcalar)
+        # Dinamik bolum: FLAGS=8 (BIND_NOW) ya da bos.
+        if bind_now:
+            govde += struct.pack("<qQ", DT_FLAGS, DF_BIND_NOW)
+        govde += struct.pack("<qQ", 0, 0)
+        # Bolum basliklari: yalnizca opsiyonel `.symtab`.
+        sh = struct.pack("<IIQQQQIIQQ", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        if symtab:
+            sh += struct.pack("<IIQQQQIIQQ", 1, SHT_SYMTAB, 0, 0, 0, 0, 0, 0, 0, 0)
+        shoff = 4096
+        bas = bytearray(b"\x00" * 64)
+        bas[0:4] = b"\x7fELF"
+        bas[4] = 2  # ELF64
+        bas[5] = 1  # LSB
+        bas[16:18] = struct.pack("<H", tip)
+        bas[32:40] = struct.pack("<Q", phoff)
+        bas[40:48] = struct.pack("<Q", shoff)
+        bas[54:56] = struct.pack("<H", 56)
+        bas[56:58] = struct.pack("<H", phnum)
+        bas[58:60] = struct.pack("<H", 64)
+        bas[60:62] = struct.pack("<H", 1 + (1 if symtab else 0))
+        veri = bytes(bas) + govde
+        veri = veri.ljust(shoff, b"\x00") + sh
+        return veri
+
+    with tempfile.TemporaryDirectory() as d:
+        saglam = Path(d) / "saglam.so"
+        saglam.write_bytes(baslik_kur())
+        olcum = _elf_olc(saglam)
+        assert olcum["pie"], "saglam baslik PIE cikmadi"
+        assert olcum["yigin_yurutulebilir"] is False, "saglam baslikta yigin yurutulebilir"
+        assert olcum["relro"] and olcum["bind_now"], "saglam baslikta RELRO/BIND_NOW yok"
+        assert not olcum["symtab"], "saglam baslikta sembol tablosu var gorundu"
+        # 1) ET_EXEC -> PIE degil
+        p = Path(d) / "exec"; p.write_bytes(baslik_kur(tip=2))
+        assert not _elf_olc(p)["pie"], "ET_EXEC PIE sayildi"
+        # 2) PF_X'li yigin -> NX degil
+        p = Path(d) / "nx"; p.write_bytes(baslik_kur(yigin_bayrak=7))
+        assert _elf_olc(p)["yigin_yurutulebilir"] is True, "yurutulebilir yigin gorumedi"
+        # 3) RELRO yok
+        p = Path(d) / "relro"; p.write_bytes(baslik_kur(relro=False))
+        assert not _elf_olc(p)["relro"], "RELRO yok denmedi"
+        # 4) BIND_NOW yok
+        p = Path(d) / "now"; p.write_bytes(baslik_kur(bind_now=False))
+        assert not _elf_olc(p)["bind_now"], "BIND_NOW yok denmedi"
+        # 5) sembol tablosu goruluyor
+        p = Path(d) / "sym"; p.write_bytes(baslik_kur(symtab=True))
+        assert _elf_olc(p)["symtab"], "sembol tablosu gorumedi"
+        # 6) ELF olmayan dosya
+        p = Path(d) / "bos"; p.write_bytes(b"not an elf")
+        try:
+            _elf_olc(p)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("ELF olmayan dosya kabul edildi")
 
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
@@ -6659,6 +6939,7 @@ GATES_EXTRA = {
     "reranker-is-measured": (gate_reranker_is_measured, selftest_reranker_is_measured),
     "guvenlik-workflowlari": (gate_guvenlik_workflowlari, selftest_guvenlik_workflowlari),
     "apk-sozlesmesi": (gate_apk_sozlesmesi, selftest_apk_sozlesmesi),
+    "elf-sertlestirme": (gate_elf_sertlestirme, selftest_elf_sertlestirme),
 }
 
 
@@ -6685,6 +6966,8 @@ def main(argv: list[str]) -> int:
             print(name)
         return 0
     if argv[0] == "--all":
+        # Malzeme hazirligi: derlenmis ikiliyi bekleyen kapilar icin.
+        _ikili_hazirla()
         failures = 0
         for name, (run, selftest) in GATES.items():
             try:

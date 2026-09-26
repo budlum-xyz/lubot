@@ -141,6 +141,33 @@ def main() -> int:
             else:
                 satirlar.append(f"- {gerekli}: {z.getinfo(gerekli).file_size} bayt")
 
+        # 4b) paketteki korpus: surec belgeleri cihaza inmez.
+        # Depodaki korpus arsivdir ve `served: false` kayitlari tasir; pakete
+        # giden kopya suzulur (android/korpus_suz.py). Burada **paketin icinden**
+        # dogrulanir: suzme unutulursa APK imzalanmis olur ama kapida duser.
+        korpus_girdisi = "assets/korpus/knowledge-self.jsonl.gz"
+        if korpus_girdisi in adlar:
+            import gzip as _gzip
+            import json as _json
+
+            veri = _gzip.decompress(z.read(korpus_girdisi)).decode("utf-8")
+            sayi = 0
+            damgali = 0
+            for satir in veri.splitlines():
+                if not satir.strip():
+                    continue
+                sayi += 1
+                if _json.loads(satir).get("served") is False:
+                    damgali += 1
+            if damgali:
+                hatalar.append(
+                    f"paketteki korpusta {damgali} surec-belgesi kaydi var (served: false)"
+                )
+            else:
+                satirlar.append(
+                    f"- korpus: {sayi} kayit, surec belgesi 0 (served: false yok)"
+                )
+
         # 5) kaynaklar
         kaynaklar = [n for n in adlar if n.endswith(".xml") or n == "resources.arsc"]
         satirlar.append(f"- kaynak: {len(kaynaklar)} dosya ({', '.join(sorted(kaynaklar))})")
