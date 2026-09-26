@@ -1,19 +1,35 @@
-# Public items reached from nowhere outside their own crate.
 #
-# This is a ratchet, not a permission. gates/check.py::pub-api-is-used fails the
-# moment an entry is added, and fails again when an entry becomes used and is not
-# removed. The list may only shrink.
-#
-# Two different situations land here and they need different answers:
-#   - the item is meant to be `pub(crate)`, and the fix is to narrow it;
-#   - the item encodes a rule the project decided on and is waiting for a caller,
 #     and the fix is to write the caller.
+#   - the item encodes a rule the project decided on and is waiting for a caller,
+#   - the item is meant to be `pub(crate)`, and the fix is to narrow it;
 # Deleting an entry is a judgement call about which of those it is, so the gate
-# reports rather than removes.
-#
+# Public items reached from nowhere outside their own crate.
 # The binary crate is searched as a consumer but reported on by nothing: it is
-# the main caller of the libraries, so excluding it from the search would make
+# This is a ratchet, not a permission. gates/check.py::pub-api-is-used fails the
+# Two different situations land here and they need different answers:
+# egitim cagrisini bekliyor. Cagri yazilinca bu satirlar silinir (liste kisalir).
 # every item it calls look unused.
+# mlp_hadamard (bilesen 3): sekil ve gradyan sozlesmesi kararlastirildi,
+# moment an entry is added, and fails again when an entry becomes used and is not
+# nicem:paketle_ucdeger is the ternary packer. Its caller inside the crate is the
+# note above: an item waiting for a caller, and the fix is to write the caller.
+# public unpacker with no public counterpart, so this is the second case in the
+# quantiser; its caller outside it is the reader that maps a container and
+# rebuilds weights, which is not written yet. Deleting the packer would leave a
+# removed. The list may only shrink.
+# reports rather than removes.
+# the main caller of the libraries, so excluding it from the search would make
+alim:Admitted
+alim:EcParams
+alim:MAX_SHARDS
+alim:Placement
+alim:SCHEMA
+alim:ShardPlan
+alim:SourceClass
+alim:check_monotonic
+alim:data_shard
+alim:is_sha256_hex
+alim:weight_id
 anlama:Abstention
 anlama:CALIBRATION_BUCKETS
 anlama:ClassifierError
@@ -21,7 +37,27 @@ anlama:Signal
 anlama:TIE_EPSILON
 answer:OUTPUT_TAG
 answer:OutputRecord
+bpe-gelismis:BpeGelismis
+bpe-gelismis:OzelToken
+bpe-gelismis:OzelTur
+cikarim:CikarimConfig
+cikarim:CikarimMotoru
+cikarim:CikarimSonuc
+cikarim:KvCache
 denetim:AuditError
+derin:AgirlikBaglama
+derin:ModelSpec
+derin:Oran
+egitim:BLOK_UST_SINIRI
+egitim:EgitimConfig
+egitim:EgitimDongusu
+egitim:HadamardAgirliklar
+egitim:HadamardBellek
+egitim:HadamardGradyanlar
+egitim:HadamardSekilHatasi
+egitim:HadamardSpec
+egitim:kayip_gradyan
+egitim:sgd_adimi
 esik:QuorumError
 esik:byzantine_floor
 grant:AuditEntry
@@ -30,87 +66,6 @@ grant:EpochEntry
 grant:EpochOutcome
 grant:EpochRefusal
 grant:TrainingDataGrant
-index:BM25_B
-index:BM25_K1
-index:MIN_TERM_COVERAGE
-index:compact
-index:mask_secrets
-kanit:ProofError
-kanit:ProofRecord
-kanit:Status
-kuyruk:DeadItem
-kuyruk:QueueError
-mimari:Component
-muhur:LINK_HEX_LEN
-muhur:SEAL_TAG
-# nicem:paketle_ucdeger is the ternary packer. Its caller inside the crate is the
-# quantiser; its caller outside it is the reader that maps a container and
-# rebuilds weights, which is not written yet. Deleting the packer would leave a
-# public unpacker with no public counterpart, so this is the second case in the
-# note above: an item waiting for a caller, and the fix is to write the caller.
-nicem:paketle_ucdeger
-olcek:PolicyError
-read:MAX_OUTPUT_BYTES
-read:PerceptionKind
-read:PerceptionRefusal
-read:is_known
-read:source_kind
-sikistir:CCR_ASLI
-sikistir:CCR_TUR
-sikistir:IcerikTuru
-sikistir:OgrenSatiri
-sikistir:Sikistirma
-sikistir:yonlendir
-takip:TrackError
-tools:ALLOWED_METHODS
-tools:AiInferenceRequest
-tools:AiInferenceResult
-tools:CeilingsReport
-tools:ChainOutcome
-tools:CheckpointWindow
-tools:OVERWRITE_PATTERNS
-tools:OperatorRecord
-tools:Rational
-tools:ScopeRefusal
-tools:ceilings_request
-tools:compute_bond_ok
-tools:effort_hash
-tools:effort_tag_ok
-tools:is_allowed_method
-tools:jsonrpc_request
-tools:parse_ceilings
-tools:parse_get_outcome
-tools:parse_request
-tools:parse_result
-tools:same_model_hash
-tools:scan_line
-tools:to_corpus_line
-usl:MEDIA_TAG
-yetenek:CapabilityError
-yetenek:Handle
-yetenek:State
-bpe-gelismis:BpeGelismis
-bpe-gelismis:OzelToken
-bpe-gelismis:OzelTur
-cikarim:CikarimConfig
-cikarim:CikarimMotoru
-cikarim:CikarimSonuc
-cikarim:KvCache
-derin:AgirlikBaglama
-derin:ModelSpec
-derin:Oran
-# mlp_hadamard (bilesen 3): sekil ve gradyan sozlesmesi kararlastirildi,
-# egitim cagrisini bekliyor. Cagri yazilinca bu satirlar silinir (liste kisalir).
-egitim:BLOK_UST_SINIRI
-egitim:HadamardAgirliklar
-egitim:HadamardBellek
-egitim:HadamardGradyanlar
-egitim:HadamardSekilHatasi
-egitim:HadamardSpec
-egitim:kayip_gradyan
-egitim:sgd_adimi
-egitim:EgitimConfig
-egitim:EgitimDongusu
 gunluk:NginxSatiri
 gunluk:SyslogOlayi
 gunluk:facility_cikar
@@ -118,9 +73,17 @@ gunluk:nginx_satiri
 gunluk:pri_coz
 gunluk:severity_cikar
 gunluk:syslog_satiri
+index:BM25_B
+index:BM25_K1
+index:MIN_TERM_COVERAGE
+index:compact
+index:mask_secrets
 kanaat:BASLANGIC_OZETI
 kanaat:DefterHatasi
 kanaat:beklenen_metni
+kanit:ProofError
+kanit:ProofRecord
+kanit:Status
 kapisma:BoslukHaritasi
 kapisma:EvalKayit
 kapisma:EvalSet
@@ -164,10 +127,16 @@ kodlayici:matris_vektor
 kodlayici:metaspace
 kodlayici:pencere_icinde
 kodlayici:rope_tablosu
+kuyruk:DeadItem
+kuyruk:QueueError
+mimari:Component
 mu:MuP
 mu:MuSpec
 mu:Olcek
+muhur:LINK_HEX_LEN
+muhur:SEAL_TAG
 nicem:paketle_ucdeger
+olcek:PolicyError
 olcum:BataryaAdi
 olcum:BataryaSonuc
 olcum:BilgiBoslugu
@@ -177,8 +146,19 @@ olcum:OlcumMotoru
 paralel:BatchHesap
 paralel:ParalelConfig
 paralel:SuperComputer
+read:MAX_OUTPUT_BYTES
+read:PerceptionKind
+read:PerceptionRefusal
+read:is_known
+read:source_kind
 sertlestirme:CozHatasi
 sertlestirme:nokta_sayisi
+sikistir:CCR_ASLI
+sikistir:CCR_TUR
+sikistir:IcerikTuru
+sikistir:OgrenSatiri
+sikistir:Sikistirma
+sikistir:yonlendir
 sir:sirli_mi
 sir:taninan_onekler
 sistem:Bilesen
@@ -190,13 +170,41 @@ sozluk:Dilim
 sozluk:DilimTuru
 sozluk:Kodlama
 sozluk:kod_mu
+takip:TrackError
+tools:ALLOWED_METHODS
+tools:AiInferenceRequest
+tools:AiInferenceResult
+tools:CeilingsReport
+tools:ChainOutcome
+tools:CheckpointWindow
+tools:OVERWRITE_PATTERNS
+tools:OperatorRecord
+tools:Rational
+tools:ScopeRefusal
+tools:ceilings_request
+tools:compute_bond_ok
+tools:effort_hash
+tools:effort_tag_ok
+tools:is_allowed_method
+tools:jsonrpc_request
+tools:parse_ceilings
+tools:parse_get_outcome
+tools:parse_request
+tools:parse_result
+tools:same_model_hash
+tools:scan_line
+tools:to_corpus_line
 transformer:Dikkat
 uc-asama:Asama
 uc-asama:AsamaDetay
 uc-asama:UcAsamaSistem
 uc-asama:VeriKovasi
+usl:MEDIA_TAG
 veri:DerleyiciHakem
 veri:Karisim
 veri:KayitTuru
 veri:Kaynak
 veri:SentetikUretim
+yetenek:CapabilityError
+yetenek:Handle
+yetenek:State

@@ -42,6 +42,7 @@ lubot-sir = { path = "../sir", version = "0.1.0" }
 lubot-gunluk = { path = "../gunluk", version = "0.1.0" }
 lubot-nicem = { path = "../nicem", version = "0.1.0" }
 lubot-tasiyici = { path = "../tasiyici", version = "0.1.0" }
+lubot-alim = { path = "../alim", version = "0.1.0" }
 
 [lints]
 workspace = true

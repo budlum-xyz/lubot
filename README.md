@@ -46,9 +46,10 @@ read, and the sixth hardening layer says the decision does not live there. See
 | evidence to verdict: a choice, an escalation or a refusal, each with its reasoning; idf-weighted overlap so length does not buy points; separate floors for coverage, support and margin; Turkish folding before matching; negation from a list and from suffixes; numbers compared with their unit; a battery of 14 cases compiled into the binary; a SHA-256 verdict ledger where an edited entry and a removed entry are both named by index, and truncation is caught only by an outside anchor | `crates/kanaat` | 31 tests |
 | hardening layers measured from inside the process: masked literals, a digest of the running binary, tracer and timing and virtual-machine findings, and the limits written next to them | `crates/sertlestirme` | 25 tests |
 | the checkpoint run from Rust: a split safetensors reader (header, part-aware byte ranges, half precision), the configuration read with refusals rather than defaults, the encoder stack (windowed and full attention, gated feed-forward, rope, prefix norms), the decision head (type embedding, two bidirectional layers, the scorer, the action head, temperature), and an independent numpy cross-check that must agree with it before a number is believed | `crates/kodlayici` | 42 tests |
-| the runnable binary: corpus load, `ask`, grant book, output audit, closed-loop handoff; `ceilings`; multi-question `batch`; the uninterrupted-work queue (resume, budget, per-job gate check, loud halt); measured baselines that may only rise (`ratchet`); repository `envanter`; restricted `it` (only the listed paths are committed and pushed); the four-step `olc` verification chain; `durum`; the manifest map `graf`; the credential scan `guvenlik`; the file-kind router `dosya`; the ask_user-shaped decision battery `soru` (list/get/cevapla/durum); content search `ara`, measured `indeks`, the ordered reading plan `mufredat`, effort comparison `karsilastir`; context compression `sikistir` (--path/--geri-getir: typed routing, pinned lines, reversible CCR store, measured ledger) failure mining `ogren` (pattern grouping, two-tier promotion) and the decision head `karar` (`doktrin`/`tek`/`oyla`: the closed decision points, the fixed tier order, one head, and a k-of-n vote); the queue operator (`queue ls`, `queue iptal` - a cancelled job never runs); batch writes the same audit and closed-loop trace as `ask` | `crates/cli` | 137 tests |
+| the intake line: a manifest is admitted whole or refused by name (closed source classes, digest re-verification, path shape, step order); one provenance row per admitted record, append-only and read whole; weight content address, erasure plan and holder rule | `crates/alim` | 31 tests |
+| the runnable binary: corpus load, `ask`, grant book, output audit, closed-loop handoff; `ceilings`; multi-question `batch`; the uninterrupted-work queue (resume, budget, per-job gate check, loud halt); measured baselines that may only rise (`ratchet`); repository `envanter`; restricted `it` (only the listed paths are committed and pushed); the four-step `olc` verification chain; `durum`; the manifest map `graf`; the credential scan `guvenlik`; the file-kind router `dosya`; the ask_user-shaped decision battery `soru` (list/get/cevapla/durum); content search `ara`, measured `indeks`, the ordered reading plan `mufredat`, effort comparison `karsilastir`; context compression `sikistir` (--path/--geri-getir: typed routing, pinned lines, reversible CCR store, measured ledger) failure mining `ogren` (pattern grouping, two-tier promotion) and the decision head `karar` (`doktrin`/`tek`/`oyla`: the closed decision points, the fixed tier order, one head, and a k-of-n vote); the queue operator (`queue ls`, `queue iptal` - a cancelled job never runs); batch writes the same audit and closed-loop trace as `ask` | `crates/cli` | 162 tests |
 
-1165 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 93 gates, each with its own self-test; the ratchet holds on seven keys: tests, gates, pedantic warnings, corpus records, corpus tokens, bootstrap rounds, exam questions. The corpus-derived numbers are deliberately *not* restated here. This file is part of the corpus, so a figure written here feeds back into the measurement that produced it - measured, not assumed: with 101443 written here the corpus measures 101444, and with 101444 written it measures 101443, a two-cycle with no fixed point. `training/ratchet.json` carries them and is not in the corpus.
+1197 tests, `clippy -D warnings` clean, `unwrap`/`expect` denied outside tests. 94 gates, each with its own self-test; the ratchet holds on seven keys: tests, gates, pedantic warnings, corpus records, corpus tokens, bootstrap rounds, exam questions. The corpus-derived numbers are deliberately *not* restated here. This file is part of the corpus, so a figure written here feeds back into the measurement that produced it - measured, not assumed: with 101443 written here the corpus measures 101444, and with 101444 written it measures 101443, a two-cycle with no fixed point. `training/ratchet.json` carries them and is not in the corpus.
 
 ## Permission is an admission decision
 
@@ -93,6 +94,7 @@ grant book used, so "revoked" is never reported as "not found".
 
 | path | what lives there |
 |---|---|
+| `crates/alim` | the intake line: manifest admission, the provenance ledger, weight manifests |
 | `crates/grant` | view grants, revocation, expiry, the audit log |
 | `crates/read` | the three source channels, SHA-256 provenance, the corpus surface |
 | `crates/index` | passages with line ranges, secret masking, term search |
@@ -100,6 +102,7 @@ grant book used, so "revoked" is never reported as "not found".
 | `crates/answer` | the reading loop that puts the four together |
 | `crates/kodlayici` | the checkpoint: header reader, encoder, decision head, cross-check |
 | `gates/check.py` | the repository gates CI enforces |
+| `docs/ALIM-HATTI.md` | the intake line's interface, its fields and its refusals |
 | `training/` | the corpus builder, the supervised-set builder, the hardware bench, the model-size recommender and the frozen BPE tokenizer trainer |
 | `corpus/` | derived self-built corpus (gitignored; CI builds it before the gates) |
 
@@ -168,11 +171,11 @@ machine (K6), `training/recommend_model_size.py` turns that measurement into a s
 into a parameter ceiling where every number carries its label: measured,
 derived (formula stated) or not measured.
 
-What the corpus holds (measured, 2026-09-22):
+What the corpus holds (measured, 2026-09-26):
 
 | corpus | records | licence |
 |---|---|---|
-| `corpus/knowledge-self.jsonl.gz` (built by CI from this repository) | 807 | PolyForm Shield 1.0.0 (own work) |
+| `corpus/knowledge-self.jsonl.gz` (built by CI from this repository) | 944 | PolyForm Shield 1.0.0 (own work) |
 | `corpus/budlum-yuzeyi.jsonl.gz` (operator, sources manifest: this repo + budlum + workspace root) | 23604 | PolyForm Shield 1.0.0 + MIT (own work) |
 
 Three gates guard the data: `corpus-records-carry-licence` (every record in
