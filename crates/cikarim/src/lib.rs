@@ -424,37 +424,43 @@ impl Cikarim {
         let dk = self.spec.d_k();
         let mut x: Vec<f64> =
             self.parametreler.embedding[jeton as usize * d..(jeton as usize + 1) * d].to_vec();
+        // KV genisligi: anahtarlar ve degerler d_kv, sorgu ve cikti d_model.
+        let kv = self.spec.d_kv();
         for katman in 0..self.spec.n_layers {
             let (ln1, _, _) = self.layer_norm(&x, katman, 1);
-            let q = self.matmul(
+            let q = self.matmul_katman(
                 &ln1,
                 &self.parametreler.wq,
                 &self.parametreler.bq,
                 katman,
                 d,
+                d,
             );
-            let k = self.matmul(
+            let k = self.matmul_katman(
                 &ln1,
                 &self.parametreler.wk,
                 &self.parametreler.bk,
                 katman,
                 d,
+                kv,
             );
-            let v = self.matmul(
+            let v = self.matmul_katman(
                 &ln1,
                 &self.parametreler.wv,
                 &self.parametreler.bv,
                 katman,
                 d,
+                kv,
             );
             onbellek.k[katman].extend_from_slice(&k);
             onbellek.v[katman].extend_from_slice(&v);
             let attn = self.dikkat_konum(&q, katman, onbellek, dk);
-            let cikti = self.matmul(
+            let cikti = self.matmul_katman(
                 &attn,
                 &self.parametreler.wo,
                 &self.parametreler.bo,
                 katman,
+                d,
                 d,
             );
             for (xi, c) in x.iter_mut().zip(&cikti) {
@@ -500,17 +506,22 @@ impl Cikarim {
     fn dikkat_konum(&self, q: &[f64], katman: usize, onbellek: &Onbellek, dk: usize) -> Vec<f64> {
         let d = self.spec.d_model;
         let h = self.spec.n_heads;
+        let kvd = self.spec.d_kv();
+        let grup = h / self.spec.n_kv_heads;
         let t = onbellek.uzunluk + 1; // guncel konum dahil
         let k = &onbellek.k[katman];
         let v = &onbellek.v[katman];
         let olcek = 1.0 / (dk as f64).sqrt();
         let mut cikti = vec![0.0f64; d];
         for head in 0..h {
+            // Sorgu basi kendi grubunun anahtar/deger ciftini okur: tam
+            // dikkatte grup 1'dir ve her bas kendi ciftine bakar.
+            let kvh = head / grup;
             let mut skor = vec![0.0f64; t];
             for (j, skor_j) in skor.iter_mut().enumerate() {
                 let mut toplam = 0.0;
                 for m in 0..dk {
-                    toplam += q[head * dk + m] * k[j * d + head * dk + m];
+                    toplam += q[head * dk + m] * k[j * kvd + kvh * dk + m];
                 }
                 *skor_j = toplam * olcek;
             }
@@ -518,7 +529,7 @@ impl Cikarim {
             for m in 0..dk {
                 let mut toplam = 0.0;
                 for (j, w) in yumusak.iter().enumerate() {
-                    toplam += w * v[j * d + head * dk + m];
+                    toplam += w * v[j * kvd + kvh * dk + m];
                 }
                 cikti[head * dk + m] = toplam;
             }
@@ -593,12 +604,24 @@ impl Cikarim {
         p.ln()
     }
 
-    fn matmul(&self, x: &[f64], w: &[f64], b: &[f64], katman: usize, d: usize) -> Vec<f64> {
-        let ofset = katman * d * d;
-        let mut y = vec![0.0f64; d];
+    /// One position through a per-layer projection: `W` row-major
+    /// `[cikti * girdi]`, per-layer stride `cikti * girdi`. The query and
+    /// output projections call it at `d_model`; key and value at `d_kv`, the
+    /// key/value width the spec states.
+    fn matmul_katman(
+        &self,
+        x: &[f64],
+        w: &[f64],
+        b: &[f64],
+        katman: usize,
+        girdi: usize,
+        cikti: usize,
+    ) -> Vec<f64> {
+        let ofset = katman * girdi * cikti;
+        let mut y = vec![0.0f64; cikti];
         for (o, yo) in y.iter_mut().enumerate() {
-            let mut toplam = b[katman * d + o];
-            let satir = &w[ofset + o * d..ofset + o * d + d];
+            let mut toplam = b[katman * cikti + o];
+            let satir = &w[ofset + o * girdi..ofset + o * girdi + girdi];
             for (m, wm) in satir.iter().enumerate() {
                 toplam += wm * x[m];
             }
@@ -708,6 +731,7 @@ mod tests {
             d_model: 8,
             n_layers: 2,
             n_heads: 2,
+            n_kv_heads: 2,
             d_ff: 16,
             max_seq_len: 16,
         }
@@ -773,6 +797,27 @@ mod tests {
         assert!(
             rapor.en_buyuk_fark_egitim < 1e-12,
             "egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
+            rapor.en_buyuk_fark_egitim,
+            rapor.onbellekli,
+            rapor.tam_gecis,
+            rapor.egitim_cekirdegi
+        );
+    }
+
+    /// Ayni ucuncu gorus, KV paylasimli spec'te: cikarim yolu, egitim
+    /// cekirdeginin paylasimli dikkat yoluyla ayni sayiyi vermeli.
+    #[test]
+    fn gqa_specinde_cikarim_egitim_gecisine_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            ..kucuk_spec()
+        };
+        spec.dogrula().expect("gqa spec");
+        let c = cikarim(spec, 11);
+        let rapor = c.onbellek_denetimi(&dizi(12)).expect("measurement");
+        assert!(
+            rapor.en_buyuk_fark_egitim < 1e-12,
+            "paylasimli dikkatte egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
             rapor.en_buyuk_fark_egitim,
             rapor.onbellekli,
             rapor.tam_gecis,

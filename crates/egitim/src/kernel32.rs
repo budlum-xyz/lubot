@@ -183,6 +183,7 @@ impl Parametreler32 {
     #[must_use]
     pub fn sekil_dogru(&self, spec: crate::Spec) -> bool {
         let d = spec.d_model;
+        let kv = spec.d_kv();
         let l = spec.n_layers;
         let f = spec.d_ff;
         self.embedding.len() == spec.vocab * d
@@ -190,10 +191,10 @@ impl Parametreler32 {
             && self.ln1_sapma.len() == l * d
             && self.wq.len() == l * d * d
             && self.bq.len() == l * d
-            && self.wk.len() == l * d * d
-            && self.bk.len() == l * d
-            && self.wv.len() == l * d * d
-            && self.bv.len() == l * d
+            && self.wk.len() == l * d * kv
+            && self.bk.len() == l * kv
+            && self.wv.len() == l * d * kv
+            && self.bv.len() == l * kv
             && self.wo.len() == l * d * d
             && self.bo.len() == l * d
             && self.ln2_olcek.len() == l * d
@@ -396,20 +397,22 @@ fn katman_ileri32(
         d,
         t,
     );
+    // KV genisligi, f64 cekirdekle ayni kural: d_kv = n_kv_heads * d_k.
+    let kv = spec.d_kv();
     let k = matmul32(
         &ln1,
-        &p.wk[l * d * d..(l + 1) * d * d],
-        &p.bk[l * d..(l + 1) * d],
+        &p.wk[l * d * kv..(l + 1) * d * kv],
+        &p.bk[l * kv..(l + 1) * kv],
         d,
-        d,
+        kv,
         t,
     );
     let v = matmul32(
         &ln1,
-        &p.wv[l * d * d..(l + 1) * d * d],
-        &p.bv[l * d..(l + 1) * d],
+        &p.wv[l * d * kv..(l + 1) * d * kv],
+        &p.bv[l * kv..(l + 1) * kv],
         d,
-        d,
+        kv,
         t,
     );
     let (attn, agirlik) = dikkat_ileri32(spec, &q, &k, &v, t, kaynak);
@@ -556,23 +559,30 @@ fn katman_geri32(
     }
     let (dq, dk, dv) = dikkat_geri32(spec, &dattn, c, t, kaynak);
 
-    // Q/K/V projections.
+    // Q/K/V projections: K ve V gradyanlari KV genisliginde.
+    let kv = spec.d_kv();
     let dln1 = matmul_t32(&dq, &p.wq[l * d * d..(l + 1) * d * d], d, d, t);
-    let dk_katkisi = matmul_t32(&dk, &p.wk[l * d * d..(l + 1) * d * d], d, d, t);
-    let dv_katkisi = matmul_t32(&dv, &p.wv[l * d * d..(l + 1) * d * d], d, d, t);
+    let dk_katkisi = matmul_t32(&dk, &p.wk[l * d * kv..(l + 1) * d * kv], d, kv, t);
+    let dv_katkisi = matmul_t32(&dv, &p.wv[l * d * kv..(l + 1) * d * kv], d, kv, t);
     for i in 0..t {
         for j in 0..d {
             grad.bq[l * d + j] += dq[i * d + j];
-            grad.bk[l * d + j] += dk[i * d + j];
-            grad.bv[l * d + j] += dv[i * d + j];
+        }
+        for j in 0..kv {
+            grad.bk[l * kv + j] += dk[i * kv + j];
+            grad.bv[l * kv + j] += dv[i * kv + j];
         }
     }
     for i in 0..t {
         for j in 0..d {
             for m in 0..d {
                 grad.wq[l * d * d + j * d + m] += dq[i * d + j] * c.ln1[i * d + m];
-                grad.wk[l * d * d + j * d + m] += dk[i * d + j] * c.ln1[i * d + m];
-                grad.wv[l * d * d + j * d + m] += dv[i * d + j] * c.ln1[i * d + m];
+            }
+        }
+        for j in 0..kv {
+            for m in 0..d {
+                grad.wk[l * d * kv + j * d + m] += dk[i * kv + j] * c.ln1[i * d + m];
+                grad.wv[l * d * kv + j * d + m] += dv[i * kv + j] * c.ln1[i * d + m];
             }
         }
     }
@@ -708,8 +718,10 @@ fn ln_geri32(
     (dx, dg, db)
 }
 
-/// Causal multi-head attention forward; returns the concatenated heads and the
-/// per-head weights, because backward needs them.
+/// Causal grouped-query attention forward, the f32 twin of [`crate::dikkat_ileri`]
+/// (private in the f64 module, same shape here): query head `h` reads key/value
+/// head `h / grup`. With `grup == 1` every index is the full-attention index,
+/// so the two kernels keep agreeing operation for operation.
 fn dikkat_ileri32(
     spec: crate::Spec,
     q: &[f32],
@@ -721,10 +733,13 @@ fn dikkat_ileri32(
     let d = spec.d_model;
     let h = spec.n_heads;
     let dk = spec.d_k();
+    let kvd = spec.d_kv();
+    let grup = h / spec.n_kv_heads;
     let mut cikti = vec![0.0f32; t * d];
     let mut agirliklar = vec![0.0f32; h * t * t];
     let olcek = 1.0 / (dk as f32).sqrt();
     for head in 0..h {
+        let kvh = head / grup;
         for i in 0..t {
             let mut skor = vec![f32::NEG_INFINITY; t];
             for j in 0..=i {
@@ -736,7 +751,7 @@ fn dikkat_ileri32(
                 }
                 let mut toplam = 0.0;
                 for m in 0..dk {
-                    toplam += q[i * d + head * dk + m] * k[j * d + head * dk + m];
+                    toplam += q[i * d + head * dk + m] * k[j * kvd + kvh * dk + m];
                 }
                 skor[j] = toplam * olcek;
             }
@@ -747,7 +762,7 @@ fn dikkat_ileri32(
             for m in 0..dk {
                 let mut toplam = 0.0;
                 for j in 0..t {
-                    toplam += yumusak[j] * v[j * d + head * dk + m];
+                    toplam += yumusak[j] * v[j * kvd + kvh * dk + m];
                 }
                 cikti[i * d + head * dk + m] = toplam;
             }
@@ -756,6 +771,9 @@ fn dikkat_ileri32(
     (cikti, agirliklar)
 }
 
+/// Backward of [`dikkat_ileri32`]: `dk`/`dv` live in the key/value width and a
+/// shared key or value accumulates over its group's query heads, ascending -
+/// the same order the f64 kernel uses, because the two are compared.
 fn dikkat_geri32(
     spec: crate::Spec,
     dattn: &[f32],
@@ -766,11 +784,14 @@ fn dikkat_geri32(
     let d = spec.d_model;
     let h = spec.n_heads;
     let dk = spec.d_k();
+    let kvd = spec.d_kv();
+    let grup = h / spec.n_kv_heads;
     let mut dq = vec![0.0f32; t * d];
-    let mut dkd = vec![0.0f32; t * d];
-    let mut dv = vec![0.0f32; t * d];
+    let mut dkd = vec![0.0f32; t * kvd];
+    let mut dv = vec![0.0f32; t * kvd];
     let olcek = 1.0 / (dk as f32).sqrt();
     for head in 0..h {
+        let kvh = head / grup;
         for i in 0..t {
             // dv += w_ij * dout ; dw_ij = dout . v_j
             let mut dw = vec![0.0f32; t];
@@ -780,7 +801,7 @@ fn dikkat_geri32(
                     if kaynak[j] != kaynak[i] {
                         continue;
                     }
-                    *dw_deger += g * c.v[j * d + head * dk + m];
+                    *dw_deger += g * c.v[j * kvd + kvh * dk + m];
                 }
             }
             for m in 0..dk {
@@ -790,7 +811,7 @@ fn dikkat_geri32(
                         continue;
                     }
                     let w = c.agirlik[head * t * t + i * t + j];
-                    dv[j * d + head * dk + m] += g * w;
+                    dv[j * kvd + kvh * dk + m] += g * w;
                 }
             }
             // softmax backward over the causal row.
@@ -812,8 +833,8 @@ fn dikkat_geri32(
                     continue;
                 }
                 for m in 0..dk {
-                    dq[i * d + head * dk + m] += ds[j] * olcek * c.k[j * d + head * dk + m];
-                    dkd[j * d + head * dk + m] += ds[j] * olcek * c.q[i * d + head * dk + m];
+                    dq[i * d + head * dk + m] += ds[j] * olcek * c.k[j * kvd + kvh * dk + m];
+                    dkd[j * kvd + kvh * dk + m] += ds[j] * olcek * c.q[i * d + head * dk + m];
                 }
             }
         }
@@ -887,6 +908,7 @@ mod testler {
             d_model: 8,
             n_layers: 2,
             n_heads: 2,
+            n_kv_heads: 2,
             d_ff: 12,
             max_seq_len: 24,
         }
@@ -942,6 +964,55 @@ mod testler {
             assert!(
                 oran < 2e-3,
                 "{ad}: f64 ile f32 ayristi, fark {fark}, buyukluk {en_buyuk}, oran {oran}"
+            );
+        }
+    }
+
+    /// Ayni capraz dogrulama, KV paylasimli spec'te: f32'in varlik sebebi
+    /// f64 ile ayni sayilari vermek ise, bunu paylasimli dikkatte de
+    /// yapmak zorunda. Grup orani 2:1.
+    #[test]
+    fn f32_gqa_gradyani_f64_ile_uyusur() {
+        let spec = crate::Spec {
+            n_kv_heads: 1,
+            ..kucuk_spec()
+        };
+        let p64 = crate::Parametreler::belirgin_doldur(spec, 7);
+        let p32 = Parametreler32::indir(&p64);
+        assert!(p32.sekil_dogru(spec));
+        let kayit: Vec<usize> = (0..16).map(|i| (i * 3 + 1) % spec.vocab).collect();
+        let (girdi, hedef) = girdi_hedef(&kayit);
+        let kaynak = vec![0u32; girdi.len()];
+
+        let (k64, g64) = crate::ileri_ve_geri_paket(spec, &p64, &girdi, &hedef, &kaynak);
+        let (k32, g32) = ileri_ve_geri_paket_32(spec, &p32, &girdi, &hedef, &kaynak);
+
+        assert!(
+            (k64 - f64::from(k32)).abs() < 1e-4,
+            "paylasimli dikkatte kayip ayristi: f64 {k64}, f32 {k32}"
+        );
+
+        let g32_f64 = g32.geri_f64();
+        for (ad, a, b) in [
+            ("embedding", &g64.embedding, &g32_f64.embedding),
+            ("wq", &g64.wq, &g32_f64.wq),
+            ("wk", &g64.wk, &g32_f64.wk),
+            ("wv", &g64.wv, &g32_f64.wv),
+            ("wo", &g64.wo, &g32_f64.wo),
+            ("w1", &g64.w1, &g32_f64.w1),
+            ("w2", &g64.w2, &g32_f64.w2),
+            ("ln1_olcek", &g64.ln1_olcek, &g32_f64.ln1_olcek),
+            ("lnf_sapma", &g64.lnf_sapma, &g32_f64.lnf_sapma),
+        ] {
+            let en_buyuk = a.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+            let fark = a
+                .iter()
+                .zip(b.iter())
+                .fold(0.0f64, |m, (x, y)| m.max((x - y).abs()));
+            let oran = fark / en_buyuk.max(1e-6);
+            assert!(
+                oran < 2e-3,
+                "gqa {ad}: f64 ile f32 ayristi, fark {fark}, buyukluk {en_buyuk}, oran {oran}"
             );
         }
     }
@@ -1040,6 +1111,7 @@ mod testler {
             d_model: 128,
             n_layers: 4,
             n_heads: 4,
+            n_kv_heads: 4,
             d_ff: 512,
             max_seq_len: 128,
         };
