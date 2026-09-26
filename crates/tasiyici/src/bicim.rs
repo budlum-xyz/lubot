@@ -72,6 +72,13 @@ pub const BASLIK_BAYT: usize = 64;
 /// Alignment of each payload block.
 pub const HIZA: usize = 64;
 
+/// A directory record can never be shorter than this: the two-byte name
+/// length plus the fixed fields read by `kayit_oku` (its `SABIT`). The bound
+/// turns the header's record count from an unchecked allocation size into a
+/// checkable claim: more records than `dizin_bayt / EN_KUCUK_KAYIT_BAYT`
+/// cannot exist, whatever the header says.
+pub const EN_KUCUK_KAYIT_BAYT: usize = 2 + 1 + 1 + 4 + 8 + 8 + 8 + 8 + 8 + 8;
+
 /// Why a container was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BicimHatasi {
@@ -89,6 +96,10 @@ pub enum BicimHatasi {
     },
     /// The directory ended in the middle of a record.
     DizinKesildi { tensor: usize },
+    /// Header declares more records than the directory can physically hold.
+    /// Refused before any allocation: a crafted count would otherwise make
+    /// the reader request huge memory and abort (Strix finding, PR #13).
+    AdetSiniri { beyan: usize, sinir: usize },
     /// A tensor name that is not valid UTF-8. Names are read by humans and
     /// matched by the loader; a name that cannot be printed cannot be reported
     /// in a refusal either.
@@ -139,6 +150,12 @@ impl fmt::Display for BicimHatasi {
             ),
             Self::DizinKesildi { tensor } => {
                 write!(f, "dizin {tensor}. kayitta kesildi")
+            }
+            Self::AdetSiniri { beyan, sinir } => {
+                write!(
+                    f,
+                    "baslik {beyan} kayit beyan ediyor, dizin en cok {sinir} kayit alir"
+                )
             }
             Self::AdUtf8Degil { tensor } => {
                 write!(f, "{tensor}. kaydin adi UTF-8 degil")
@@ -336,8 +353,18 @@ impl<'a> Kapsayici<'a> {
         }
 
         let dizin = &bayt[BASLIK_BAYT..dizin_son];
+        // The record count is header-controlled input, not a fact: allocating
+        // for it before checking would let a crafted file claim billions of
+        // records and abort the process with an out-of-memory request before
+        // the directory is ever inspected. Every real record costs at least
+        // `EN_KUCUK_KAYIT_BAYT` bytes of directory, so a larger claim is a
+        // lie and is refused here (Strix finding on PR #13, CWE-789).
+        let sinir = dizin_bayt / EN_KUCUK_KAYIT_BAYT;
+        if adet > sinir {
+            return Err(BicimHatasi::AdetSiniri { beyan: adet, sinir });
+        }
         let mut imlec = 0usize;
-        let mut kayitlar = Vec::with_capacity(adet);
+        let mut kayitlar = Vec::with_capacity(adet.min(dizin_bayt));
         for i in 0..adet {
             let kayit = kayit_oku(dizin, &mut imlec, i)?;
             kayitlar.push(kayit);
@@ -676,6 +703,21 @@ mod tests {
         let mut dosya = kucuk_dosya();
         dosya[0] = b'X';
         assert_eq!(Kapsayici::ac(&dosya).err(), Some(BicimHatasi::ImzaYok));
+    }
+
+    #[test]
+    fn a_huge_header_record_count_is_refused_before_any_allocation() {
+        // A crafted header may claim u32::MAX records; the reader must refuse
+        // it as a number the directory cannot hold, not die allocating for it.
+        let mut dosya = kucuk_dosya();
+        dosya[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+        match Kapsayici::ac(&dosya) {
+            Err(BicimHatasi::AdetSiniri { beyan, sinir }) => {
+                assert_eq!(beyan, u32::MAX as usize);
+                assert!(sinir < 1_000_000, "sinir dizinden turetilmeli: {sinir}");
+            }
+            baska => panic!("beklenen AdetSiniri, gelen: {baska:?}"),
+        }
     }
 
     #[test]
