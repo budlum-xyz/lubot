@@ -76,8 +76,9 @@ pub const HIZA: usize = 64;
 /// length plus the fixed fields read by `kayit_oku` (its `SABIT`). The bound
 /// turns the header's record count from an unchecked allocation size into a
 /// checkable claim: more records than `dizin_bayt / EN_KUCUK_KAYIT_BAYT`
-/// cannot exist, whatever the header says.
-pub const EN_KUCUK_KAYIT_BAYT: usize = 2 + 1 + 1 + 4 + 8 + 8 + 8 + 8 + 8 + 8;
+/// cannot exist, whatever the header says. Crate-private on purpose: it is a
+/// bound inside the format, not a surface other crates build on.
+const EN_KUCUK_KAYIT_BAYT: usize = 2 + 1 + 1 + 4 + 8 + 8 + 8 + 8 + 8 + 8;
 
 /// Why a container was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
