@@ -32,6 +32,7 @@ pub mod dongu;
 pub mod kernel32;
 pub mod kontrol;
 pub mod kosu;
+pub mod mlp_hadamard;
 pub mod olcum;
 pub mod veri;
 
@@ -49,8 +50,17 @@ pub const GRADIENT_CHECK_TOLERANCE: f64 = 1e-6;
 /// 8.6e-5. So the check is relative where the gradient is resolvable and
 /// absolute where it is not, instead of reporting noise as a wrong gradient.
 pub const GRADIENT_CHECK_MUTLAK_TABAN: f64 = 1e-9;
+/// QK-norm olcek dizisinin katman basina uzunlugu: norm acikken `d_k`,
+/// kapaliyken sifir (varsayilan yol hic ayirma yapmaz).
+fn qkn(spec: Spec) -> usize {
+    usize::from(spec.qk_norm) * spec.d_k()
+}
+
 /// LayerNorm epsilon.
 pub const LN_EPS: f64 = 1e-5;
+/// QK-norm epsilon: kafa RMS'lerinin sifira yaklastigi yerde bolen patlar,
+/// referanstaki deger.
+pub const QK_NORM_EPS: f64 = 1e-6;
 
 /// The architecture, as the spec states it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +73,24 @@ pub struct Spec {
     pub n_layers: usize,
     /// Attention heads.
     pub n_heads: usize,
+    /// Key/value heads. When it equals `n_heads` every query head owns its key
+    /// and value; when it divides `n_heads`, a group of `n_heads / n_kv_heads`
+    /// query heads shares one key/value pair. The default is full attention,
+    /// so a spec that does not name the field's value has not changed.
+    pub n_kv_heads: usize,
+    /// Causal per-channel taps applied to q/k/v after their projections
+    /// ("dokunus"). Zero - the default - means no convolution at all; when it
+    /// is positive, `y[i] = sum_j taps[j] * x[i-j]` per channel, and a tap
+    /// that would read across a record boundary is masked to zero, the same
+    /// rule attention obeys.
+    pub qkv_dokunus: usize,
+    /// Per-head RMS normalisation of q and k, after the taps and before the
+    /// scores ("QK-norm"): each head vector is scaled to unit root-mean-square
+    /// and multiplied by `(1 + scale)`, the scale zero-initialised so the
+    /// norm starts as the plain normalisation. Off - the default - skips the
+    /// code entirely. Deep stacks keep training because q/k magnitudes stop
+    /// drifting; the cost is two `d_k`-wide scale vectors per layer.
+    pub qk_norm: bool,
     /// MLP inner width.
     pub d_ff: usize,
     /// Longest sequence the model is built for, as the spec states it.
@@ -76,6 +104,8 @@ pub enum SpecHatasi {
     BosBoyut,
     /// The width does not divide by the head count.
     BasSayisiBolmuyor,
+    /// The head count does not divide by the key/value head count.
+    KvBasSayisiBolunmuyor,
 }
 
 impl Spec {
@@ -87,6 +117,9 @@ impl Spec {
             d_model: 64,
             n_layers: 8,
             n_heads: 2,
+            n_kv_heads: 2,
+            qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 256,
             max_seq_len: 256,
         }
@@ -98,9 +131,20 @@ impl Spec {
         self.d_model / self.n_heads
     }
 
+    /// Total key/value width: `n_kv_heads` heads of `d_k` each.
+    ///
+    /// Equal to `d_model` when every query head owns its key and value, which
+    /// is why the full-attention spec's shapes and counts do not move.
+    #[must_use]
+    pub fn d_kv(self) -> usize {
+        self.n_kv_heads * self.d_k()
+    }
+
     /// # Errors
     /// [`SpecHatasi::BosBoyut`] on a zero dimension;
-    /// [`SpecHatasi::BasSayisiBolmuyor`] when heads do not divide the width.
+    /// [`SpecHatasi::BasSayisiBolmuyor`] when heads do not divide the width;
+    /// [`SpecHatasi::KvBasSayisiBolunmuyor`] when the key/value head count
+    /// does not divide the head count.
     pub fn dogrula(self) -> Result<(), SpecHatasi> {
         if self.vocab == 0 || self.d_model == 0 || self.n_layers == 0 || self.d_ff == 0 {
             return Err(SpecHatasi::BosBoyut);
@@ -108,21 +152,49 @@ impl Spec {
         if self.n_heads == 0 || !self.d_model.is_multiple_of(self.n_heads) {
             return Err(SpecHatasi::BasSayisiBolmuyor);
         }
+        if self.n_kv_heads == 0 || !self.n_heads.is_multiple_of(self.n_kv_heads) {
+            return Err(SpecHatasi::KvBasSayisiBolunmuyor);
+        }
         Ok(())
     }
 
     /// How many parameters this spec has, counted the way the spec counts them:
     /// tied embedding once, attention and MLP per layer, two LayerNorms per
-    /// layer and one at the end.
+    /// layer and one at the end. Key and value projections count at the
+    /// key/value width [`Spec::d_kv`], which is `d_model` itself when every
+    /// head owns its key and value - so the full-attention count is the same
+    /// number it has always been.
     #[must_use]
     pub fn parametre_sayisi(self) -> usize {
         let d = self.d_model;
+        let kv = self.d_kv();
         let embedding = self.vocab * d;
-        let dikkat = self.n_layers * (4 * d * d + 4 * d);
+        let dikkat = self.n_layers * (2 * d * d + 2 * d * kv + 2 * d + 2 * kv);
         let mlp = self.n_layers * (2 * d * self.d_ff + self.d_ff + d);
         let ln = self.n_layers * 4 * d + 2 * d;
-        embedding + dikkat + mlp + ln
+        let dokunus = self.n_layers * self.qkv_dokunus * (d + 2 * kv);
+        let qkn = if self.qk_norm {
+            self.n_layers * 2 * self.d_k()
+        } else {
+            0
+        };
+        embedding + dikkat + mlp + ln + dokunus + qkn
     }
+}
+
+/// Identity tap blocks: `[katman * dokunus * genislik]`, every tap row zero
+/// except tap 0 which is one. Used by [`Parametreler::sifir`] so a zeroed
+/// model still passes its q/k/v through unchanged.
+fn kimlik_dokunus(katman: usize, dokunus: usize, genislik: usize) -> Vec<f64> {
+    let mut t = vec![0.0; katman * dokunus * genislik];
+    for l in 0..katman {
+        for c in 0..genislik {
+            if dokunus > 0 {
+                t[l * dokunus * genislik + c] = 1.0;
+            }
+        }
+    }
+    t
 }
 
 /// Every weight, in one place.
@@ -138,14 +210,27 @@ pub struct Parametreler {
     pub wq: Vec<f64>,
     /// Per layer: query biases.
     pub bq: Vec<f64>,
-    /// Per layer: key weights.
+    /// Per layer: query taps, `[n_layers * qkv_dokunus * d_model]`, identity
+    /// at zero (tap 0 is one, the rest zero) so the convolution starts as a
+    /// no-op the run has to earn its way out of.
+    pub q_dokunus: Vec<f64>,
+    /// Per layer: QK-norm query scale, `[n_layers * d_k]`, zero-initialised -
+    /// the norm multiplies by `(1 + scale)`, so zero is the plain norm.
+    pub q_norm_olcek: Vec<f64>,
+    /// Per layer: key weights, `[n_layers * d_model * d_kv]`.
     pub wk: Vec<f64>,
-    /// Per layer: key biases.
+    /// Per layer: key biases, `[n_layers * d_kv]`.
     pub bk: Vec<f64>,
-    /// Per layer: value weights.
+    /// Per layer: key taps, `[n_layers * qkv_dokunus * d_kv]`.
+    pub k_dokunus: Vec<f64>,
+    /// Per layer: QK-norm key scale, `[n_layers * d_k]`, zero-initialised.
+    pub k_norm_olcek: Vec<f64>,
+    /// Per layer: value weights, `[n_layers * d_model * d_kv]`.
     pub wv: Vec<f64>,
-    /// Per layer: value biases.
+    /// Per layer: value biases, `[n_layers * d_kv]`.
     pub bv: Vec<f64>,
+    /// Per layer: value taps, `[n_layers * qkv_dokunus * d_kv]`.
+    pub v_dokunus: Vec<f64>,
     /// Per layer: output projection weights.
     pub wo: Vec<f64>,
     /// Per layer: output projection biases.
@@ -178,10 +263,15 @@ impl Parametreler {
             ln1_sapma: vec![0.0; self.ln1_sapma.len()],
             wq: vec![0.0; self.wq.len()],
             bq: vec![0.0; self.bq.len()],
+            q_dokunus: vec![0.0; self.q_dokunus.len()],
+            q_norm_olcek: vec![0.0; self.q_norm_olcek.len()],
             wk: vec![0.0; self.wk.len()],
             bk: vec![0.0; self.bk.len()],
+            k_dokunus: vec![0.0; self.k_dokunus.len()],
+            k_norm_olcek: vec![0.0; self.k_norm_olcek.len()],
             wv: vec![0.0; self.wv.len()],
             bv: vec![0.0; self.bv.len()],
+            v_dokunus: vec![0.0; self.v_dokunus.len()],
             wo: vec![0.0; self.wo.len()],
             bo: vec![0.0; self.bo.len()],
             ln2_olcek: vec![0.0; self.ln2_olcek.len()],
@@ -210,17 +300,31 @@ impl Parametreler {
             ((durum >> 33) as f64) / ((1u64 << 31) as f64) * 2.0 - 1.0
         };
         let d = spec.d_model;
+        let kv = spec.d_kv();
         let katman = spec.n_layers;
+        let dokunus = spec.qkv_dokunus;
         Self {
             embedding: (0..spec.vocab * d).map(|_| sonraki() * 0.1).collect(),
             ln1_olcek: vec![1.0; katman * d],
             ln1_sapma: vec![0.0; katman * d],
             wq: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
             bq: vec![0.0; katman * d],
-            wk: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
-            bk: vec![0.0; katman * d],
-            wv: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
-            bv: vec![0.0; katman * d],
+            // Test dolgusu dokunuslari da rastgele doldurur: gradyan
+            // denetiminin gercek (kimlik olmayan) dokunus degerleriyle
+            // kosmasi gerekir.
+            q_dokunus: (0..katman * dokunus * d).map(|_| sonraki() * 0.1).collect(),
+            q_norm_olcek: (0..katman * qkn(spec)).map(|_| sonraki() * 0.1).collect(),
+            wk: (0..katman * d * kv).map(|_| sonraki() * 0.1).collect(),
+            bk: vec![0.0; katman * kv],
+            k_dokunus: (0..katman * dokunus * kv)
+                .map(|_| sonraki() * 0.1)
+                .collect(),
+            k_norm_olcek: (0..katman * qkn(spec)).map(|_| sonraki() * 0.1).collect(),
+            wv: (0..katman * d * kv).map(|_| sonraki() * 0.1).collect(),
+            bv: vec![0.0; katman * kv],
+            v_dokunus: (0..katman * dokunus * kv)
+                .map(|_| sonraki() * 0.1)
+                .collect(),
             wo: (0..katman * d * d).map(|_| sonraki() * 0.1).collect(),
             bo: vec![0.0; katman * d],
             ln2_olcek: vec![1.0; katman * d],
@@ -366,9 +470,19 @@ struct KatmanBellek {
     ln1: Vec<f64>,
     ortalama1: Vec<f64>,
     rstd1: Vec<f64>,
+    /// Konvolusyon sonrasi q/k/v: dikkatin gordugu degerler.
     q: Vec<f64>,
     k: Vec<f64>,
     v: Vec<f64>,
+    /// Konvolusyon oncesi (ham) q/k/v: dokunus gradyani ancak bunlarla
+    /// yazilabilir. `qkv_dokunus == 0` iken bos.
+    q_ham: Vec<f64>,
+    k_ham: Vec<f64>,
+    v_ham: Vec<f64>,
+    /// QK-norm girdisi (dokunus cikisi): normun geri gecisi bunlarla
+    /// yazilabilir. `qk_norm == false` iken bos.
+    qn_girdi: Vec<f64>,
+    kn_girdi: Vec<f64>,
     agirlik: Vec<f64>,
     attn: Vec<f64>,
     kalinti1: Vec<f64>,
@@ -404,22 +518,48 @@ fn katman_ileri(
         d,
         t,
     );
+    // Anahtarlar ve degerler KV genisliginde uretilir: sorgu genisligi
+    // d_model, KV genisligi d_kv. Tam dikkatte ikisi esittir.
+    let kv = spec.d_kv();
     let k = matmul(
         &ln1,
-        &p.wk[l * d * d..(l + 1) * d * d],
-        &p.bk[l * d..(l + 1) * d],
+        &p.wk[l * d * kv..(l + 1) * d * kv],
+        &p.bk[l * kv..(l + 1) * kv],
         d,
-        d,
+        kv,
         t,
     );
     let v = matmul(
         &ln1,
-        &p.wv[l * d * d..(l + 1) * d * d],
-        &p.bv[l * d..(l + 1) * d],
+        &p.wv[l * d * kv..(l + 1) * d * kv],
+        &p.bv[l * kv..(l + 1) * kv],
         d,
-        d,
+        kv,
         t,
     );
+    // Nedensel dokunuslar: projeksiyon cikisina, kanal basina tap uygulanir.
+    // qkv_dokunus == 0 iken hizli yol hicbir sey yapmaz (varsayilan yolun
+    // aritmetigi dokunus kodu yuzunden degismez) ve ham deger ayrilmaz.
+    let (q, q_ham) = dokunus_ve_ham(spec, q, l, &p.q_dokunus, d, t, kaynak);
+    let (k, k_ham) = dokunus_ve_ham(spec, k, l, &p.k_dokunus, kv, t, kaynak);
+    let (v, v_ham) = dokunus_ve_ham(spec, v, l, &p.v_dokunus, kv, t, kaynak);
+    // QK-norm: dokunus cikisindaki her kafa vektoru birim RMS'ye cekilir ve
+    // (1 + olcek) ile carpilir. qk_norm == false iken hizli yol gecer ve
+    // olcek dizileri bos oldugundan dilim de alinmaz.
+    let (q, qn_girdi) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let (q, girdi) = qk_norm_uygula(spec, q, &p.q_norm_olcek[l * dks..(l + 1) * dks], d, t);
+        (q, Some(girdi))
+    } else {
+        (q, None)
+    };
+    let (k, kn_girdi) = if spec.qk_norm {
+        let dks = spec.d_k();
+        let (k, girdi) = qk_norm_uygula(spec, k, &p.k_norm_olcek[l * dks..(l + 1) * dks], kv, t);
+        (k, Some(girdi))
+    } else {
+        (k, None)
+    };
     let (attn, agirlik) = dikkat_ileri(spec, &q, &k, &v, t, kaynak);
     let cikti = matmul(
         &attn,
@@ -469,6 +609,11 @@ fn katman_ileri(
             q,
             k,
             v,
+            q_ham,
+            k_ham,
+            v_ham,
+            qn_girdi: qn_girdi.unwrap_or_default(),
+            kn_girdi: kn_girdi.unwrap_or_default(),
             agirlik,
             attn,
             kalinti1,
@@ -562,25 +707,90 @@ fn katman_geri(
             }
         }
     }
-    let (dq, dk, dv) = dikkat_geri(spec, &dattn, c, t, kaynak);
+    let (dq_attn, dk_attn, dv_attn) = dikkat_geri(spec, &dattn, c, t, kaynak);
 
-    // Q/K/V projections.
+    // QK-norm geri gecisi: dikkatten gelen q/k gradyanlari norm cikisina
+    // aittir; norm girdisine tasinir, olcek gradyanlari burada birikir.
+    let kv = spec.d_kv();
+    let dok = spec.qkv_dokunus;
+    let (dq_attn, dk_attn) = if spec.qk_norm {
+        let dq = qk_norm_geri(
+            &dq_attn,
+            &c.qn_girdi,
+            &p.q_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            &mut grad.q_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            d,
+            t,
+        );
+        let dk = qk_norm_geri(
+            &dk_attn,
+            &c.kn_girdi,
+            &p.k_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            &mut grad.k_norm_olcek[l * spec.d_k()..(l + 1) * spec.d_k()],
+            kv,
+            t,
+        );
+        (dq, dk)
+    } else {
+        (dq_attn, dk_attn)
+    };
+    let (dq, dk, dv) = if dok == 0 {
+        (dq_attn, dk_attn, dv_attn)
+    } else {
+        let dq = dokunus_geri(
+            &dq_attn,
+            &c.q_ham,
+            &p.q_dokunus[l * dok * d..(l + 1) * dok * d],
+            &mut grad.q_dokunus[l * dok * d..(l + 1) * dok * d],
+            d,
+            t,
+            kaynak,
+        );
+        let dk = dokunus_geri(
+            &dk_attn,
+            &c.k_ham,
+            &p.k_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            &mut grad.k_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            kv,
+            t,
+            kaynak,
+        );
+        let dv = dokunus_geri(
+            &dv_attn,
+            &c.v_ham,
+            &p.v_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            &mut grad.v_dokunus[l * dok * kv..(l + 1) * dok * kv],
+            kv,
+            t,
+            kaynak,
+        );
+        (dq, dk, dv)
+    };
+
+    // Q/K/V projections. K ve V gradyanlari KV genisligindedir; katkiyi ln1
+    // uzayina tasiyan transpoz da ayni genislikle kurulur.
     let dln1 = matmul_t(&dq, &p.wq[l * d * d..(l + 1) * d * d], d, d, t);
-    let dk_katkisi = matmul_t(&dk, &p.wk[l * d * d..(l + 1) * d * d], d, d, t);
-    let dv_katkisi = matmul_t(&dv, &p.wv[l * d * d..(l + 1) * d * d], d, d, t);
+    let dk_katkisi = matmul_t(&dk, &p.wk[l * d * kv..(l + 1) * d * kv], d, kv, t);
+    let dv_katkisi = matmul_t(&dv, &p.wv[l * d * kv..(l + 1) * d * kv], d, kv, t);
     for i in 0..t {
         for j in 0..d {
             grad.bq[l * d + j] += dq[i * d + j];
-            grad.bk[l * d + j] += dk[i * d + j];
-            grad.bv[l * d + j] += dv[i * d + j];
+        }
+        for j in 0..kv {
+            grad.bk[l * kv + j] += dk[i * kv + j];
+            grad.bv[l * kv + j] += dv[i * kv + j];
         }
     }
     for i in 0..t {
         for j in 0..d {
             for m in 0..d {
                 grad.wq[l * d * d + j * d + m] += dq[i * d + j] * c.ln1[i * d + m];
-                grad.wk[l * d * d + j * d + m] += dk[i * d + j] * c.ln1[i * d + m];
-                grad.wv[l * d * d + j * d + m] += dv[i * d + j] * c.ln1[i * d + m];
+            }
+        }
+        for j in 0..kv {
+            for m in 0..d {
+                grad.wk[l * d * kv + j * d + m] += dk[i * kv + j] * c.ln1[i * d + m];
+                grad.wv[l * d * kv + j * d + m] += dv[i * kv + j] * c.ln1[i * d + m];
             }
         }
     }
@@ -716,8 +926,162 @@ fn layer_norm_geri(
     (dx, dg, db)
 }
 
-/// Causal multi-head attention forward; returns the concatenated heads and the
-/// per-head weights, because backward needs them.
+/// Kafa basina RMS normalizasyonu (QK-norm), dokunus ile skor arasinda.
+///
+/// Her `(konum, kafa)` cifti kendi `d_k` genisligindeki dilimi birim
+/// karekök-ortalama kare (RMS) degerine cekilir ve `(1 + olcek[m])` ile
+/// carpilir: `y = (1 + s) * x / rms(x)`; buradaki olcek sifirla baslar, yani sifir
+/// olcek saf norm demektir - carpim `(1 + 0) = 1`'dir. Derin kulelerde q/k
+/// buyukluklerinin kaymasini durdurur; skorlarin olcegi boylece kafadan
+/// kafaya sabit kalir.
+///
+/// `qk_norm == false` iken girdi oldugu gibi doner ve girdi kopyasi
+/// ayrilmaz: varsayilan yol hicbir ek ayirma yapmaz.
+fn qk_norm_uygula(
+    spec: Spec,
+    x: Vec<f64>,
+    olcek: &[f64],
+    genislik: usize,
+    t: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    if !spec.qk_norm {
+        return (x, Vec::new());
+    }
+    let dk = spec.d_k();
+    let kafa = genislik / dk;
+    let girdi = x;
+    let mut y = vec![0.0f64; t * genislik];
+    for i in 0..t {
+        for h in 0..kafa {
+            let dilim = &girdi[i * genislik + h * dk..i * genislik + (h + 1) * dk];
+            let mut toplam = 0.0;
+            for deger in dilim {
+                toplam += deger * deger;
+            }
+            let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+            for m in 0..dk {
+                y[i * genislik + h * dk + m] = (1.0 + olcek[m]) * dilim[m] * r;
+            }
+        }
+    }
+    (y, girdi)
+}
+
+/// [`qk_norm_uygula`] dizisinin geri gecisi: dikkatten gelen `dy` (norm
+/// cikisina gore) norm girdisine tasinir ve olcek gradyanlari `golcek`'e
+/// eklenir. Turev: `y_m = (1+s_m) x_m r`, `r = (mean(x^2)+eps)^{-1/2}`
+/// ile `dx_j = g_j r - (sum_m g_m x_m) r^3 x_j / dk`, `ds_m += dy_m x_m r`.
+fn qk_norm_geri(
+    dy: &[f64],
+    girdi: &[f64],
+    olcek: &[f64],
+    golcek: &mut [f64],
+    genislik: usize,
+    t: usize,
+) -> Vec<f64> {
+    let dk = golcek.len();
+    let kafa = genislik / dk;
+    let mut dx = vec![0.0f64; t * genislik];
+    for i in 0..t {
+        for h in 0..kafa {
+            let taban = i * genislik + h * dk;
+            let mut toplam = 0.0;
+            for m in 0..dk {
+                toplam += girdi[taban + m] * girdi[taban + m];
+            }
+            let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+            let r3 = r * r * r;
+            let mut s = 0.0;
+            for m in 0..dk {
+                s += dy[taban + m] * (1.0 + olcek[m]) * girdi[taban + m];
+            }
+            for m in 0..dk {
+                let g = dy[taban + m] * (1.0 + olcek[m]);
+                dx[taban + m] = g * r - s * r3 * girdi[taban + m] / (dk as f64);
+                golcek[m] += dy[taban + m] * girdi[taban + m] * r;
+            }
+        }
+    }
+    dx
+}
+
+/// Bir projeksiyon cikisinin nedensel dokunuslu kopyasi ve geri gecis icin
+/// ham hali.
+///
+/// `y[i][c] = sum_j dokunus[j][c] * x[i-j][c]`, kanal basina (depthwise).
+/// `j > 0` dokunusu `i - j` konumundan okur; o konum baska bir kayda
+/// aitse dokunus sifirlanir - dikketteki kayit siniri kuralinin aynisi,
+/// konvolusyonda da gecerli: pencereyi paylasan iki kayit, dokunus yoluyla
+/// da birbirini goremez. `i < j` iken kaydirma sifir doldurur; katki sifir.
+///
+/// `qkv_dokunus == 0` ise girdi oldugu gibi doner ve ham taraf bos kalir:
+/// varsayilan yol hicbir ek ayirma ve hicbir ek aritmetik yapmaz.
+fn dokunus_ve_ham(
+    spec: Spec,
+    x: Vec<f64>,
+    l: usize,
+    dokunus: &[f64],
+    genislik: usize,
+    t: usize,
+    kaynak: &[u32],
+) -> (Vec<f64>, Vec<f64>) {
+    let n = spec.qkv_dokunus;
+    if n == 0 {
+        return (x, Vec::new());
+    }
+    let ham = x;
+    let mut y = vec![0.0f64; t * genislik];
+    for i in 0..t {
+        for j in 0..n {
+            if j > 0 && (i < j || kaynak[i - j] != kaynak[i]) {
+                continue;
+            }
+            for c in 0..genislik {
+                y[i * genislik + c] +=
+                    dokunus[l * n * genislik + j * genislik + c] * ham[(i - j) * genislik + c];
+            }
+        }
+    }
+    (y, ham)
+}
+
+/// [`dokunus_ve_ham`] dizisinin geri gecisi: dikkatten gelen `dy`
+/// (konvolusyon cikisina gore) hamlara tasinir ve dokunus gradyanlari `gdok`'a
+/// eklenir. Maskeli dokunus on turlerinde akmadigi icin burada da akamaz.
+fn dokunus_geri(
+    dy: &[f64],
+    ham: &[f64],
+    dokunus: &[f64],
+    gdok: &mut [f64],
+    genislik: usize,
+    t: usize,
+    kaynak: &[u32],
+) -> Vec<f64> {
+    let n = dokunus.len() / genislik;
+    let mut dx = vec![0.0f64; t * genislik];
+    for i in 0..t {
+        for j in 0..n {
+            if j > 0 && (i < j || kaynak[i - j] != kaynak[i]) {
+                continue;
+            }
+            for c in 0..genislik {
+                let d = dy[i * genislik + c];
+                gdok[j * genislik + c] += d * ham[(i - j) * genislik + c];
+                dx[(i - j) * genislik + c] += d * dokunus[j * genislik + c];
+            }
+        }
+    }
+    dx
+}
+
+/// Causal grouped-query attention forward; returns the concatenated heads and
+/// the per-query-head weights, because backward needs them.
+///
+/// Query head `h` reads key/value head `h / grup`, where
+/// `grup = n_heads / n_kv_heads` is how many query heads share one key/value
+/// pair. With `grup == 1` (`kvh == head`, `kvd == d`) every index below is
+/// the full-attention index, so the default spec runs the same arithmetic,
+/// operation for operation.
 fn dikkat_ileri(
     spec: Spec,
     q: &[f64],
@@ -729,10 +1093,13 @@ fn dikkat_ileri(
     let d = spec.d_model;
     let h = spec.n_heads;
     let dk = spec.d_k();
+    let kvd = spec.d_kv();
+    let grup = h / spec.n_kv_heads;
     let mut cikti = vec![0.0f64; t * d];
     let mut agirliklar = vec![0.0f64; h * t * t];
     let olcek = 1.0 / (dk as f64).sqrt();
     for head in 0..h {
+        let kvh = head / grup;
         for i in 0..t {
             let mut skor = vec![f64::NEG_INFINITY; t];
             for j in 0..=i {
@@ -744,7 +1111,7 @@ fn dikkat_ileri(
                 }
                 let mut toplam = 0.0;
                 for m in 0..dk {
-                    toplam += q[i * d + head * dk + m] * k[j * d + head * dk + m];
+                    toplam += q[i * d + head * dk + m] * k[j * kvd + kvh * dk + m];
                 }
                 skor[j] = toplam * olcek;
             }
@@ -755,7 +1122,7 @@ fn dikkat_ileri(
             for m in 0..dk {
                 let mut toplam = 0.0;
                 for j in 0..t {
-                    toplam += yumusak[j] * v[j * d + head * dk + m];
+                    toplam += yumusak[j] * v[j * kvd + kvh * dk + m];
                 }
                 cikti[i * d + head * dk + m] = toplam;
             }
@@ -764,6 +1131,12 @@ fn dikkat_ileri(
     (cikti, agirliklar)
 }
 
+/// Backward of [`dikkat_ileri`].
+///
+/// `dk` and `dv` live in the key/value width, so the gradient of a shared key
+/// or value is the sum over the query heads of its group - accumulated in
+/// ascending head order, because "which order" is a number the two kernels
+/// have to agree on. With `grup == 1` every index is the full-attention index.
 fn dikkat_geri(
     spec: Spec,
     dattn: &[f64],
@@ -774,11 +1147,14 @@ fn dikkat_geri(
     let d = spec.d_model;
     let h = spec.n_heads;
     let dk = spec.d_k();
+    let kvd = spec.d_kv();
+    let grup = h / spec.n_kv_heads;
     let mut dq = vec![0.0f64; t * d];
-    let mut dkd = vec![0.0f64; t * d];
-    let mut dv = vec![0.0f64; t * d];
+    let mut dkd = vec![0.0f64; t * kvd];
+    let mut dv = vec![0.0f64; t * kvd];
     let olcek = 1.0 / (dk as f64).sqrt();
     for head in 0..h {
+        let kvh = head / grup;
         for i in 0..t {
             // dv += w_ij * dout ; dw_ij = dout . v_j
             let mut dw = vec![0.0f64; t];
@@ -788,7 +1164,7 @@ fn dikkat_geri(
                     if kaynak[j] != kaynak[i] {
                         continue;
                     }
-                    *dw_deger += g * c.v[j * d + head * dk + m];
+                    *dw_deger += g * c.v[j * kvd + kvh * dk + m];
                 }
             }
             for m in 0..dk {
@@ -798,7 +1174,7 @@ fn dikkat_geri(
                         continue;
                     }
                     let w = c.agirlik[head * t * t + i * t + j];
-                    dv[j * d + head * dk + m] += g * w;
+                    dv[j * kvd + kvh * dk + m] += g * w;
                 }
             }
             // softmax backward over the causal row.
@@ -820,8 +1196,8 @@ fn dikkat_geri(
                     continue;
                 }
                 for m in 0..dk {
-                    dq[i * d + head * dk + m] += ds[j] * olcek * c.k[j * d + head * dk + m];
-                    dkd[j * d + head * dk + m] += ds[j] * olcek * c.q[i * d + head * dk + m];
+                    dq[i * d + head * dk + m] += ds[j] * olcek * c.k[j * kvd + kvh * dk + m];
+                    dkd[j * kvd + kvh * dk + m] += ds[j] * olcek * c.q[i * d + head * dk + m];
                 }
             }
         }
@@ -1231,16 +1607,21 @@ pub const INIT_STD_EMBEDDING: f64 = 1.0;
 /// match on both sides), the weight-decay mask (which tensors are decayed), and
 /// the shape check. Three copies of this list would be three chances to
 /// disagree about what "the model" is.
-pub const BLOK_ADLARI: [&str; 19] = [
+pub const BLOK_ADLARI: [&str; 24] = [
     "embedding",
     "ln1_olcek",
     "ln1_sapma",
     "wq",
     "bq",
+    "q_dokunus",
+    "q_norm_olcek",
     "wk",
     "bk",
+    "k_dokunus",
+    "k_norm_olcek",
     "wv",
     "bv",
+    "v_dokunus",
     "wo",
     "bo",
     "ln2_olcek",
@@ -1297,6 +1678,7 @@ impl Parametreler {
     #[must_use]
     pub fn sifir(spec: Spec) -> Self {
         let d = spec.d_model;
+        let kv = spec.d_kv();
         let katman = spec.n_layers;
         Self {
             embedding: vec![0.0; spec.vocab * d],
@@ -1304,10 +1686,20 @@ impl Parametreler {
             ln1_sapma: vec![0.0; katman * d],
             wq: vec![0.0; katman * d * d],
             bq: vec![0.0; katman * d],
-            wk: vec![0.0; katman * d * d],
-            bk: vec![0.0; katman * d],
-            wv: vec![0.0; katman * d * d],
-            bv: vec![0.0; katman * d],
+            // Dokunuslar kimlikle baslar (tum turluk [1, 0, 0, ...]): sifir
+            // bir model yine de "dikkat alir"; konvolusyon, egitim onunda
+            // davranisi degistirmeyen bir secenek olmali.
+            q_dokunus: kimlik_dokunus(katman, spec.qkv_dokunus, d),
+            // QK-norm olcekleri sifir: norm (1 + s) ile carpar, sifir saf
+            // norm demektir - sifir bir model yine de birim olcekle baslar.
+            q_norm_olcek: vec![0.0; katman * qkn(spec)],
+            wk: vec![0.0; katman * d * kv],
+            bk: vec![0.0; katman * kv],
+            k_dokunus: kimlik_dokunus(katman, spec.qkv_dokunus, kv),
+            k_norm_olcek: vec![0.0; katman * qkn(spec)],
+            wv: vec![0.0; katman * d * kv],
+            bv: vec![0.0; katman * kv],
+            v_dokunus: kimlik_dokunus(katman, spec.qkv_dokunus, kv),
             wo: vec![0.0; katman * d * d],
             bo: vec![0.0; katman * d],
             ln2_olcek: vec![1.0; katman * d],
@@ -1354,17 +1746,22 @@ impl Parametreler {
 
     /// The blocks in the format's order.
     #[must_use]
-    pub fn bloklar(&self) -> [&[f64]; 19] {
+    pub fn bloklar(&self) -> [&[f64]; 24] {
         [
             &self.embedding,
             &self.ln1_olcek,
             &self.ln1_sapma,
             &self.wq,
             &self.bq,
+            &self.q_dokunus,
+            &self.q_norm_olcek,
             &self.wk,
             &self.bk,
+            &self.k_dokunus,
+            &self.k_norm_olcek,
             &self.wv,
             &self.bv,
+            &self.v_dokunus,
             &self.wo,
             &self.bo,
             &self.ln2_olcek,
@@ -1380,17 +1777,22 @@ impl Parametreler {
 
     /// The blocks, mutable, in the same order.
     #[must_use]
-    pub fn bloklar_mut(&mut self) -> [&mut [f64]; 19] {
+    pub fn bloklar_mut(&mut self) -> [&mut [f64]; 24] {
         [
             &mut self.embedding,
             &mut self.ln1_olcek,
             &mut self.ln1_sapma,
             &mut self.wq,
             &mut self.bq,
+            &mut self.q_dokunus,
+            &mut self.q_norm_olcek,
             &mut self.wk,
             &mut self.bk,
+            &mut self.k_dokunus,
+            &mut self.k_norm_olcek,
             &mut self.wv,
             &mut self.bv,
+            &mut self.v_dokunus,
             &mut self.wo,
             &mut self.bo,
             &mut self.ln2_olcek,
@@ -1441,16 +1843,24 @@ impl Parametreler {
     #[must_use]
     pub fn sekil_dogru(&self, spec: Spec) -> bool {
         let d = spec.d_model;
+        let kv = spec.d_kv();
+        let dokunus = spec.qkv_dokunus;
+        let qkn = qkn(spec);
         let katman = spec.n_layers;
         self.embedding.len() == spec.vocab * d
             && self.ln1_olcek.len() == katman * d
             && self.ln1_sapma.len() == katman * d
             && self.wq.len() == katman * d * d
             && self.bq.len() == katman * d
-            && self.wk.len() == katman * d * d
-            && self.bk.len() == katman * d
-            && self.wv.len() == katman * d * d
-            && self.bv.len() == katman * d
+            && self.q_dokunus.len() == katman * dokunus * d
+            && self.q_norm_olcek.len() == katman * qkn
+            && self.wk.len() == katman * d * kv
+            && self.bk.len() == katman * kv
+            && self.k_dokunus.len() == katman * dokunus * kv
+            && self.k_norm_olcek.len() == katman * qkn
+            && self.wv.len() == katman * d * kv
+            && self.bv.len() == katman * kv
+            && self.v_dokunus.len() == katman * dokunus * kv
             && self.wo.len() == katman * d * d
             && self.bo.len() == katman * d
             && self.ln2_olcek.len() == katman * d
@@ -1781,6 +2191,9 @@ mod tests {
             d_model: 4,
             n_layers: 2,
             n_heads: 2,
+            n_kv_heads: 2,
+            qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 6,
             max_seq_len: 16,
         }
@@ -1792,8 +2205,13 @@ mod tests {
         vec![
             ("embedding", p.embedding.clone()),
             ("wq", p.wq.clone()),
+            ("q_dokunus", p.q_dokunus.clone()),
+            ("q_norm_olcek", p.q_norm_olcek.clone()),
             ("wk", p.wk.clone()),
+            ("k_dokunus", p.k_dokunus.clone()),
+            ("k_norm_olcek", p.k_norm_olcek.clone()),
             ("wv", p.wv.clone()),
+            ("v_dokunus", p.v_dokunus.clone()),
             ("wo", p.wo.clone()),
             ("w1", p.w1.clone()),
             ("w2", p.w2.clone()),
@@ -1818,8 +2236,13 @@ mod tests {
         let hedef: &mut Vec<f64> = match ad {
             "embedding" => &mut p.embedding,
             "wq" => &mut p.wq,
+            "q_dokunus" => &mut p.q_dokunus,
+            "q_norm_olcek" => &mut p.q_norm_olcek,
             "wk" => &mut p.wk,
+            "k_dokunus" => &mut p.k_dokunus,
+            "k_norm_olcek" => &mut p.k_norm_olcek,
             "wv" => &mut p.wv,
+            "v_dokunus" => &mut p.v_dokunus,
             "wo" => &mut p.wo,
             "w1" => &mut p.w1,
             "w2" => &mut p.w2,
@@ -1843,12 +2266,13 @@ mod tests {
 
     /// Every analytic gradient against a central finite difference, over every
     /// parameter of the model.
-    fn gradients_match_finite_differences() -> Result<(), String> {
-        let spec = kucuk_spec();
+    fn gradients_match_finite_differences(spec: Spec) -> Result<(), String> {
         spec.dogrula().map_err(|e| format!("spec refused: {e:?}"))?;
         let p = Parametreler::belirgin_doldur(spec, 7);
-        let girdi = vec![0usize, 3, 1, 6];
-        let hedef = vec![3usize, 1, 6, 2];
+        // Jetonlar spec'in sozlugunden turetilir: ayni denetim kucuk ve
+        // paylasimli spec'lerde de gecerli kalmali, taşiyan sabit değil.
+        let girdi: Vec<usize> = (0..4).map(|i| (i * 2 + 1) % spec.vocab).collect();
+        let hedef: Vec<usize> = (0..4).map(|i| (i * 2 + 2) % spec.vocab).collect();
         let (kayip0, grad) = ileri_ve_geri(spec, &p, &girdi, &hedef);
         if !kayip0.is_finite() || kayip0 <= 0.0 {
             return Err(format!("loss is not a usable number: {kayip0}"));
@@ -1908,7 +2332,274 @@ mod tests {
 
     #[test]
     fn backward_matches_finite_differences() {
-        gradients_match_finite_differences().unwrap();
+        gradients_match_finite_differences(kucuk_spec()).unwrap();
+    }
+
+    /// Gruplanmis sorgu dikkatinde de her gradyan sonlu farkla uyusmali:
+    /// KV paylasimi turevi degil indekslemeyi degistirir, bu yuzden ayni
+    /// denetim paylasimli spec'te de gecmeli. Iki farkli grup orani
+    /// denetlenir: 2:1 (iki sorgu basina bir KV basi) ve 4:2.
+    #[test]
+    fn gqa_gradyanlari_sonlu_farklarla_uyusur() {
+        let iki_bir = Spec {
+            n_kv_heads: 1,
+            ..kucuk_spec()
+        };
+        gradients_match_finite_differences(iki_bir).unwrap();
+        let dort_iki = Spec {
+            vocab: 5,
+            d_model: 8,
+            n_layers: 1,
+            n_heads: 4,
+            n_kv_heads: 2,
+            qkv_dokunus: 0,
+            qk_norm: false,
+            d_ff: 8,
+            max_seq_len: 8,
+        };
+        gradients_match_finite_differences(dort_iki).unwrap();
+    }
+
+    /// Varsayilan spec'in (n_kv_heads == n_heads) aritmetigi, KV paylasimini
+    /// desteklemek icin dikkat yeniden yazilmasina ragmen bit duzeyinde ayni
+    /// kalmali. Sabitler bu test yazilmadan onceki cekirdekle olculmustur;
+    /// ikisinden biri degiserse varsayilan yol kaymis demektir. Kayip ve
+    /// embedding gradyaninin ilk elemani yeter: ikisi de tum katmanlardan
+    /// gecen birer akistir.
+    #[test]
+    fn tam_dikkat_yolu_bit_duzeyinde_korunur() {
+        let spec = kucuk_spec();
+        let p = Parametreler::belirgin_doldur(spec, 23);
+        let girdi = vec![0usize, 3, 1, 6];
+        let hedef = vec![3usize, 1, 6, 2];
+        let (kayip, grad) = ileri_ve_geri(spec, &p, &girdi, &hedef);
+        assert_eq!(
+            kayip.to_bits(),
+            0x3ffe_daf6_10c5_443e,
+            "varsayilan yolun kaybi degisti"
+        );
+        assert_eq!(
+            grad.embedding[0].to_bits(),
+            0xbfa1_8256_dfa1_a4f9,
+            "varsayilan yolun embedding gradyani degisti"
+        );
+    }
+
+    /// Kimlik dokunusler konvolusyonu deger olarak etkisiz birakmali: tap 0
+    /// bir, digerleri sifir iken cikti girdiye esit olmali. Bu, dokunuslu bir
+    /// modelin egitim baslangicinda dokunussuz modelle ayni sayilari
+    /// verdiginin kanitidir.
+    #[test]
+    fn kimlik_dokunusler_konvolusyonu_etkisiz_birakir() {
+        let spec = Spec {
+            qkv_dokunus: 3,
+            ..kucuk_spec()
+        };
+        let t = 6;
+        let x: Vec<f64> = (0..t * spec.d_model)
+            .map(|i| (i as f64) * 0.37 - 1.0)
+            .collect();
+        // Iki kayit: dokunuslerin sinir maskesini de sinamak icin.
+        let kaynak = vec![0u32, 0, 0, 1, 1, 1];
+        let p = Parametreler::sifir(spec);
+        let (y, ham) = dokunus_ve_ham(spec, x.clone(), 0, &p.q_dokunus, spec.d_model, t, &kaynak);
+        assert_eq!(ham, x, "ham deger girdinin kendisi olmali");
+        assert!(
+            y.iter().zip(x.iter()).all(|(a, b)| a == b),
+            "kimlik dokunus cikisi girdiden farkli: {:?} vs {:?}",
+            &y[..4],
+            &x[..4]
+        );
+    }
+
+    /// Dokunuslu gradyan denetimi: sonlu fark her parametrede - dokunuslar
+    /// dahil - ayni sayiyi vermeli. Gruplanmis dikkat ve dokunus bir arada
+    /// kosar; ikisi ayni spec'te birlikte olcmek, ayri ayri olcmekten fazladir.
+    #[test]
+    fn dokunuslu_gradyanlar_sonlu_farklarla_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            ..kucuk_spec()
+        };
+        gradients_match_finite_differences(spec).unwrap();
+    }
+
+    /// Dokunuslar kayit sinirini asamaz: paketli pencerede dokunuslu spec,
+    /// parcalarin tek basina kosularinin uzunlukla agirliklandirilmis
+    /// ortalamasini vermeli. Maske olmasaydi j > 0 dokunuslari komsu kaydin
+    /// jetonunu okurdu ve bu esitlik bozulurdu.
+    #[test]
+    fn dokunuslar_kayit_sinirini_asmaz() {
+        let spec = Spec {
+            qkv_dokunus: 3,
+            ..kucuk_spec()
+        };
+        let p = Parametreler::belirgin_doldur(spec, 23);
+        let a_girdi = vec![0usize, 3, 1];
+        let a_hedef = vec![3usize, 1, 6];
+        let b_girdi = vec![6usize, 2, 5, 0];
+        let b_hedef = vec![2usize, 5, 0, 4];
+
+        let (kayip_a, _) = ileri_ve_geri(spec, &p, &a_girdi, &a_hedef);
+        let (kayip_b, _) = ileri_ve_geri(spec, &p, &b_girdi, &b_hedef);
+
+        let mut girdi = a_girdi.clone();
+        girdi.extend_from_slice(&b_girdi);
+        let mut hedef = a_hedef.clone();
+        hedef.extend_from_slice(&b_hedef);
+        let mut kaynak = vec![0u32; a_girdi.len()];
+        kaynak.extend(std::iter::repeat_n(1u32, b_girdi.len()));
+
+        let (kayip_paket, _) = ileri_ve_geri_paket(spec, &p, &girdi, &hedef, &kaynak);
+        let beklenen =
+            (kayip_a * a_girdi.len() as f64 + kayip_b * b_girdi.len() as f64) / girdi.len() as f64;
+        assert!(
+            (kayip_paket - beklenen).abs() < 1e-12,
+            "dokunuslu paketli kayip {kayip_paket:.12} ama parcalar {beklenen:.12}: dokunus siniri asiyor"
+        );
+    }
+
+    /// Tam kombinasyon gradyan denetimi: gruplu KV + dokunuslar + QK-norm
+    /// ayni spec'te. Her mekanizma ayri ayri olculdu; birlikte kosmak, ara
+    /// yuzlerin (norm <-> konvolusyon <-> dikkat) turevlerini de yakalar.
+    #[test]
+    fn qk_normlu_gradyanlar_sonlu_farklarla_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        gradients_match_finite_differences(spec).unwrap();
+    }
+
+    /// QK-norm acikken her kafa diliminin RMS'i bire esit olmali (olcek
+    /// sifir iken carpim birdir) ve olcek degisince cikti ayni oranda
+    /// degismeli: normun ne yaptigi, neyi iddia ettigiyle ayni mi?
+    #[test]
+    fn qk_norm_kafa_rms_bir_yapar_ve_olcek_isler() {
+        let spec = Spec {
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        let t = 5;
+        let x: Vec<f64> = (0..t * spec.d_model)
+            .map(|i| ((i * 7) as f64 * 0.31 - 2.0))
+            .collect();
+        let p = Parametreler::sifir(spec); // olcekler sifir
+        let dk = spec.d_k();
+        let (y, girdi) = qk_norm_uygula(spec, x.clone(), &p.q_norm_olcek[..dk], spec.d_model, t);
+        assert_eq!(girdi, x, "norm girdisi korunmali");
+        for i in 0..t {
+            for h in 0..spec.n_heads {
+                let mut toplam = 0.0;
+                for m in 0..dk {
+                    let v = y[i * spec.d_model + h * dk + m];
+                    toplam += v * v;
+                }
+                let rms = (toplam / (dk as f64)).sqrt();
+                // eps=1e-6 boleni Buyuktur ortalama kare oldugundan rms
+                // bire "yaklasir": sapma ~ eps / (2 * ortalama_kare).
+                assert!(
+                    (rms - 1.0).abs() < QK_NORM_EPS,
+                    "konum {i} kafa {h}: rms {rms}, bire yeterince yakin degil"
+                );
+            }
+        }
+        // Katmani isle: ayni girdi, olcek 1.0 -> cikti (1+1)/1 = 2 kat.
+        let olcek: Vec<f64> = vec![1.0; dk];
+        let (y2, _) = qk_norm_uygula(spec, x, &olcek, spec.d_model, t);
+        for (a, b) in y.iter().zip(y2.iter()) {
+            assert!((b - 2.0 * a).abs() < 1e-12, "olcek carpani islemedi");
+        }
+    }
+
+    /// GQA spec'inde parametre muhasebesi: dikkat artik 2d^2 (q, o) + 2dkv
+    /// (k, v) + bias'lari sayar. Sayinin kendisi kapali formulle, farki ise
+    /// tam dikkatten olan mesafeyle iki kez yazilir.
+    #[test]
+    fn gqa_parametre_muhasebesi() {
+        let tam = Spec::lubot_a1();
+        tam.dogrula().unwrap();
+        assert_eq!(tam.parametre_sayisi(), 924_288);
+        let paylasimli = Spec {
+            n_kv_heads: 1,
+            ..tam
+        };
+        paylasimli.dogrula().unwrap();
+        // d_model 64, n_heads 2, n_kv_heads 1 -> d_k 32, d_kv 32.
+        // Kapali form: 8192*64 + 8*(2*64^2 + 2*64*32 + 2*64 + 2*32)
+        //            + 8*(2*64*256 + 256 + 64) + 8*4*64 + 2*64.
+        assert_eq!(paylasimli.parametre_sayisi(), 891_008);
+        let fark = tam.parametre_sayisi() - paylasimli.parametre_sayisi();
+        let d = tam.d_model;
+        let kv = paylasimli.d_kv();
+        assert_eq!(fark, tam.n_layers * (2 * d * (d - kv) + 2 * (d - kv)));
+    }
+
+    /// KV bas sayisi bas sayisini bolmuyorsa spec reddedilmeli: 3 sorgu basina
+    /// esit olmayan bir KV grubu sessizce yanlis indeks uzerinden okunurdu.
+    #[test]
+    fn bolunmeyen_kv_bas_sayisi_reddedilir() {
+        let bozuk = Spec {
+            n_kv_heads: 3,
+            ..Spec::lubot_a1()
+        };
+        assert_eq!(bozuk.dogrula(), Err(SpecHatasi::KvBasSayisiBolunmuyor));
+        let sifir = Spec {
+            n_kv_heads: 0,
+            ..Spec::lubot_a1()
+        };
+        assert_eq!(sifir.dogrula(), Err(SpecHatasi::KvBasSayisiBolunmuyor));
+    }
+
+    /// Paketli pencere maske kurali, KV paylasiminda da gecerli olmali:
+    /// paylasimli spec'te paketli kayip, parcaların uzunlukla agirliklandir-
+    /// ilmis ortalamasina esit olmali ve embedding gradyani da ayni sekilde
+    /// toplanmali.
+    #[test]
+    fn gqa_paketli_pencere_kayit_sinirini_asmaz() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            ..kucuk_spec()
+        };
+        let p = Parametreler::belirgin_doldur(spec, 23);
+        let a_girdi = vec![0usize, 3, 1];
+        let a_hedef = vec![3usize, 1, 6];
+        let b_girdi = vec![6usize, 2, 5, 0];
+        let b_hedef = vec![2usize, 5, 0, 4];
+
+        let (kayip_a, _) = ileri_ve_geri(spec, &p, &a_girdi, &a_hedef);
+        let (kayip_b, _) = ileri_ve_geri(spec, &p, &b_girdi, &b_hedef);
+
+        let mut girdi = a_girdi.clone();
+        girdi.extend_from_slice(&b_girdi);
+        let mut hedef = a_hedef.clone();
+        hedef.extend_from_slice(&b_hedef);
+        let mut kaynak = vec![0u32; a_girdi.len()];
+        kaynak.extend(std::iter::repeat_n(1u32, b_girdi.len()));
+
+        let (kayip_paket, _) = ileri_ve_geri_paket(spec, &p, &girdi, &hedef, &kaynak);
+        let beklenen =
+            (kayip_a * a_girdi.len() as f64 + kayip_b * b_girdi.len() as f64) / girdi.len() as f64;
+        assert!(
+            (kayip_paket - beklenen).abs() < 1e-12,
+            "paylasimli dikkatte paketli kayip {kayip_paket:.12} ama parcalar {beklenen:.12}"
+        );
+
+        let (_, grad_a) = ileri_ve_geri(spec, &p, &a_girdi, &a_hedef);
+        let (_, grad_b) = ileri_ve_geri(spec, &p, &b_girdi, &b_hedef);
+        let (_, grad_paket) = ileri_ve_geri_paket(spec, &p, &girdi, &hedef, &kaynak);
+        let na = a_girdi.len() as f64;
+        let nb = b_girdi.len() as f64;
+        for i in 0..grad_paket.embedding.len() {
+            let beklenen_g = (grad_a.embedding[i] * na + grad_b.embedding[i] * nb) / (na + nb);
+            assert!(
+                (grad_paket.embedding[i] - beklenen_g).abs() < 1e-12,
+                "paylasimli dikkatte embedding gradyani [{i}] sinir maskesiyle uyusmuyor"
+            );
+        }
     }
 
     #[test]

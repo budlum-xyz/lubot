@@ -1455,6 +1455,9 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
         d_model: 16,
         n_layers: 2,
         n_heads: 2,
+        n_kv_heads: 2,
+        qkv_dokunus: 0,
+        qk_norm: false,
         d_ff: 32,
         max_seq_len: uzunluk,
     };
@@ -1464,6 +1467,9 @@ fn cmd_egitim_veri(args: &[String]) -> Result<(), String> {
             match e {
                 lubot_egitim::SpecHatasi::BosBoyut => "sifir boyutlu bir eksen",
                 lubot_egitim::SpecHatasi::BasSayisiBolmuyor => "bas sayisi genisligi bolmuyor",
+                lubot_egitim::SpecHatasi::KvBasSayisiBolunmuyor => {
+                    "kv bas sayisi bas sayisini bolmuyor"
+                }
             }
         )
     })?;
@@ -1629,6 +1635,9 @@ fn cmd_egitim(args: &[String]) -> Result<(), String> {
             match e {
                 lubot_egitim::SpecHatasi::BosBoyut => "sifir boyutlu bir eksen",
                 lubot_egitim::SpecHatasi::BasSayisiBolmuyor => "bas sayisi genisligi bolmuyor",
+                lubot_egitim::SpecHatasi::KvBasSayisiBolunmuyor => {
+                    "kv bas sayisi bas sayisini bolmuyor"
+                }
             }
         )
     })?;
@@ -1660,6 +1669,9 @@ fn cmd_egitim(args: &[String]) -> Result<(), String> {
         d_model: 16,
         n_layers: 2,
         n_heads: 2,
+        n_kv_heads: 2,
+        qkv_dokunus: 0,
+        qk_norm: false,
         d_ff: 32,
         max_seq_len: 16,
     };

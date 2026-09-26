@@ -337,6 +337,9 @@ impl Kontrol {
                 "d_model": spec.d_model,
                 "n_layers": spec.n_layers,
                 "n_heads": spec.n_heads,
+                "n_kv_heads": spec.n_kv_heads,
+                "qkv_dokunus": spec.qkv_dokunus,
+                "qk_norm": spec.qk_norm,
                 "d_ff": spec.d_ff,
                 "max_seq_len": spec.max_seq_len,
             },
@@ -411,8 +414,30 @@ impl Kontrol {
         let spec = spec_oku(&baslik)?;
         let blok_bayt = hassasiyet.bayt();
         let mut parametreler = Parametreler::sifir(spec);
+        // Sifirdan kurulan parametreler, her blokun BU spec icin beklenen
+        // uzunlugunu verir: okuyucu, dosyada olmayan bir blokun "eski bicim"
+        // mi olduguna yoksa bir sekil hatasi mi olduguna bu sayiyle karar
+        // verir.
+        let beklenen_uzunluklar: Vec<usize> = parametreler
+            .bloklar()
+            .iter()
+            .map(|blok| blok.len())
+            .collect();
         let mut okunan: Vec<(&'static str, usize)> = Vec::new();
-        for ad in Parametreler::blok_adlari() {
+        for (sira, ad) in Parametreler::blok_adlari().into_iter().enumerate() {
+            // Eski bicim dosyada dokunus bloklari yoktur. Beklenen uzunluk
+            // sifirsa ve dosyadaki siradaki ad baska bir bloksa, bu blok
+            // atlanir: tasiyacagi veri zaten yoktur ve reddetmek, eski bir
+            // kontrol noktasini okunmaz yapmak olur - oysa sorun yok.
+            if beklenen_uzunluklar[sira] == 0 {
+                if let Some(gozlem_ad) = peek_blok_adi(ham, konum) {
+                    if gozlem_ad != ad {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            }
             let ad_uzunluk = oku_u16(ham, &mut konum)? as usize;
             if konum + ad_uzunluk > ham.len() {
                 return Err(KontrolHatasi::Kisa {
@@ -629,11 +654,36 @@ fn spec_oku(baslik: &serde_json::Value) -> Result<Spec, KontrolHatasi> {
             .map(|v| v as usize)
             .ok_or_else(|| KontrolHatasi::Baslik(format!("spec.{ad} yok")))
     };
+    let n_heads = alan("n_heads")?;
+    // Eski kontrol noktalarinda KV paylasimi yoktu: alan yoksa tam dikkat
+    // demektir ve dosya oldugu gibi okunmaya devam eder. Yeni alan yalnizca
+    // paylasimli bir spec yazildiginda anlami vardir.
+    let n_kv_heads = baslik
+        .get("spec")
+        .and_then(|s| s.get("n_kv_heads"))
+        .and_then(serde_json::Value::as_u64)
+        .map_or(n_heads, |v| v as usize);
+    // Ayni kural dokunus sayisi icin: alani olmayan eski dosya "dokunus
+    // yok" demektir, reddedilecek bir sey degil.
+    let qkv_dokunus = baslik
+        .get("spec")
+        .and_then(|s| s.get("qkv_dokunus"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0) as usize;
+    // QK-norm da ayni kural: alani olmayan eski dosya "norm yok" demektir.
+    let qk_norm = baslik
+        .get("spec")
+        .and_then(|s| s.get("qk_norm"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     let spec = Spec {
         vocab: alan("vocab")?,
         d_model: alan("d_model")?,
         n_layers: alan("n_layers")?,
-        n_heads: alan("n_heads")?,
+        n_heads,
+        n_kv_heads,
+        qkv_dokunus,
+        qk_norm,
         d_ff: alan("d_ff")?,
         max_seq_len: alan("max_seq_len")?,
     };
@@ -679,6 +729,22 @@ fn optimizer_oku(
         m: Vec::new(),
         v: Vec::new(),
     }))
+}
+
+/// Dosyadaki siradaki blokun adina, konumu ilerletmeden bakar.
+///
+/// Okuyucunun eski bicim dosyalara (dokunus bloklari yazilmamis) karar
+/// verebilmesi icin gerekir: ad okunur ama tuketilmez.
+fn peek_blok_adi(ham: &[u8], konum: usize) -> Option<&str> {
+    if konum + 2 > ham.len() {
+        return None;
+    }
+    let uzunluk = u16::from_le_bytes([ham[konum], ham[konum + 1]]) as usize;
+    let bas = konum + 2;
+    if bas + uzunluk > ham.len() {
+        return None;
+    }
+    std::str::from_utf8(&ham[bas..bas + uzunluk]).ok()
 }
 
 fn oku_u16(ham: &[u8], konum: &mut usize) -> Result<u16, KontrolHatasi> {
@@ -754,6 +820,9 @@ mod tests {
             d_model: 8,
             n_layers: 1,
             n_heads: 2,
+            n_kv_heads: 2,
+            qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 16,
             max_seq_len: 8,
         }
@@ -813,6 +882,123 @@ mod tests {
         let o = geri.optimizer.expect("optimizer");
         assert_eq!(o.m, k.optimizer.as_ref().expect("o").m);
         assert_eq!(o.v, k.optimizer.as_ref().expect("o").v);
+    }
+
+    /// Baslikta dokunus alani yoksa sifir okunur (eski dosya), varsa degeri.
+    #[test]
+    fn eksik_dokunus_alani_sifir_okunur() {
+        let temel = serde_json::json!({
+            "spec": {
+                "vocab": 7, "d_model": 4, "n_layers": 2, "n_heads": 2,
+                "n_kv_heads": 2, "d_ff": 6, "max_seq_len": 16
+            }
+        });
+        assert_eq!(spec_oku(&temel).expect("eski baslik").qkv_dokunus, 0);
+        let mut dokunuslu = temel.clone();
+        dokunuslu["spec"]["qkv_dokunus"] = serde_json::json!(3);
+        assert_eq!(spec_oku(&dokunuslu).expect("yeni baslik").qkv_dokunus, 3);
+        assert!(!spec_oku(&temel).expect("eski baslik").qk_norm);
+        let mut normlu = temel.clone();
+        normlu["spec"]["qk_norm"] = serde_json::json!(true);
+        assert!(spec_oku(&normlu).expect("normlu baslik").qk_norm);
+    }
+
+    /// Dokunuslu ve paylasimli bir kontrol noktasi gezinir: bloklar, dokunus
+    /// degerleri ve optimizer anlari ayni sayilarda geri gelir.
+    #[test]
+    fn dokunuslu_kontrol_noktasi_gezdirilir() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            ..spec()
+        };
+        spec.dogrula().expect("spec");
+        let p = Parametreler::belirgin_doldur(spec, 4);
+        let opt = Adamw::yeni(p.toplam_ogeler(), 0.01, 0.1).expect("optimizer");
+        let (adim, m, v) = opt.durum();
+        let k = Kontrol {
+            spec,
+            parametreler: p,
+            adim: 2,
+            epoch: 1,
+            tohum: 4,
+            sozluk_aile: "lubot-bpe-v2".to_string(),
+            korpus_ozeti: "c".repeat(64),
+            egitim_kaybi: 2.5,
+            dogrulama_kaybi: Some(2.6),
+            en_iyi_dogrulama: Some(2.4),
+            devam_konum: 3,
+            hassasiyet: Hassasiyet::F64,
+            optimizer: Some(OptimizerDurumu {
+                adim,
+                ogrenme_orani: 0.01,
+                agirlik_sonumu: 0.1,
+                m: m.to_vec(),
+                v: v.to_vec(),
+            }),
+        };
+        let ham = tam(&k);
+        let geri = Kontrol::baytlardan(&ham).expect("load");
+        assert_eq!(geri.spec, k.spec);
+        assert_eq!(geri.parametreler, k.parametreler);
+        assert_eq!(
+            geri.parametreler.q_dokunus.len(),
+            spec.n_layers * spec.qkv_dokunus * spec.d_model
+        );
+        assert_eq!(
+            geri.parametreler.k_dokunus.len(),
+            spec.n_layers * spec.qkv_dokunus * spec.d_kv()
+        );
+    }
+
+    /// Eski bicim dosya okunur: dokunus bloklari yazilmamis ve basliginda
+    /// dokunus alani olmayan bir kontrol noktasi, ayni model olarak
+    /// yuklenmelidir. Okuyucunun toleransi olculur, varsayilmaz.
+    #[test]
+    fn eski_bicim_dosya_dokunussuz_okunur() {
+        let k = kontrol(); // dokunussuz spec: dokunus bloklari bos
+        let ham = tam(&k);
+        // Sabit kafa: SIHIR + surum + hassasiyet + bayrak. Baslik uzunlugu
+        // alani kafanin icinde ama yeniden yazilacagi icin onun da oncesi
+        // kesilir; baslik ise uzunluk alanindan sonra baslar.
+        let kafa = SIHIR.len() + 1 + 1 + 2;
+        let baslik_bas = kafa + 4;
+        let baslik_uzunluk =
+            u32::from_le_bytes(ham[kafa..baslik_bas].try_into().expect("u32")) as usize;
+        let baslik: serde_json::Value =
+            serde_json::from_slice(&ham[baslik_bas..baslik_bas + baslik_uzunluk]).expect("baslik");
+        let mut eski = baslik;
+        eski["spec"]
+            .as_object_mut()
+            .expect("spec nesnesi")
+            .remove("qkv_dokunus");
+        let eski_metin = serde_json::to_string(&eski).expect("json");
+
+        // Govdeyi yeniden kur: ayni sabit kafa, eski baslik, dokunus blok
+        // basliklari (ad + sifir sayaci = 19 bayt) cikarilmis kuyruk.
+        let mut yeni = ham[..kafa].to_vec();
+        yeni.extend_from_slice(&(eski_metin.len() as u32).to_le_bytes());
+        yeni.extend_from_slice(eski_metin.as_bytes());
+        let kuyruk = &ham[baslik_bas + baslik_uzunluk..ham.len() - OZET_UZUNLUK];
+        let mut kuyruk = kuyruk.to_vec();
+        for ad in ["q_dokunus", "k_dokunus", "v_dokunus"] {
+            let mut kalip: Vec<u8> = Vec::new();
+            kalip.extend_from_slice(&(ad.len() as u16).to_le_bytes());
+            kalip.extend_from_slice(ad.as_bytes());
+            kalip.extend_from_slice(&0u64.to_le_bytes());
+            let konum = kuyruk
+                .windows(kalip.len())
+                .position(|pencere| pencere == kalip)
+                .unwrap_or_else(|| panic!("{ad} blok basligi bulunamadi"));
+            kuyruk.drain(konum..konum + kalip.len());
+        }
+        yeni.extend_from_slice(&kuyruk);
+        yeni.extend_from_slice(&ozetle(&yeni));
+
+        let geri = Kontrol::baytlardan(&yeni).expect("eski bicim dosya okunmali");
+        assert_eq!(geri.spec, k.spec);
+        assert_eq!(geri.spec.qkv_dokunus, 0);
+        assert_eq!(geri.parametreler, k.parametreler);
     }
 
     #[test]

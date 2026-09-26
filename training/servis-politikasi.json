@@ -18,6 +18,10 @@
     {
       "path": "docs/DENETIM-RAPORU.md",
       "gerekce": "Uyum denetimi raporu: talimatlara uygunlugun kanit dokumu. Denetim kaydi urun bilgisi degildir; cevap yuzeyine ciktiginda hem yanlis bilgi verir hem de okuyani denetim diliyle mesgul eder."
+    },
+    {
+      "path": "docs/MIMARI-PORT-TASARIM.md",
+      "gerekce": "Tasarim notu: uygulamasi olmayan bilesenlerin yonunu anlatir. Cevap yuzeyinde alintilandiginda 'Lubot sunu yapiyor' yerine 'Lubot bunu onermisti' okunur; olcusu yoktur. Bilesen uygulandiginda kodu, kapisi ve olcum kaydi gelince damga tek satirla kalkar (politika geri-donus kurali)."
     }
   ]
 }

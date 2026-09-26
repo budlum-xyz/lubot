@@ -40,7 +40,7 @@ pub mod uretim;
 use std::path::Path;
 
 use lubot_egitim::kontrol::{Kontrol, KontrolHatasi, OptimizerDurumu};
-use lubot_egitim::{ileri_ve_geri_paket, Parametreler, Spec, LN_EPS};
+use lubot_egitim::{ileri_ve_geri_paket, Parametreler, Spec, LN_EPS, QK_NORM_EPS};
 
 /// Largest absolute difference the cached and recomputed paths may show.
 ///
@@ -124,8 +124,13 @@ pub struct Cikarim {
 /// Per-layer keys and values for the positions read so far.
 #[derive(Debug, Clone)]
 struct Onbellek {
+    /// Konvolusyon oncesi (ham) k degerleri, konum konum.
     k: Vec<Vec<f64>>,
+    /// Konvolusyon oncesi (ham) v degerleri.
     v: Vec<Vec<f64>>,
+    /// Ham q halkasi: yalniz son `qkv_dokunus` konumun ham q'su tutulur,
+    /// dokunuslu q ancak o kadar gecmise bakar.
+    q_ham: Vec<Vec<f64>>,
     uzunluk: usize,
 }
 
@@ -134,6 +139,7 @@ impl Onbellek {
         Self {
             k: vec![Vec::new(); spec.n_layers],
             v: vec![Vec::new(); spec.n_layers],
+            q_ham: vec![Vec::new(); spec.n_layers],
             uzunluk: 0,
         }
     }
@@ -424,37 +430,62 @@ impl Cikarim {
         let dk = self.spec.d_k();
         let mut x: Vec<f64> =
             self.parametreler.embedding[jeton as usize * d..(jeton as usize + 1) * d].to_vec();
+        // KV genisligi: anahtarlar ve degerler d_kv, sorgu ve cikti d_model.
+        let kv = self.spec.d_kv();
         for katman in 0..self.spec.n_layers {
             let (ln1, _, _) = self.layer_norm(&x, katman, 1);
-            let q = self.matmul(
+            let q = self.matmul_katman(
                 &ln1,
                 &self.parametreler.wq,
                 &self.parametreler.bq,
                 katman,
                 d,
+                d,
             );
-            let k = self.matmul(
+            let k = self.matmul_katman(
                 &ln1,
                 &self.parametreler.wk,
                 &self.parametreler.bk,
                 katman,
                 d,
+                kv,
             );
-            let v = self.matmul(
+            let v = self.matmul_katman(
                 &ln1,
                 &self.parametreler.wv,
                 &self.parametreler.bv,
                 katman,
                 d,
+                kv,
             );
+            // Onbellek ham degerleri tutar: dokunuslu k/v, okuma aninda
+            // hamlardan kurulur (asagida dikkat_konum). Ham q icin yalniz
+            // son qkv_dokunus konum gerekir - halka.
             onbellek.k[katman].extend_from_slice(&k);
             onbellek.v[katman].extend_from_slice(&v);
+            let dok = self.spec.qkv_dokunus;
+            let q = if dok == 0 {
+                q
+            } else {
+                onbellek.q_ham[katman].extend_from_slice(&q);
+                let fazlalik = onbellek.q_ham[katman].len().saturating_sub(dok * d);
+                onbellek.q_ham[katman].drain(..fazlalik);
+                self.dokunuslu_q(&onbellek.q_ham[katman], katman)
+            };
+            // QK-norm: konvolusyondan sonra, skorlardan once - egitim
+            // cekirdegiyle ayni yer. qk_norm == false iken hizli yol gecer.
+            let q = if self.spec.qk_norm {
+                self.qk_normlu_q(&q, katman)
+            } else {
+                q
+            };
             let attn = self.dikkat_konum(&q, katman, onbellek, dk);
-            let cikti = self.matmul(
+            let cikti = self.matmul_katman(
                 &attn,
                 &self.parametreler.wo,
                 &self.parametreler.bo,
                 katman,
+                d,
                 d,
             );
             for (xi, c) in x.iter_mut().zip(&cikti) {
@@ -490,6 +521,87 @@ impl Cikarim {
         Ok(lnf)
     }
 
+    /// Guncel konumun dokunuslu q'suna kafa basina RMS normu: her kafa
+    /// dilimi birim RMS'ye cekilir ve `(1 + olcek[m])` ile carpilir.
+    fn qk_normlu_q(&self, q: &[f64], katman: usize) -> Vec<f64> {
+        let d = self.spec.d_model;
+        let dk = self.spec.d_k();
+        let olcek = &self.parametreler.q_norm_olcek[katman * dk..(katman + 1) * dk];
+        let mut y = vec![0.0f64; d];
+        for h in 0..self.spec.n_heads {
+            let mut toplam = 0.0;
+            for m in 0..dk {
+                let v = q[h * dk + m];
+                toplam += v * v;
+            }
+            let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+            for m in 0..dk {
+                y[h * dk + m] = (1.0 + olcek[m]) * q[h * dk + m] * r;
+            }
+        }
+        y
+    }
+
+    /// Onbellekteki (dokunuslu) k degerlerine kafa basina RMS normu.
+    fn qk_normlu_kv(&self, k: &[f64], olcek: &[f64], t: usize) -> Vec<f64> {
+        let kvd = self.spec.d_kv();
+        let dk = self.spec.d_k();
+        let kafa = kvd / dk;
+        let mut y = vec![0.0f64; t * kvd];
+        for p in 0..t {
+            for h in 0..kafa {
+                let taban = p * kvd + h * dk;
+                let mut toplam = 0.0;
+                for m in 0..dk {
+                    toplam += k[taban + m] * k[taban + m];
+                }
+                let r = 1.0 / (toplam / (dk as f64) + QK_NORM_EPS).sqrt();
+                for m in 0..dk {
+                    y[taban + m] = (1.0 + olcek[m]) * k[taban + m] * r;
+                }
+            }
+        }
+        y
+    }
+
+    /// Ham k/v ogelerinden dokunuslu k/v: `y[p][c] = sum_j t[j][c] *
+    /// ham[p-j][c]`, j sirasi egitim cekirdegiyle ayni (artan). Dizinin
+    /// basindan onceye bakmak sifir dolgudur: katki sifir.
+    fn dokunuslu_kv(&self, ham: &[f64], dokunus: &[f64], genislik: usize, t: usize) -> Vec<f64> {
+        let mut y = vec![0.0f64; t * genislik];
+        for p in 0..t {
+            for (j, satir) in dokunus.chunks_exact(genislik).enumerate() {
+                if j > p {
+                    continue;
+                }
+                for c in 0..genislik {
+                    y[p * genislik + c] += satir[c] * ham[(p - j) * genislik + c];
+                }
+            }
+        }
+        y
+    }
+
+    /// Halkadaki (son konumlarin) ham q degerlerinden guncel konumun
+    /// dokunuslu q'su. Halkanin basindan onceye bakmak sifir dolgudur.
+    fn dokunuslu_q(&self, halka: &[f64], katman: usize) -> Vec<f64> {
+        let d = self.spec.d_model;
+        let n = self.spec.qkv_dokunus;
+        let dokunus = &self.parametreler.q_dokunus[katman * n * d..(katman + 1) * n * d];
+        let mut y = vec![0.0f64; d];
+        for (j, satir) in dokunus.chunks_exact(d).enumerate() {
+            let konum = halka.len() as isize - (j as isize + 1) * d as isize;
+            if konum < 0 {
+                continue;
+            }
+            let konum = konum as usize;
+            for c in 0..d {
+                y[c] += satir[c] * halka[konum + c];
+            }
+        }
+        y
+    }
+
     /// Attention for the newest position over everything the cache holds.
     ///
     /// Causal by construction: the cache only ever contains positions up to and
@@ -500,17 +612,45 @@ impl Cikarim {
     fn dikkat_konum(&self, q: &[f64], katman: usize, onbellek: &Onbellek, dk: usize) -> Vec<f64> {
         let d = self.spec.d_model;
         let h = self.spec.n_heads;
+        let kvd = self.spec.d_kv();
+        let grup = h / self.spec.n_kv_heads;
         let t = onbellek.uzunluk + 1; // guncel konum dahil
-        let k = &onbellek.k[katman];
-        let v = &onbellek.v[katman];
+                                      // Dokunuslu k/v: qkv_dokunus == 0 iken hamlar oldugu gibi okunur
+                                      // (kopya yok); acikken konvolusyon hamlardan kurulur - egitim
+                                      // cekirdeginin dokunus_ve_ham'i ile ayni j sirasiyla.
+        let n = self.spec.qkv_dokunus;
+        let k: std::borrow::Cow<[f64]> = if n == 0 {
+            std::borrow::Cow::Borrowed(&onbellek.k[katman])
+        } else {
+            let dokunus = &self.parametreler.k_dokunus[katman * n * kvd..(katman + 1) * n * kvd];
+            std::borrow::Cow::Owned(self.dokunuslu_kv(&onbellek.k[katman], dokunus, kvd, t))
+        };
+        let v: std::borrow::Cow<[f64]> = if n == 0 {
+            std::borrow::Cow::Borrowed(&onbellek.v[katman])
+        } else {
+            let dokunus = &self.parametreler.v_dokunus[katman * n * kvd..(katman + 1) * n * kvd];
+            std::borrow::Cow::Owned(self.dokunuslu_kv(&onbellek.v[katman], dokunus, kvd, t))
+        };
+        // QK-norm k icin de: konvolusyon cikisindaki her kafa dilimi
+        // birim RMS'ye cekilir (v normlanmaz).
+        let k: Vec<f64> = if self.spec.qk_norm {
+            let dks = self.spec.d_k();
+            let olcek = &self.parametreler.k_norm_olcek[katman * dks..(katman + 1) * dks];
+            self.qk_normlu_kv(&k, olcek, t)
+        } else {
+            k.into_owned()
+        };
         let olcek = 1.0 / (dk as f64).sqrt();
         let mut cikti = vec![0.0f64; d];
         for head in 0..h {
+            // Sorgu basi kendi grubunun anahtar/deger ciftini okur: tam
+            // dikkatte grup 1'dir ve her bas kendi ciftine bakar.
+            let kvh = head / grup;
             let mut skor = vec![0.0f64; t];
             for (j, skor_j) in skor.iter_mut().enumerate() {
                 let mut toplam = 0.0;
                 for m in 0..dk {
-                    toplam += q[head * dk + m] * k[j * d + head * dk + m];
+                    toplam += q[head * dk + m] * k[j * kvd + kvh * dk + m];
                 }
                 *skor_j = toplam * olcek;
             }
@@ -518,7 +658,7 @@ impl Cikarim {
             for m in 0..dk {
                 let mut toplam = 0.0;
                 for (j, w) in yumusak.iter().enumerate() {
-                    toplam += w * v[j * d + head * dk + m];
+                    toplam += w * v[j * kvd + kvh * dk + m];
                 }
                 cikti[head * dk + m] = toplam;
             }
@@ -593,12 +733,24 @@ impl Cikarim {
         p.ln()
     }
 
-    fn matmul(&self, x: &[f64], w: &[f64], b: &[f64], katman: usize, d: usize) -> Vec<f64> {
-        let ofset = katman * d * d;
-        let mut y = vec![0.0f64; d];
+    /// One position through a per-layer projection: `W` row-major
+    /// `[cikti * girdi]`, per-layer stride `cikti * girdi`. The query and
+    /// output projections call it at `d_model`; key and value at `d_kv`, the
+    /// key/value width the spec states.
+    fn matmul_katman(
+        &self,
+        x: &[f64],
+        w: &[f64],
+        b: &[f64],
+        katman: usize,
+        girdi: usize,
+        cikti: usize,
+    ) -> Vec<f64> {
+        let ofset = katman * girdi * cikti;
+        let mut y = vec![0.0f64; cikti];
         for (o, yo) in y.iter_mut().enumerate() {
-            let mut toplam = b[katman * d + o];
-            let satir = &w[ofset + o * d..ofset + o * d + d];
+            let mut toplam = b[katman * cikti + o];
+            let satir = &w[ofset + o * girdi..ofset + o * girdi + girdi];
             for (m, wm) in satir.iter().enumerate() {
                 toplam += wm * x[m];
             }
@@ -708,6 +860,9 @@ mod tests {
             d_model: 8,
             n_layers: 2,
             n_heads: 2,
+            n_kv_heads: 2,
+            qkv_dokunus: 0,
+            qk_norm: false,
             d_ff: 16,
             max_seq_len: 16,
         }
@@ -773,6 +928,74 @@ mod tests {
         assert!(
             rapor.en_buyuk_fark_egitim < 1e-12,
             "egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
+            rapor.en_buyuk_fark_egitim,
+            rapor.onbellekli,
+            rapor.tam_gecis,
+            rapor.egitim_cekirdegi
+        );
+    }
+
+    /// Ayni ucuncu gorus, KV paylasimli spec'te: cikarim yolu, egitim
+    /// cekirdeginin paylasimli dikkat yoluyla ayni sayiyi vermeli.
+    #[test]
+    fn gqa_specinde_cikarim_egitim_gecisine_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            ..kucuk_spec()
+        };
+        spec.dogrula().expect("gqa spec");
+        let c = cikarim(spec, 11);
+        let rapor = c.onbellek_denetimi(&dizi(12)).expect("measurement");
+        assert!(
+            rapor.en_buyuk_fark_egitim < 1e-12,
+            "paylasimli dikkatte egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
+            rapor.en_buyuk_fark_egitim,
+            rapor.onbellekli,
+            rapor.tam_gecis,
+            rapor.egitim_cekirdegi
+        );
+    }
+
+    /// Ayni ucuncu gorus, dokunuslu ve paylasimli spec'te (3 tap, 2:1 grup):
+    /// cikarim yolu, egitim cekirdeginin dokunuslu yoluyla ayni sayiyi
+    /// vermeli - onbellekteki halka ve anlik konvolusyon, egitimin tek
+    /// gecisindeki konvolusyonla ayni degerleri uretmeli.
+    #[test]
+    fn dokunuslu_spec_cikarim_egitim_gecisine_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            ..kucuk_spec()
+        };
+        spec.dogrula().expect("dokunuslu spec");
+        let c = cikarim(spec, 11);
+        let rapor = c.onbellek_denetimi(&dizi(12)).expect("measurement");
+        assert!(
+            rapor.en_buyuk_fark_egitim < 1e-12,
+            "dokunuslu spec'te egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
+            rapor.en_buyuk_fark_egitim,
+            rapor.onbellekli,
+            rapor.tam_gecis,
+            rapor.egitim_cekirdegi
+        );
+    }
+
+    /// Ucuncu gorus, QK-norm acikken (gruplu KV + dokunuslar + norm): cikarim
+    /// yolu, egitim cekirdegiyle ayni sayiyi vermeli.
+    #[test]
+    fn qk_normlu_spec_cikarim_egitim_gecisine_uyusur() {
+        let spec = Spec {
+            n_kv_heads: 1,
+            qkv_dokunus: 3,
+            qk_norm: true,
+            ..kucuk_spec()
+        };
+        spec.dogrula().expect("qk-normlu spec");
+        let c = cikarim(spec, 11);
+        let rapor = c.onbellek_denetimi(&dizi(12)).expect("measurement");
+        assert!(
+            rapor.en_buyuk_fark_egitim < 1e-12,
+            "qk-normlu spec'te egitim cekirdegi ile fark {:.3e}: onbellekli {:.12} tam {:.12} egitim {:.12}",
             rapor.en_buyuk_fark_egitim,
             rapor.onbellekli,
             rapor.tam_gecis,
