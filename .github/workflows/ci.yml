@@ -55,14 +55,15 @@ jobs:
             python3 gates/check.py "$gate" --self-test
           done
 
-      # Korpus iki kaynaktan kurulur: depo agaci (kendi eser) ve depoda izlenen
-      # kamu mali veri dosyasi. Ikincisi commit'li oldugu icin CI ag erisimi
-      # olmadan ayni korpusu kurar; yalniz agaci kuran eski cagri, ratchet'i ve
-      # dil maliyeti olcumunu yerelde oldugundan kucuk gosteriyordu.
-      - name: The corpus builds from this repository and its tracked data
+      # Mimari karar (2026-09-26): egitim verisi repoda tutulmaz. Korpus
+      # yalniz depo agacindan (kendi eser) kurulur; kamu mali veri dosyasi
+      # depodan kaldirildi. Egitim verisi BUD'dan akisla gelecek ve
+      # validatorlerden gececek (ayrinti chat.md'de). --kamu-mali-yok
+      # bayragi bu kararin acik beyanidir; dosya verilirse insa yine calisir.
+      - name: The corpus builds from this repository tree only
         run: |
           set -euo pipefail
-          python3 training/corpus_insa.py
+          python3 training/corpus_insa.py --kamu-mali-yok
 
       - name: Repository gates
         run: python3 gates/check.py --all

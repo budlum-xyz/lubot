@@ -2863,7 +2863,11 @@ def gate_crates_doc_is_measured() -> str:
     """`docs/CRATES.md` names every crate and its figures match the source."""
     doc = read("docs/CRATES.md")
     measured = _crate_measurements()
-    missing = sorted(set(measured) - set(re.findall(r"`([a-z0-9_]+)`", doc)))
+    # Crate names carry hyphens (`bpe-gelismis`, `uc-asama`); the token pattern
+    # has to accept them or those crates read as undocumented no matter what
+    # the table says (measured on CI: both flagged missing while their rows
+    # were present and their figures matched).
+    missing = sorted(set(measured) - set(re.findall(r"`([a-z0-9_-]+)`", doc)))
     if missing:
         raise SystemExit(
             "these crates are not documented in docs/CRATES.md:\n  " + "\n  ".join(missing)
@@ -2896,10 +2900,13 @@ def selftest_crates_doc_is_measured() -> None:
     assert row is not None, "the row pattern does not match its own fixture"
     assert (int(row.group(1)), int(row.group(2))) == (848, 28)
     # The gate has to be able to see a crate that is not mentioned.
-    documented = set(re.findall(r"`([a-z0-9_]+)`", doc))
+    documented = set(re.findall(r"`([a-z0-9_-]+)`", doc))
     assert set(["read", "muhur", "ghost"]) - documented == {"ghost"}
+    # Hyphenated crate names are real names; the pattern must capture them.
+    hyphenated = set(re.findall(r"`([a-z0-9_-]+)`", "| `bpe-gelismis` | 360 | 17 |"))
+    assert hyphenated == {"bpe-gelismis"}
     # A crate mentioned in prose but absent from the tables must be caught.
-    prose_only = set(re.findall(r"`([a-z0-9_]+)`", "and `cli` has 6818 lines"))
+    prose_only = set(re.findall(r"`([a-z0-9_-]+)`", "and `cli` has 6818 lines"))
     assert prose_only == {"cli"}
     assert re.search(r"\|\s*`cli`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc) is None
 
