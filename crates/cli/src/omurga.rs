@@ -22,16 +22,22 @@
 //!   sits from each parent. This is the operation branch-and-merge needs, so it
 //!   is measured rather than assumed to work.
 
+use lubot_nicem::grup::Genislik;
 use lubot_omurga::dikkat::{yumusak_azami, DikkatHatasi, Gqa};
 use lubot_omurga::dizi::{DiziHatasi, Erim, Paket, Yerlesim};
 use lubot_omurga::hadamard::{
     blok_bol, karisim, kron_uygula, silu, walsh, Hadamard, HadamardHatasi, HadamardSekli,
     CIKIS_DIAGONAL_INIT, KARISIM_TOHUMLARI, KARISIM_UST_YARI_OFSETI, KOSUL_INIT_STD, KOSUL_RANK,
 };
+use lubot_omurga::hiz::{
+    dikkat_carpim, dikkatin_bastigi_uzunluk, gorulen_anahtar, gorulen_anahtar_sayarak,
+    ileri_besleme_carpim, izdusum_carpim, yigin_maliyeti, Carpim, Maliyet,
+};
 use lubot_omurga::katman::{carp, gelu, kapili_ileri, KatmanHatasi, Norm};
 use lubot_omurga::konum::{Eslesme, KonumHatasi, Rope};
 use lubot_omurga::merdiven::{Merdiven, MerdivenHatasi};
 use lubot_omurga::pencere::{Kapsam, PencereHatasi, Plan};
+use lubot_omurga::servis::{nicemle, ServisHatasi, ServisRaporu, TensorRaporu};
 use lubot_omurga::sonda::{
     birim_rms, maskeli_yumusak_azami, Bas, Sonda, SondaHatasi, SondaSekli, GOMME_SICAKLIK_INIT,
     GOMME_YANLILIK_INIT, RMS_EPS, ROTA_KALIBRASYONU, SONDA_INIT_STD,
@@ -90,6 +96,8 @@ fn kullanim() -> String {
         "  lubot omurga sonda [--seviye L] [--sonda K] [--sorgu Q] [--genislik D] [--jeton N]",
         "  lubot omurga merdiven [--katman N] [--seviye L] [--butce O] [--jeton N]",
         "  lubot omurga paket [--pencere P] [--kayit a,b,c] [--yaricap R]",
+        "  lubot omurga servis [--bit B | --ucdeger] [--grup G] [--genislik D] [--katman N]",
+        "  lubot omurga hiz [--katman N] [--periyot P] [--yaricap R] [--jeton N]",
         "  lubot omurga parca",
         "",
         "shared shape flags: --genislik --katman --kafa --kv-kafa --dff --sozluk",
@@ -714,6 +722,138 @@ fn paket(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The serving path: the backbone quantised by the crate that owns it.
+fn servis(args: &[String]) -> Result<(), String> {
+    let yap = yapilandirma(args)?;
+    let grup = sayi(args, "--grup", 64)?;
+    let bit = sayi(args, "--bit", 2)?;
+    let omurga = Omurga::yeni(yap, sayi(args, "--tohum", 1)? as u64)
+        .map_err(|e: OmurgaHatasi| format!("omurga: {e}"))?;
+    let genislik = if bayrak(args, "--ucdeger") {
+        Genislik::Ucdeger
+    } else {
+        Genislik::Bit(u8::try_from(bit).map_err(|_| "--bit 1..8 arasinda olmali".to_string())?)
+    };
+    let rapor: ServisRaporu =
+        nicemle(&omurga, genislik, grup).map_err(|e: ServisHatasi| format!("servis: {e}"))?;
+    println!(
+        "alfabe: {} | grup: {grup} | tensor: {} | agirlik: {}",
+        genislik.ad(),
+        rapor.tensorler.len(),
+        rapor.agirlik
+    );
+    println!(
+        "paket: {} bayt | kucultme {:.2}x | agirlik basina {:.3} bit",
+        rapor.bayt, rapor.oran, rapor.agirlik_basina_bit
+    );
+    if let (Some(iyi), Some(kotu)) = (rapor.en_iyi(), rapor.en_kotu()) {
+        println!(
+            "en iyi tensor:  {} bagil hata {:.6} | snr {:.2} db",
+            iyi.ad, iyi.olcum.bagil_hata, iyi.olcum.snr_db
+        );
+        println!(
+            "en kotu tensor: {} bagil hata {:.6} | snr {:.2} db | en buyuk sapma {:.6}",
+            kotu.ad, kotu.olcum.bagil_hata, kotu.olcum.snr_db, kotu.olcum.en_buyuk_sapma
+        );
+    }
+    println!(
+        "tensorler arasi yayilim (en kotu / en iyi): {:.2}",
+        rapor.yayilim()
+    );
+    let tensor_raporu: Option<&TensorRaporu> = rapor.tensorler.first();
+    if let Some(ilk) = tensor_raporu {
+        println!(
+            "ornek: {} ({} agirlik) -> {:.3} bit, {} bayt",
+            ilk.ad, ilk.uzunluk, ilk.olcum.agirlik_basina_bit, ilk.olcum.bayt
+        );
+    }
+    println!("olculmedi: paketli agirliklarla ileri gecis yok; kaliteye etkisi olculmedi");
+    Ok(())
+}
+
+/// Counted multiply-accumulates: no clock is read here.
+fn hiz(args: &[String]) -> Result<(), String> {
+    let yap = yapilandirma(args)?;
+    let jeton = sayi(args, "--jeton", 512)?;
+    let d_head = yap
+        .d_head()
+        .map_err(|e: OmurgaHatasi| format!("kafa boyutu: {e}"))?;
+    let plan = Plan::periyodik(yap.n_katman, yap.genel_periyot, yap.yerel_yaricap)
+        .map_err(|e: PencereHatasi| format!("plan: {e}"))?;
+
+    let m: Maliyet = yigin_maliyeti(
+        &plan,
+        jeton,
+        yap.d_model,
+        d_head,
+        yap.n_sorgu_kafa,
+        yap.n_kv_kafa,
+        yap.d_ff,
+    )
+    .map_err(|e: PencereHatasi| format!("maliyet: {e}"))?;
+    let toplam: Carpim = m.toplam();
+    println!(
+        "jeton: {jeton} | katman: {} | periyot: {} | yaricap: {}",
+        yap.n_katman, yap.genel_periyot, yap.yerel_yaricap
+    );
+    println!(
+        "carpim: izdusum {} | dikkat {} | ileri besleme {} | toplam {toplam}",
+        m.izdusum, m.dikkat, m.ileri_besleme
+    );
+    println!("dikkat payi: {:.4}", m.dikkat_payi());
+
+    let genel = dikkat_carpim(Kapsam::Genel, jeton, d_head, yap.n_sorgu_kafa);
+    let yerel = dikkat_carpim(
+        Kapsam::Yerel {
+            yaricap: yap.yerel_yaricap,
+        },
+        jeton,
+        d_head,
+        yap.n_sorgu_kafa,
+    );
+    println!(
+        "tek katman dikkati: genel {genel} | yerel {yerel} | yerel/genel {:.4}",
+        (yerel as f64) / (genel as f64)
+    );
+    println!(
+        "tek katman izdusumu: {} | ileri beslemesi: {}",
+        izdusum_carpim(jeton, yap.d_model, d_head, yap.n_sorgu_kafa, yap.n_kv_kafa),
+        ileri_besleme_carpim(jeton, yap.d_model, yap.d_ff)
+    );
+    let orta = jeton / 2;
+    println!(
+        "orta konumun gordugu anahtar: kapali form {} | sayarak {}",
+        gorulen_anahtar(
+            Kapsam::Yerel {
+                yaricap: yap.yerel_yaricap
+            },
+            orta,
+            jeton
+        ),
+        gorulen_anahtar_sayarak(
+            Kapsam::Yerel {
+                yaricap: yap.yerel_yaricap
+            },
+            orta,
+            jeton
+        )
+    );
+    match dikkatin_bastigi_uzunluk(
+        &plan,
+        yap.d_model,
+        d_head,
+        yap.n_sorgu_kafa,
+        yap.n_kv_kafa,
+        yap.d_ff,
+        1_000_000,
+    ) {
+        Some(n) => println!("dikkat {n} jetondan sonra baskin"),
+        None => println!("dikkat bir milyon jetona kadar baskin degil"),
+    }
+    println!("olculmedi: sure. Burada saat okunmuyor; sayilan sey carpim.");
+    Ok(())
+}
+
 pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("plan") => plan(&args[1..]),
@@ -725,6 +865,8 @@ pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
         Some("sonda") => sonda(&args[1..]),
         Some("merdiven") => merdiven(&args[1..]),
         Some("paket") => paket(&args[1..]),
+        Some("servis") => servis(&args[1..]),
+        Some("hiz") => hiz(&args[1..]),
         Some("parca") => parca(&args[1..]),
         _ => Err(kullanim()),
     }
@@ -803,6 +945,48 @@ mod tests {
     #[test]
     fn paket_sigmayan_kayit_reddedilir() {
         assert!(paket(&arg(&["--pencere", "4", "--kayit", "3,4"])).is_err());
+    }
+
+    #[test]
+    fn servis_calisir() {
+        assert!(servis(&arg(&["--genislik", "64", "--katman", "2", "--grup", "32"])).is_ok());
+    }
+
+    #[test]
+    fn servis_ucdeger_calisir() {
+        assert!(servis(&arg(&[
+            "--genislik",
+            "64",
+            "--katman",
+            "2",
+            "--grup",
+            "32",
+            "--ucdeger"
+        ]))
+        .is_ok());
+    }
+
+    #[test]
+    fn servis_buyuk_grup_reddedilir() {
+        assert!(servis(&arg(&[
+            "--genislik",
+            "64",
+            "--katman",
+            "2",
+            "--grup",
+            "100000"
+        ]))
+        .is_err());
+    }
+
+    #[test]
+    fn hiz_calisir() {
+        assert!(hiz(&arg(&["--katman", "6", "--jeton", "128"])).is_ok());
+    }
+
+    #[test]
+    fn hiz_bozuk_plan_reddedilir() {
+        assert!(hiz(&arg(&["--katman", "6", "--periyot", "1"])).is_err());
     }
 
     #[test]

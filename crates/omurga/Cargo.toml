@@ -11,3 +11,4 @@ description = "The encoder backbone written here: rotary positions with the pair
 workspace = true
 
 [dependencies]
+lubot-nicem = { path = "../nicem", version = "0.1.0" }

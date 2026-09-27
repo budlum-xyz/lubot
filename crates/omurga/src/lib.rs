@@ -57,10 +57,12 @@
 pub mod dikkat;
 pub mod dizi;
 pub mod hadamard;
+pub mod hiz;
 pub mod katman;
 pub mod konum;
 pub mod merdiven;
 pub mod pencere;
+pub mod servis;
 pub mod sonda;
 
 use dikkat::{DikkatHatasi, Gqa};

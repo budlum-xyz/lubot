@@ -632,6 +632,9 @@ version = "0.1.0"
 [[package]]
 name = "lubot-omurga"
 version = "0.1.0"
+dependencies = [
+ "lubot-nicem",
+]
 
 [[package]]
 name = "lubot-otonom"
