@@ -55,9 +55,11 @@
 //! band) has not been re-measured here.
 
 pub mod dikkat;
+pub mod dizi;
 pub mod hadamard;
 pub mod katman;
 pub mod konum;
+pub mod merdiven;
 pub mod pencere;
 pub mod sonda;
 
@@ -69,6 +71,15 @@ use pencere::{Kapsam, PencereHatasi, Plan};
 /// Why the backbone refused.
 #[derive(Debug, Clone, PartialEq)]
 pub enum OmurgaHatasi {
+    /// A ladder with no exits reads nothing.
+    KademeBos,
+    /// Exits must rise: a repeated or descending exit reads one layer twice
+    /// and calls the copies two levels.
+    KademeSirasi { onceki: usize, gelen: usize },
+    /// An exit past the last layer, or at layer zero (the embedding is not a
+    /// level: nothing has read the sequence yet).
+    KademeAralikDisi { kademe: usize, n_katman: usize },
+
     /// A rotary position refused.
     Konum(KonumHatasi),
     /// The attention schedule refused.
@@ -99,6 +110,13 @@ impl std::fmt::Display for OmurgaHatasi {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Konum(e) => write!(f, "rotary positions: {e}"),
+            Self::KademeBos => write!(f, "the ladder has no rungs"),
+            Self::KademeSirasi { onceki, gelen } => {
+                write!(f, "exits must rise: {gelen} follows {onceki}")
+            }
+            Self::KademeAralikDisi { kademe, n_katman } => {
+                write!(f, "exit {kademe} is outside 1..={n_katman}")
+            }
             Self::Pencere(e) => write!(f, "attention schedule: {e}"),
             Self::Katman(e) => write!(f, "layer primitive: {e}"),
             Self::DikkatKatmani(e) => write!(f, "attention: {e}"),
@@ -570,6 +588,52 @@ impl Omurga {
     /// [`OmurgaHatasi::BosDizi`], [`OmurgaHatasi::DiziCokUzun`],
     /// [`OmurgaHatasi::JetonAralikDisi`], or whatever a primitive refuses.
     pub fn ileri(&self, jetonlar: &[u32]) -> Result<Vec<f32>, OmurgaHatasi> {
+        self.ileri_kademeli(jetonlar, &[self.yap.n_katman])
+    }
+
+    /// The hidden state at several depths at once, laid out token-major:
+    /// `jeton * kademe * d_model`.
+    ///
+    /// `kademeler` names how many layers each level has seen; they must rise,
+    /// stay inside the stack and start above zero, because the embedding is
+    /// not a level - nothing has read the sequence there yet. Every level
+    /// passes through the same final norm, so two levels are comparable
+    /// numbers rather than one raw and one normalised.
+    ///
+    /// One implementation, not two: [`Omurga::ileri`] is this function asked
+    /// for the last layer only, because a second copy of a forward pass is a
+    /// second place for it to be wrong.
+    ///
+    /// # Errors
+    ///
+    /// [`OmurgaHatasi::BosDizi`], [`OmurgaHatasi::DiziCokUzun`],
+    /// [`OmurgaHatasi::JetonAralikDisi`], [`OmurgaHatasi::KademeBos`],
+    /// [`OmurgaHatasi::KademeSirasi`], [`OmurgaHatasi::KademeAralikDisi`], or
+    /// whatever a primitive refuses.
+    pub fn ileri_kademeli(
+        &self,
+        jetonlar: &[u32],
+        kademeler: &[usize],
+    ) -> Result<Vec<f32>, OmurgaHatasi> {
+        if kademeler.is_empty() {
+            return Err(OmurgaHatasi::KademeBos);
+        }
+        let mut onceki = 0usize;
+        for kademe in kademeler {
+            if *kademe <= onceki {
+                return Err(OmurgaHatasi::KademeSirasi {
+                    onceki,
+                    gelen: *kademe,
+                });
+            }
+            if *kademe > self.yap.n_katman {
+                return Err(OmurgaHatasi::KademeAralikDisi {
+                    kademe: *kademe,
+                    n_katman: self.yap.n_katman,
+                });
+            }
+            onceki = *kademe;
+        }
         if jetonlar.is_empty() {
             return Err(OmurgaHatasi::BosDizi);
         }
@@ -596,6 +660,7 @@ impl Omurga {
             x.extend_from_slice(&gomme[idx * d_model..(idx + 1) * d_model]);
         }
 
+        let mut seviyeler: Vec<Vec<f32>> = Vec::with_capacity(kademeler.len());
         for katman in 0..self.yap.n_katman {
             let kapsam: Kapsam = self.plan.kapsam(katman)?;
             let gor = move |sorgu: usize, anahtar: usize| kapsam.gorulebilir(sorgu, anahtar);
@@ -647,9 +712,32 @@ impl Omurga {
             for (yuva, deger) in x.iter_mut().zip(mlp.iter()) {
                 *yuva += deger;
             }
+
+            if kademeler.contains(&(katman + 1)) {
+                let normlu = self.norm.uygula(&x, self.tensor("son_norm")?)?;
+                seviyeler.push(normlu);
+            }
         }
 
-        Ok(self.norm.uygula(&x, self.tensor("son_norm")?)?)
+        if seviyeler.len() == 1 {
+            match seviyeler.pop() {
+                Some(tek) => return Ok(tek),
+                None => return Err(OmurgaHatasi::KademeBos),
+            }
+        }
+
+        // Token-major, so a pooling head can walk one token's levels without
+        // striding over the whole sequence.
+        let seviye_sayisi = seviyeler.len();
+        let mut hucreler = vec![0.0f32; jetonlar.len() * seviye_sayisi * d_model];
+        for (l, seviye) in seviyeler.iter().enumerate() {
+            for t in 0..jetonlar.len() {
+                let kaynak = &seviye[t * d_model..(t + 1) * d_model];
+                let hedef_bas = (t * seviye_sayisi + l) * d_model;
+                hucreler[hedef_bas..hedef_bas + d_model].copy_from_slice(kaynak);
+            }
+        }
+        Ok(hucreler)
     }
 
     /// The root-mean-square of a hidden state, per position.
