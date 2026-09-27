@@ -1,5 +1,5 @@
 {
-  "is": "Birlesik port blogu (tasarim 3.8): serit okuma -> sifir merkezli RMS norm -> rotali Hadamard uzmanlari -> engram deger bellegi -> serit yazma; elle yazilmis geri gecis dort noktali sonlu farkla denetlendi",
+  "is": "Birlesik blok (tasarim 3.8): serit okuma -> sifir merkezli RMS norm -> rotali Hadamard uzmanlari -> engram deger bellegi -> serit yazma; elle yazilmis geri gecis dort noktali sonlu farkla denetlendi",
   "kanit": {
     "bilesen": 6.0,
     "denetlenen": 544.0,
@@ -34,7 +34,6 @@
     "ifade": "bilesen=6 VE denetlenen = sekilden turetilen parametre sayisi VE sonlu fark ihlali = 0 VE son kayip < ilk kayip",
     "sonuc": true
   },
-  "port_karti": "workspace:port-kartlari/birlesik-mimari-7-3.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum sentetik durumlar ve sentetik rota puanlari uzerindedir: egitilmis kontrol noktasi, korpus ve sinav seti yoktur. Blok hicbir model ailesine bagli degildir; model_spec.json degismedi. Rota puanlari blogun disindan gelir, dL/dpuanlar yazilmadi."
 }

@@ -1,4 +1,4 @@
-//! Lubot sistem — tum sistemin Rust portu, CrystalCoder seffaflik metodolojisi.
+//! Lubot sistem — tum sistemin Rust uygulamasi, seffaflik metodolojisi.
 //!
 //! K1: sifirdan yazildi, lit-llama yok.
 //! LLM360 seffaflik: checkpoint 143, data bucket per checkpoint, training log, metrics, code, preprocessing tamamen acik.

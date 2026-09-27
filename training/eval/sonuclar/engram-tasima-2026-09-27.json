@@ -11,7 +11,7 @@
     "n": 3.0,
     "olcut_sonucu": true,
     "parametre": 128.0,
-    "sure_saniye": 1.31,
+    "sure_saniye": 0.11,
     "tablo": 16.0,
     "yakalanan": 1150.0
   },
@@ -20,7 +20,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 1.31
+    "sure_saniye": 0.11
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -34,7 +34,6 @@
     "ifade": "n=3 tablo=16 d_kv=4: parametre = 2*tablo*d_kv VE f64 yuvarlak yol bit-ozdes VE f32 yolu yalniz f32 yuvarlamasi kadar sapar VE iki dosya boyu farki tam 4 bayt/parametre VE govdenin HER bayti tek tek cevrildiginde okuyucu reddeder (yakalanan == cevrilen)",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-engram-bellek.md",
   "tarih": "2026-09-27",
   "uyari": "Tablo kontrol noktasi bicimine (surum 1) EKLENMEDI: engram hicbir aileye bagli degil (M1/M2/M3 acik), bagli olmayan bir blogu surum 1 sirasina sokmak mevcut kontrol noktalarini eski bicim yapardi. Ayri dosya + sahip ozeti bu kararin sonucu; aile karari verilince tek dosyaya alinmasi ayri artimdir."
 }

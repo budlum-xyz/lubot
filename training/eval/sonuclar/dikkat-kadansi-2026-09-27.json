@@ -10,7 +10,7 @@
     "rope_norm_sapma": 0.0,
     "rope_sifir_sapma": 0.0,
     "sonlu": 1.0,
-    "sure_saniye": 0.05,
+    "sure_saniye": 9.9,
     "tam_katman": 2.0,
     "uzunluk": 8.0
   },
@@ -19,7 +19,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.05
+    "sure_saniye": 9.9
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -33,7 +33,6 @@
     "ifade": "uzunluk=8, sol pencere=2: tam dikkatte son konum ilk konumu etkiler (> 1e-6) VE kayan dikkatte etkilemez (< 1e-9) VE rope(konum 0) birim (sapma 0) VE rope normu korur (< 1e-5) VE 6 katmanli kadans yapilandirmadan okunur (2 tam, 4 kayan) VE cikti sonlu",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-gruplu-dikkat.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum kucuk, tohumlu agirliklarla yapilir; egitilmis bir omurga yok. 8192 baglam ve kaynaktaki kadans orani bu makinede olculmedi; KatmanTuru mekanizmasi kadansi tasir, oran yapilandirmaya baglidir."
 }

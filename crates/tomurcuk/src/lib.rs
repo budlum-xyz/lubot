@@ -764,7 +764,7 @@ mod tests {
         assert_eq!(Puan::yeni(0.25).unwrap().tumleyen().deger(), 0.75);
     }
 
-    /// Port kaydi olcumu (tipli karar): `training/tipli_karar.py` bu satiri
+    /// Olcum kaydi (tipli karar): `training/tipli_karar.py` bu satiri
     /// kosar ve okur.
     ///
     /// Olculen: cikis yuzeyi uc kapali sekil (secim / puan / evet-hayir),

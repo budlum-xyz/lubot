@@ -1,8 +1,8 @@
-//! Birlesik port blogu: alti tekil aday tek bir blokta.
+//! Birlesik blok: alti tekil aday tek bir blokta.
 //!
 //! # Neden bu modul var
 //!
-//! Port bilesen bilesen bitmisti ve **kompozisyon olarak bitmemisti**.
+//! Bilesen bilesen bitmisti ve **kompozisyon olarak bitmemisti**.
 //! `mlp_hadamard`, `engram`, `cok_serit`, `yonlendirme`, `normalizasyon` ve
 //! `kesit` ayri ayri yazildi, ayri ayri olculdu, ayri ayri kapilandi; ama
 //! `docs/CRATES.md` her birinin yaninda ayni cumleyi tasiyordu: *bagli degil*.

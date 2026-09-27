@@ -10,14 +10,14 @@
     "olcut_sonucu": true,
     "secenek": 6.0,
     "sekil": 3.0,
-    "sure_saniye": 0.04
+    "sure_saniye": 1.31
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.04
+    "sure_saniye": 1.31
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -31,7 +31,6 @@
     "ifade": "cikis yuzeyi tam uc kapali sekil (secim/puan/evet-hayir) VE 6 kapali karar noktasi VE olasilik disi 4 deger 4/4 reddedilir VE esik altinda tek bas yukseltir VE 2/3 oy karar verir, karisik tip yukselir VE kalibre puan sicaklikta monoton VE k=2, n=3",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/laya-karar-basligi.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum yapisal ve davranissaldir: egitilmis bir karar basligi yok, etiketli karar kumesi uzerinde dogruluk olculmedi. Uretim yuzeyinin yoklugu ayrica decision-head-has-no-generation-surface kapisiyla denetlenir."
 }

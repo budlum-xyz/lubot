@@ -646,7 +646,7 @@ mod tests {
         std::fs::remove_dir_all(&dizin).expect("temizlik");
     }
 
-    /// Port kaydi olcumu: `training/engram_tasima.py` bu satiri kosar ve okur.
+    /// Olcum kaydi: `training/engram_tasima.py` bu satiri kosar ve okur.
     #[test]
     fn olcum_raporu_engram_tasima() {
         let t64 = tasiyici(Hassasiyet::F64);

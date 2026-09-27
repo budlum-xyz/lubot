@@ -8,7 +8,7 @@
     "kayip": 4.758671172408139,
     "olcut_sonucu": true,
     "parametre": 0.0,
-    "sure_saniye": 5.72,
+    "sure_saniye": 0.06,
     "taban_fark": 0.0
   },
   "kaynaklar": {
@@ -16,7 +16,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 5.72
+    "sure_saniye": 0.06
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -30,7 +30,6 @@
     "ifade": "derinlik=6, ara kademeler=[2,4], agirliklar [0.25,0.25,0.5]: kademe=3 VE agirlik toplami 1e-12 icinde 1 VE taban farki tam 0 VE gradyan sapmasi < 1e-6 VE parametre=0",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-kademe-egitimi.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum sentetik kademe cikislaridir: uzmanli bir yigina baglanmadi, egitim kosusu yok. Modul adaydir ve bagli degildir; egitim hedefine baglanmasi M4 damgasi bekler (model_spec.json degismedi)."
 }

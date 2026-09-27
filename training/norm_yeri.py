@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Omurga norm yeri port kaydi (on-norm pinli: norm dalin oncesinde, artik disarida; bias yok).
+"""Omurga norm yeri olcum kaydi (on-norm pinli: norm dalin oncesinde, artik disarida; bias yok).
 
 Olcum Rust testinin icindedir (`crates/kodlayici/src/blok.rs`, `blok::tests::olcum_raporu_norm_yeri`). Bu betik o satiri
 **kosar ve okur**; sayilari kendisi uretmez.
@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": "Omurga norm yeri: on-norm duzeni mekanik olarak pinlenir (sifir norm agirligi = bit-ozdes artik gecis), katman_norm tanim degerleri, bias'siz katman duzeni",
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-normalizasyon.md",
         "olcut": {
             "ad": 'pre_norm_duzeni_pinli',
             "sonuc": bool(olcum["olcut_sonucu"]),

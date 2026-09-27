@@ -7,7 +7,7 @@
     "genislik": 4.0,
     "olcut_sonucu": true,
     "ortalama_sapma": 7.450581e-09,
-    "sure_saniye": 0.04,
+    "sure_saniye": 0.05,
     "tensor_sayisi": 6.0,
     "uzunluk": 3.0,
     "varyans_sapma": 1.192093e-07
@@ -17,7 +17,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.04
+    "sure_saniye": 0.05
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -30,7 +30,6 @@
     "ifade": "norm agirligi sifirken artik akis bit-ozdes gecer (norm dalin icinde, artik disinda) VE birim normla dal katkida bulunur (> 1e-3) VE katman_norm ciktisi ortalama 0 (< 1e-6), varyans 1 (< 1e-5) VE katman agirliklari 6 tensor, 0 bias",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-normalizasyon.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum kucuk, tohumlu agirliklarla yapilir. On-norm ile son-norm arasindaki derinlik-kararlilik farki egitimle olculmedi; bu kayit yalniz duzenin yerini kanitlar."
 }

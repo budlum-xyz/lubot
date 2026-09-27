@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kodlayici omurgasi port kaydi (pencere siniri her konum ciftinde, bit-ozdes cikti, red disiplini).
+"""Kodlayici omurgasi olcum kaydi (pencere siniri her konum ciftinde, bit-ozdes cikti, red disiplini).
 
 Olcum Rust testinin icindedir (`crates/kodlayici/src/blok.rs`, `blok::tests::olcum_raporu_kodlayici`). Bu betik o satiri
 **kosar ve okur**; sayilari kendisi uretmez.
@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": 'Kodlayici omurgasi: kayan pencere siniri her konum ciftinde tutar, cikti belirlenimci, bos ve sozluk disi girdi reddedilir, derinlik ve gecit/deger ayrimi ciktiya yansir',
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-gruplu-dikkat.md",
         "olcut": {
             "ad": 'pencere_siniri_her_ciftte_tutar_ve_cikti_belirlenimci',
             "sonuc": bool(olcum["olcut_sonucu"]),

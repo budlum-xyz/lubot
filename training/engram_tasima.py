@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": 'Engram tablosu tasima: tablo kontrol noktasinin yaninda kendi dosyasinda, ayni bicim kurallariyla (sihir, surum, hassasiyet, JSON baslik, adli blok, SHA-256 kuyruk) ve sahip kontrol noktasinin ozetine bagli tasinir',
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-engram-bellek.md",
         "olcut": {
             "ad": 'engram_tablosu_ozetli_ve_sahibine_bagli_tasinir',
             "sonuc": bool(olcum["olcut_sonucu"]),

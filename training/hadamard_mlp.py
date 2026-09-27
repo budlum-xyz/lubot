@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hadamard (Monarch bloklu) MLP adayi port kaydi (tasarim 3.1): parametre muhasebesi, gradyan, inis, carpim.
+"""Hadamard (Monarch bloklu) MLP adayi olcum kaydi (tasarim 3.1): parametre muhasebesi, gradyan, inis, carpim.
 
 Olcum Rust testinin icindedir (`crates/egitim/src/mlp_hadamard.rs`, `mlp_hadamard::tests::olcum_raporu`). Bu betik o satiri
 **kosar ve okur**; sayilari kendisi uretmez.
@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": "Hadamard/Monarch MLP adayi: elle yazilmis geri gecis merkezi sonlu farka karsi, parametre muhasebesi tam sayi, 40 adim inis, carpim yapisi; spec'e baglanmadi",
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-hadamard-mlp.md",
         "olcut": {
             "ad": 'gradyan_sonlu_farkla_ve_sayim_sekle_bagli_ve_inis',
             "sonuc": bool(olcum["olcut_sonucu"]),

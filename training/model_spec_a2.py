@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`lubot-a2-needle` ailesinin şekil ve parametre muhasebesi.
+"""`lubot-a2` ailesinin şekil ve parametre muhasebesi.
 
 Neden ayrı bir dosya? `model_spec.py`'nin `say_params` fonksiyonu **düz
 transformer** sayıyor: `mlp = n_layers * (d_model*d_ff + d_ff + d_ff*d_model +
@@ -185,15 +185,15 @@ def kur() -> dict:
     a1_toplam = int(a1["params"]["toplam"])
     korpus_jeton = int(a1["corpus_reference"]["bpe_tokens"])
     return {
-        "name": "lubot-a2-needle",
+        "name": "lubot-a2",
         "schema": 1,
         "aile": "a2",
         "karar": (
-            "Ikinci mimari ailesi: 7.4'un portlanmis modulleri ilk kez tek bir "
+            "Ikinci mimari ailesi: yeni yazilan moduller ilk kez tek bir "
             "spec'te toplaniyor. a1 duz transformer; a2 FFN yerine Hadamard MLP, "
             "tek artik akis yerine 4 serit, ek olarak engram tablosu ve "
             "parametresiz Sinkhorn rotasi tasiyor. Bu spec bir egitim kosusu "
-            "baslatmiyor - portun 'yazildi'dan 'calisiyor'a gectigi ilk adim, ve "
+            "baslatmiyor - aile 'yazildi'dan 'calisiyor'a gectigi ilk adim, ve "
             "bir kosuya baglanmasi isaretli bir karardir."
         ),
         "vocab_family": "lubot-bpe-v2",

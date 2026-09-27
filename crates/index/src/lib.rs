@@ -452,7 +452,7 @@ mod tests {
         // copy. The masker must never slice the lowercased line.
         let line = "İÇERİK_API_KEY=abc123";
         let masked = mask_secrets(line);
-        assert!(masked.contains("[masked]"), "{masked}");
+        assert!(masked.contains("[masked]"));
         let plain = mask_secrets("İÇERİK=değer\ndeğer");
         assert_eq!(plain, "İÇERİK=değer\ndeğer");
     }

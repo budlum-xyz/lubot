@@ -19,7 +19,7 @@ def yukle(ad):
     return modul
 
 
-class PortKayitlari(unittest.TestCase):
+class OlcumKayitlari(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.moduller = [yukle(ad) for ad in ("kesit", "normalizasyon", "birlesik", "kademe")]

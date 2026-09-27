@@ -36,7 +36,6 @@
     "ifade": "uzunluk=8, sol pencere=2: 64 (sorgu, degisen) ciftinin tamami olculur; pencere disindaki hicbir degisiklik sorguya ulasmaz (ihlal 0) VE pencere icindeki her degisiklik ulasir (ici_degisen == ici_toplam) VE ayni girdi bit-ozdes cikti verir VE bos dizi ve sozluk disi kimlik reddedilir VE 3 katman 2 katmandan farkli ve sonlu VE gecit/deger takasi ciktiyi degistirir",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-gruplu-dikkat.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum kucuk (genislik 4, uzunluk 8), tohumlu agirliklarla ve tek katmanda yapilir; egitilmis bir omurga yok. Cok katmanli kayan dikkatte alici alan katman sayisiyla buyur, bu kayit yalniz tek katmandaki siniri olcer."
 }
