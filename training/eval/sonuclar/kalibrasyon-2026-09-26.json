@@ -14,7 +14,7 @@
     "nll_fit": 0.666879,
     "nll_ham": 0.776325,
     "sicaklik": 3.419455,
-    "sure_saniye": 0.19,
+    "sure_saniye": 0.15,
     "yesil_alt": 0.7
   },
   "kaynaklar": {
@@ -22,7 +22,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.19
+    "sure_saniye": 0.15
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -34,6 +34,6 @@
     "ad": "uydurma_egitim_hatasini_ve_eceyi_dusurdu_bantlar_olcumden_cikti",
     "sonuc": true
   },
-  "tarih": "2026-09-26",
+  "tarih": "2026-09-27",
   "uyari": "Kayit dosyasi bir DUZENEK KANARYASIDIR: egitilmis bir basin skorlari degil, olcum duzenegini sinayan beyanli veridir. Duzeltme bilgi uretemez - kanaryada hedef 0.9'da yesil band cikmaz ve komut bunu reddeder; olculen sey mekanizmanin kendisidir."
 }
