@@ -1,0 +1,41 @@
+{
+  "is": "Hadamard MLP adayi (tasarim 3.1): iki dogrusal projeksiyonun eleman-bazli carpimi, blok-kosegen ust izdusumler; parametre muhasebesi sekilden, gradyanlar merkezi sonlu farktan, inis gercek bir 40 adimlik kosudan",
+  "kanit": {
+    "agirlik_sapma": 1.029e-07,
+    "blok_sayisi": 2.0,
+    "blok_tasarruf": 48.0,
+    "bloksuz_standart_fark": 54.0,
+    "d_model": 8.0,
+    "d_r": 6.0,
+    "denetlenen": 116.0,
+    "girdi_sapma": 3.972e-08,
+    "inis_baslangic": 1.08900082,
+    "inis_son": 0.68437168,
+    "olcut_sonucu": true,
+    "parametre": 116.0,
+    "sure_saniye": 0.06
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.06
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "model kalitesine etkisi: uzmanli egitim kosusu ve sinav seti ister",
+    "lubot-a1 aday seklinde (64/256/4, 25152 parametre) ayni denetim: bu kayit kucuk sekilde kosulur, buyuk sekilde denetim maliyeti olculmedi",
+    "blok sayisi ve ic genislik secimi izgarasi: isaretli mimari karar (M-listesi)",
+    "omurgaya baglandiktan sonraki gecikme/bellek etkisi (modul bagli degil)"
+  ],
+  "olcut": {
+    "ad": "parametre_muhasebesi_sekilden_ve_gradyan_sonlu_farkla",
+    "ifade": "d_model=8, d_r=6, blok=2: parametre = denetlenen VE agirlik_sapma < 1e-5 VE girdi_sapma < 1e-5 VE inis_son < inis_baslangic VE blok_tasarruf > 0 VE bloksuz_standart_fark > 0",
+    "sonuc": true
+  },
+  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-hadamard-mlp.md",
+  "tarih": "2026-09-27",
+  "uyari": "Olcum kucuk ve tohumlu bir sekildedir (d_model=8, d_r=6, blok=2, 116 parametre); lubot-a1 aday sekli (64/256/4) bu kayitta kosulmadi. Inis bellege yazilmis sabit bir hedefe karsi olculur, korpus kosusu degildir. Modul hicbir spec'i ve hicbir egitim cagrisini degistirmez: bagli degil."
+}

@@ -398,4 +398,117 @@ mod tests {
         assert!(paketle_ucdeger(&[]).expect("empty").is_empty());
         assert!(coz_ucdeger(&[], 0).expect("empty").is_empty());
     }
+
+    /// The per-card measurement line for the quantisation port card.
+    ///
+    /// Three things are counted rather than asserted away: the advertised bit
+    /// budget against two independent recomputations of it, the packed byte
+    /// count against the arithmetic for every width and for the ternary
+    /// alphabet, and the reconstruction error of one deterministic tensor
+    /// taken through the whole four-step path. `training/kuantalama.py` runs
+    /// this line and writes it into the record; it does not produce numbers of
+    /// its own, and the pass/fail threshold is written in that script before
+    /// the record exists.
+    ///
+    /// What this line does **not** say: nothing here is a quality result. The
+    /// weights are a fixed synthetic tensor, not a trained one, so the error
+    /// figures describe the arithmetic at a known distribution and nothing
+    /// about answer quality.
+    #[test]
+    fn olcum_raporu_bit_butcesi() {
+        use crate::grup::{Genislik, Nicemleyici};
+
+        let grup = crate::VARSAYILAN_GRUP;
+        let genislik = Genislik::Bit(2);
+
+        // 1) The bit budget, three ways: the packing helper, the alphabet and
+        //    the constant the crate advertises. They have to agree exactly.
+        let beyan = crate::VARSAYILAN_BIT;
+        let paket_bit = agirlik_basina_bit(2, grup);
+        let alfabe_bit = genislik.agirlik_basina_bit(grup);
+        let bit_fark = (paket_bit - beyan).abs().max((alfabe_bit - beyan).abs());
+        let ucdeger_bit = agirlik_basina_bit_ucdeger(grup);
+
+        // 2) Packing tightness and round trip, as counted violations. Every
+        //    width, five lengths each, plus the ternary alphabet.
+        let mut adet_sayisi = 0usize;
+        let mut paket_ihlal = 0usize;
+        let mut yuvarlak_yol_ihlal = 0usize;
+        for bit in 1..=8u8 {
+            let tavan = if bit == 8 { 255u16 } else { 1u16 << bit };
+            #[allow(clippy::cast_possible_truncation)]
+            let tavan = tavan as u8;
+            for adet in [1usize, 7, 64, 128, 1000] {
+                let indeksler = deterministik_indeksler(adet, tavan.max(1));
+                let paket = paketle(&indeksler, bit).expect("in range");
+                adet_sayisi += 1;
+                if paket.len() != bayt_sayisi(adet, bit) {
+                    paket_ihlal += 1;
+                }
+                if coz(&paket, bit, adet).expect("in range") != indeksler {
+                    yuvarlak_yol_ihlal += 1;
+                }
+            }
+        }
+        let mut ucdeger_ihlal = 0usize;
+        for adet in [1usize, 5, 128, 1000] {
+            let trits = deterministik_indeksler(adet, 3);
+            let paket = paketle_ucdeger(&trits).expect("in range");
+            adet_sayisi += 1;
+            if paket.len() != ucdeger_bayt_sayisi(adet) {
+                paket_ihlal += 1;
+            }
+            if coz_ucdeger(&paket, adet).expect("in range") != trits {
+                ucdeger_ihlal += 1;
+            }
+        }
+
+        // 3) End to end: rotate, solve, scale, pack, unpack. The error is
+        //    measured against the input, beside the storage figure.
+        const UZUNLUK: usize = 1024;
+        const EKSEN: usize = 256;
+        let agirlik = deterministik_agirliklar(UZUNLUK);
+        let nicemleyici = Nicemleyici::yeni(genislik, grup).expect("usable group");
+        let nicemlenmis = nicemleyici
+            .nicemle(&agirlik, EKSEN)
+            .expect("axis divides the length");
+        let olcum = nicemlenmis.olc(&agirlik).expect("same shape");
+        let geri = nicemlenmis.coz().expect("payload matches the shape");
+        let sikistirma = olcum.oran;
+        let mut cozulen_ihlal = 0usize;
+        for (a, b) in agirlik.iter().zip(geri.iter()) {
+            if !a.is_finite() || !b.is_finite() {
+                cozulen_ihlal += 1;
+            }
+        }
+
+        println!(
+            "kuantalama | grup={grup} seviye={} uzunluk={UZUNLUK} eksen={EKSEN} bit_beyan={beyan} bit_paket={paket_bit:.6} bit_alfabe={alfabe_bit:.6} bit_fark={bit_fark:.3e} ucdeger_bit={ucdeger_bit:.6} adet_sayisi={adet_sayisi} paket_ihlal={paket_ihlal} yuvarlak_yol_ihlal={yuvarlak_yol_ihlal} ucdeger_ihlal={ucdeger_ihlal} cozulen_ihlal={cozulen_ihlal} bagil_hata={:.6e} snr_db={:.6} kitap_snr_db={:.6} en_buyuk_sapma={:.6e} sikistirma={sikistirma:.9}",
+            genislik.seviye_sayisi(),
+            olcum.bagil_hata,
+            olcum.snr_db,
+            olcum.kitap_snr_db,
+            olcum.en_buyuk_sapma,
+        );
+    }
+
+    /// A fixed synthetic weight tensor: a bounded mixing recurrence with four
+    /// deliberate outliers, so one group carries a heavy tail and the rotation
+    /// has something to do. Not a trained tensor, and not claimed to be one.
+    fn deterministik_agirliklar(n: usize) -> Vec<f32> {
+        let mut durum = 0x5EED_2026u32;
+        let mut v: Vec<f32> = (0..n)
+            .map(|_| {
+                durum = durum.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let b = ((durum >> 8) as f64 / (1u64 << 24) as f64) - 0.5;
+                #[allow(clippy::cast_possible_truncation)]
+                let b = b as f32;
+                b * 0.2
+            })
+            .collect();
+        for (i, carp) in [(3usize, 9.0f32), (130, -7.5), (512, 12.0), (900, -6.25)] {
+            v[i] *= carp;
+        }
+        v
+    }
 }

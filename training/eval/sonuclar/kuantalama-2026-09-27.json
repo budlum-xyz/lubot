@@ -1,0 +1,49 @@
+{
+  "is": "Alt-bayt kuantalama (tasarim 3.6): beyan edilen agirlik-basina-bit butcesi iki yoldan yeniden hesaplandi, paket sikiligi ve yuvarlak yol her genislikte sayildi, sabit bir tensör dort adimlik yoldan gecirilip geri kurma hatasi olculdu",
+  "kanit": {
+    "adet_sayisi": 44.0,
+    "bagil_hata": 0.3228972,
+    "bit_alfabe": 2.125,
+    "bit_beyan": 2.125,
+    "bit_fark": 0.0,
+    "bit_paket": 2.125,
+    "cozulen_ihlal": 0.0,
+    "eksen": 256.0,
+    "en_buyuk_sapma": 0.0834146,
+    "grup": 128.0,
+    "kitap_snr_db": 9.300292,
+    "olcut_sonucu": true,
+    "paket_ihlal": 0.0,
+    "seviye": 4.0,
+    "sikistirma": 15.058823529,
+    "snr_db": 9.818714,
+    "sure_saniye": 0.07,
+    "ucdeger_bit": 1.725,
+    "ucdeger_ihlal": 0.0,
+    "uzunluk": 1024.0,
+    "yuvarlak_yol_ihlal": 0.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.07
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "kuantalamanin cevap kalitesine etkisi: sinav seti ve egitilmis kontrol noktasi ister",
+    "egitilmis agirlik dagiliminda hata: bu kayit sentetik dagilimda kosuldu",
+    "grup boyutu izgarasi (16/32/64/256) ve ucdeger alfabesinin uctan uca hatasi: ucdeger yalniz paket sikiligi ve yuvarlak yol uzerinden olculdu",
+    "servis gecikmesi ve bellege yerlesim: tasiyici/cihaz crate'lerinin isi, burada olculmedi"
+  ],
+  "olcut": {
+    "ad": "bit_butcesi_tam_sayi_aritmetigi",
+    "ifade": "grup=128, iki bit: bit_fark = 0 VE paket_ihlal = 0 VE yuvarlak_yol_ihlal = 0 VE ucdeger_ihlal = 0 VE cozulen_ihlal = 0 VE adet_sayisi = 44 VE 14 < sikistirma <= 32/2.125 VE snr_db > kitap_snr_db",
+    "sonuc": true
+  },
+  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-kuantalama.md",
+  "tarih": "2026-09-27",
+  "uyari": "Agirliklar egitilmis bir tensör degil: 1024 elemanlik sabit sentetik dagilim, dort bilinen aykiri degerle (bir grup agir kuyruk tasisin diye). Hata sayilari bu dagilimda gecerlidir, cevap kalitesi hakkinda hicbir sey soylemez. Crate hicbir dis bagimlilik almaz; dort adimin tamami bu agacta yazilidir."
+}

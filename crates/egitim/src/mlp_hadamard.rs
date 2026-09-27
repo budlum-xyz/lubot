@@ -815,6 +815,120 @@ mod tests {
         Ok(())
     }
 
+    /// Karta-ozel olcum satiri: yukaridaki denetimlerin (parametre muhasebesi,
+    /// sonlu fark, girdi gradyani, inis) sayilarini tek satirda toplar.
+    ///
+    /// Bu test yeni bir hesap tanimlamaz; `training/hadamard_mlp.py` bu satiri
+    /// **kosar ve okur**, sayilari kendisi uretmez. Hedef olcut betigin
+    /// docstring'inde kayittan once yazilidir; burada yalniz olculen sayilar
+    /// basilir. Yapısal bag olan tek iddia denetim sayisidir: denetlenen
+    /// gradyan sayisi seklin parametre sayisina esit degilse test duser, yani
+    /// sonradan eklenen bir tensör denetimsiz kalamaz.
+    #[test]
+    fn olcum_raporu_hadamard() {
+        let spec = kucuk();
+        let t = 3;
+        let x = girdiler(t, spec.d_model, 31);
+        let hedef = girdiler(t, spec.d_model, 37);
+        let a = belirgin_doldur(spec, 7);
+        let h = 1e-5f64;
+
+        // 1) Agirlik gradyanlari: en kotu bagil sapma ve denetlenen sayisi.
+        let (cikti, bellek) = ileri(spec, &a, &x, t);
+        let g = geri(spec, &a, &bellek, &kayip_gradyan(&cikti, &hedef));
+        let mut denetlenen = 0usize;
+        let mut agirlik_sapma = 0.0f64;
+        for (_ad, secim) in ALANLAR {
+            let analitik = match secim {
+                Alan::W1 => g.w1.clone(),
+                Alan::W2 => g.w2.clone(),
+                Alan::W3 => g.w3.clone(),
+                Alan::B1 => g.b1.clone(),
+                Alan::B2 => g.b2.clone(),
+                Alan::B3 => g.b3.clone(),
+            };
+            let mut deneme = a.clone();
+            for (i, analitik_deger) in analitik.iter().enumerate() {
+                let asil = alan(&a, secim)[i];
+                alan_mut(&mut deneme, secim)[i] = asil + h;
+                let (c_art, _) = ileri(spec, &deneme, &x, t);
+                alan_mut(&mut deneme, secim)[i] = asil - h;
+                let (c_eks, _) = ileri(spec, &deneme, &x, t);
+                alan_mut(&mut deneme, secim)[i] = asil;
+                let sayisal = (kayip(&c_art, &hedef) - kayip(&c_eks, &hedef)) / (2.0 * h);
+                let olcek = analitik_deger.abs().max(sayisal.abs());
+                let bagil = if olcek > 0.0 {
+                    (analitik_deger - sayisal).abs() / olcek
+                } else {
+                    (analitik_deger - sayisal).abs()
+                };
+                denetlenen += 1;
+                agirlik_sapma = agirlik_sapma.max(bagil);
+            }
+        }
+        assert_eq!(
+            denetlenen,
+            spec.parametre_sayisi(),
+            "denetlenen gradyan sayisi seklin parametre sayisindan ayrildi"
+        );
+
+        // 2) Girdi gradyani: ayri bir yol, ayni olcu.
+        let mut girdi_sapma = 0.0f64;
+        for i in 0..x.len() {
+            let mut x_art = x.clone();
+            x_art[i] += h;
+            let (c_art, _) = ileri(spec, &a, &x_art, t);
+            let mut x_eks = x.clone();
+            x_eks[i] -= h;
+            let (c_eks, _) = ileri(spec, &a, &x_eks, t);
+            let sayisal = (kayip(&c_art, &hedef) - kayip(&c_eks, &hedef)) / (2.0 * h);
+            let analitik = g.girdi[i];
+            let olcek = analitik.abs().max(sayisal.abs());
+            let bagil = if olcek > 0.0 {
+                (analitik - sayisal).abs() / olcek
+            } else {
+                (analitik - sayisal).abs()
+            };
+            girdi_sapma = girdi_sapma.max(bagil);
+        }
+
+        // 3) Inis: `inis_olculur` ile ayni sekil, ayni tohumlar, ayni adim
+        //    sayisi — iki kayit birbirine kiyaslanabilir kalsin diye.
+        let mut kosu = belirgin_doldur(spec, 23);
+        let kx = girdiler(t, spec.d_model, 53);
+        let khedef = girdiler(t, spec.d_model, 59);
+        let (ilk, _) = ileri(spec, &kosu, &kx, t);
+        let inis_baslangic = kayip(&ilk, &khedef);
+        let mut inis_son = inis_baslangic;
+        for _ in 0..40 {
+            let (c, b) = ileri(spec, &kosu, &kx, t);
+            let gr = geri(spec, &kosu, &b, &kayip_gradyan(&c, &khedef));
+            sgd_adimi(&mut kosu, &gr, 0.05);
+            let (yeni, _) = ileri(spec, &kosu, &kx, t);
+            inis_son = kayip(&yeni, &khedef);
+        }
+
+        // 4) Parametre muhasebesi: tam sayi aritmetigi, iddia yok. Bloksuz
+        //    Hadamard ayni ic genislikte standart MLP'den pahali oldugu icin
+        //    fark isaretli yazilir.
+        let tasarruf = spec.bloksuz_parametre_sayisi() - spec.parametre_sayisi();
+        let standart = HadamardSpec::standart_mlp_parametre_sayisi(spec.d_model, spec.d_r);
+        let bloksuz_standart_fark = spec.bloksuz_parametre_sayisi() as i64 - standart as i64;
+
+        println!(
+            "hadamard-mlp | d_model={} d_r={} blok_sayisi={} parametre={} denetlenen={} agirlik_sapma={:.3e} girdi_sapma={:.3e} inis_baslangic={:.8} inis_son={:.8} blok_tasarruf={tasarruf} bloksuz_standart_fark={bloksuz_standart_fark}",
+            spec.d_model,
+            spec.d_r,
+            spec.blok,
+            spec.parametre_sayisi(),
+            denetlenen,
+            agirlik_sapma,
+            girdi_sapma,
+            inis_baslangic,
+            inis_son,
+        );
+    }
+
     #[test]
     fn blok_sayisi_ic_temsili_degistirir() {
         // Ayni tohum, ayni girdi, farkli blok sayisi: cikti ayni olamaz, yoksa

@@ -8358,6 +8358,10 @@ PORT_KAYITLARI = (
      "fn olcum_raporu_norm_yeri", "training/eval/sonuclar/norm-yeri-2026-09-27.json"),
     ("training/tipli_karar.py", "crates/tomurcuk/src/lib.rs",
      "fn olcum_raporu_tipli_karar", "training/eval/sonuclar/tipli-karar-2026-09-27.json"),
+    ("training/hadamard_mlp.py", "crates/egitim/src/mlp_hadamard.rs",
+     "fn olcum_raporu_hadamard", "training/eval/sonuclar/hadamard-mlp-2026-09-27.json"),
+    ("training/kuantalama.py", "crates/nicem/src/paket.rs",
+     "fn olcum_raporu_bit_butcesi", "training/eval/sonuclar/kuantalama-2026-09-27.json"),
 )
 PORT_UCUNCU_TARAF = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
                      "torch", "huggingface", "transformers", "candle")
@@ -8410,10 +8414,13 @@ def _port_kaynak_denetle(kaynak: Path, test_adi: str) -> list:
 
 
 def gate_omurga_karar_port_kayitlari() -> str:
-    """Omurga (dikkat kadansi, norm yeri) ve tipli karar port kartlarinin
-    karta-ozel kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
-    kendi betiginin `--dogrula` adimindan gecer, olcum testi kaynakta var,
-    K1 siniri (ust kaynak adi test disinda gecmez) tutuyor."""
+    """Port kartlarinin karta-ozel kayitlari duruyor ve bu makinede yeniden
+    olculuyor: her kayit kendi betiginin `--dogrula` adimindan gecer, olcum testi
+    kaynakta var, K1 siniri (ust kaynak adi test disinda gecmez) tutuyor.
+
+    Kapsam PORT_KAYITLARI tablosudur: omurga (dikkat kadansi, norm yeri), tipli
+    karar, Hadamard MLP adayi ve alt-bayt kuantalama. Ad eski; tabloya eklenen her
+    kart ayni sozlesmeye baglanir, ayri bir kapi acilmaz."""
     ihlaller: list[str] = []
     for betik, kaynak, test_adi, kayit in PORT_KAYITLARI:
         ihlaller += _port_kaynak_denetle(ROOT / kaynak, test_adi)
@@ -8429,7 +8436,7 @@ def gate_omurga_karar_port_kayitlari() -> str:
         if kosu.returncode != 0:
             raise SystemExit(f"{betik} kaydi dogrulanmadi:\n" + (kosu.stdout + kosu.stderr)[-800:])
         ozet.append(Path(betik).stem)
-    return "uc port kaydi taze ve yeniden olculdu: " + ", ".join(ozet)
+    return f"{len(ozet)} port kaydi taze ve yeniden olculdu: " + ", ".join(ozet)
 
 
 def selftest_omurga_karar_port_kayitlari() -> None:
