@@ -51,7 +51,7 @@ from pathlib import Path
 
 SKIP_DIRS = {".git", "target", "node_modules", "corpus", ".github"}
 
-ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0"}
+ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0", "kamu-mali"}
 
 
 def digest(text: str) -> str:
@@ -121,6 +121,15 @@ def rust_records(path: Path, rel: str):
                     "path": rel,
                     "lines": [doc_start, i - 1],
                 }
+                # JJ: belge ile imza ayri kayitlar degil, bir cift olarak da girer:
+                # "ne cagrilir" ile "neden var" arasindaki bag burada kurulur.
+                if signature:
+                    yield {
+                        "kind": "api-doc-pair",
+                        "text": f"{rel}: `{stripped.rstrip(' {')}` - {text}",
+                        "path": rel,
+                        "lines": [doc_start, i],
+                    }
             doc_block = []
 
         if signature:
@@ -135,6 +144,20 @@ def rust_records(path: Path, rel: str):
             yield {
                 "kind": "behaviour",
                 "text": f"Proven in {rel}: {sentence}.",
+                "path": rel,
+                "lines": [i, i],
+            }
+
+        impl_match = re.match(
+            r"impl(?:<[^>]*>)?\s+([A-Za-z0-9_:]+)(?:<[^>]*>)?\s+for\s+([A-Za-z0-9_:]+)",
+            stripped,
+        )
+        if impl_match:
+            # JJ: "kim neyi uyguluyor" iliskisi; trait tanimi ile impl blogu
+            # arasindaki bagi ayri bir kayit turu yapar.
+            yield {
+                "kind": "trait-impl",
+                "text": f"{rel}: `{impl_match.group(2)}` implements `{impl_match.group(1)}`.",
                 "path": rel,
                 "lines": [i, i],
             }
@@ -161,6 +184,16 @@ def markdown_records(path: Path, rel: str):
             yield {"kind": "markdown", "text": text, "path": rel, "lines": [start, len(lines)]}
 
 
+def _fonksiyon_govdesi(text: str, ad: str) -> str:
+    """Bir fonksiyonun govdesi; sonraki ust duzey def'e kadar."""
+    bas = text.find(f"def {ad}(")
+    if bas < 0:
+        return ""
+    kalan = text[bas:]
+    son = kalan.find("\ndef ", 10)
+    return kalan if son < 0 else kalan[:son]
+
+
 def gate_records(root: Path):
     gate_file = root / "gates" / "check.py"
     if not gate_file.is_file():
@@ -175,6 +208,120 @@ def gate_records(root: Path):
             "path": "gates/check.py",
             "lines": [text[: match.start()].count("\n") + 1, text[: match.end()].count("\n") + 1],
         }
+    # KK: iddia ile onu curuten kanarya eslesir; hakem mekanik olmali.
+    for kayit in re.finditer(
+        r'"(?P<ad>[a-z0-9-]+)":\s*\(\s*gate_[a-z0-9_]+,\s*(?P<kanarya>selftest_[a-z0-9_]+)\s*,?\s*\)',
+        text,
+        re.S,
+    ):
+        ad = kayit.group("ad")
+        kanarya = kayit.group("kanarya")
+        govde = _fonksiyon_govdesi(text, kanarya)
+        reddeden = [
+            satir.strip()
+            for satir in govde.splitlines()
+            if "assert " in satir or "SystemExit" in satir or "AssertionError" in satir
+        ]
+        ozet = reddeden[0] if reddeden else "kanaryada red yok"
+        satir_no = text[: kayit.start()].count("\n") + 1
+        yield {
+            "kind": "gate-pair",
+            "text": f"`{ad}` gate: checked by `{kanarya}` - {ozet}",
+            "path": "gates/check.py",
+            "lines": [satir_no, satir_no],
+        }
+
+
+MERMAID_KENAR = re.compile(
+    r"^\s*([A-Za-z0-9_]+)(?:\[[^\]]*\]|\{[^}]*\}|\([^)]*\))?\s*-{1,2}>+\s*([A-Za-z0-9_]+)"
+)
+MERMAID_ETIKET = re.compile(r"([A-Za-z0-9_]+)\[([^\]]+)\]")
+SVG_ETIKET = re.compile(r"<text[^>]*>([^<]{2,})</text>")
+
+
+def mermaid_kayitlari(metin: str, rel: str, satir_temel: int):
+    """QQ: metin diyagrami okunur - uretilmez. Kenarlar ve etiketler ayri kayit."""
+    for no, satir in enumerate(metin.splitlines(), satir_temel):
+        kenar = MERMAID_KENAR.match(satir)
+        if kenar:
+            yield {
+                "kind": "diagram",
+                "text": f"{rel}: diagram edge `{kenar.group(1)}` -> `{kenar.group(2)}`.",
+                "path": rel,
+                "lines": [no, no],
+            }
+        for ad, etiket in MERMAID_ETIKET.findall(satir):
+            yield {
+                "kind": "diagram",
+                "text": f'{rel}: diagram node `{ad}` is labelled "{etiket}".',
+                "path": rel,
+                "lines": [no, no],
+            }
+
+
+def mermaid_bloklari(path: Path, rel: str):
+    """```mermaid citleri icindeki diyagramlar; satir numaralari dosyadan."""
+    icinde = False
+    baslangic = 0
+    govde: list[str] = []
+    for no, satir in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        s = satir.strip()
+        if not icinde and s.startswith("```mermaid"):
+            icinde, baslangic, govde = True, no, []
+        elif icinde and s.startswith("```"):
+            icinde = False
+            yield from mermaid_kayitlari("\n".join(govde), rel, baslangic + 1)
+        elif icinde:
+            govde.append(satir)
+
+
+def svg_kayitlari(path: Path, rel: str):
+    """SVG'den yalniz metin etiketleri okunur; kenarlar okunmaz ve bu soylenir."""
+    for no, satir in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        for etiket in SVG_ETIKET.findall(satir):
+            yield {
+                "kind": "diagram",
+                "text": f'{rel}: diagram label "{etiket.strip()}" (SVG text; edges are not read).',
+                "path": rel,
+                "lines": [no, no],
+            }
+
+
+def dependency_records(path: Path, rel: str):
+    """JJ: Cargo.toml bagimlilik grafigi ayri bir "modul iliski" korpus turu.
+
+    Derleyicinin kendi okudugu dosyadan turedigi icin %100 mekanik: "X crate'i
+    Y'ye mi bagimli" sorusunun cevabi bir yargi degil, manifestin kendisi.
+    """
+    import tomllib
+
+    metin = path.read_text(encoding="utf-8", errors="ignore")
+    satirlar = metin.splitlines()
+
+    def satir_no(ad: str) -> int:
+        for no, satir in enumerate(satirlar, 1):
+            s = satir.strip()
+            if s.startswith(f"{ad} =") or s.startswith(f'"{ad}"') or s.startswith(f"{ad}."):
+                return no
+        return 1
+
+    veri = tomllib.loads(metin)
+    paket = veri.get("package", {}).get("name") or rel
+    for bolum in ("dependencies", "dev-dependencies", "build-dependencies"):
+        for ad in sorted(veri.get(bolum, {}) or {}):
+            yield {
+                "kind": "dependency-edge",
+                "text": f"`{paket}` depends on `{ad}` ({bolum}).",
+                "path": rel,
+                "lines": [satir_no(ad), satir_no(ad)],
+            }
+    for uye in sorted(veri.get("workspace", {}).get("members", []) or []):
+        yield {
+            "kind": "dependency-edge",
+            "text": f"Workspace member declared in `{rel}`: `{uye}`.",
+            "path": rel,
+            "lines": [satir_no(uye), satir_no(uye)],
+        }
 
 
 def collect(root: Path, source: str, root_only: bool):
@@ -184,8 +331,50 @@ def collect(root: Path, source: str, root_only: bool):
         if path.suffix == ".rs":
             yield from rust_records(path, rel)
         elif path.suffix == ".md":
+            yield from mermaid_bloklari(path, rel)
             yield from markdown_records(path, rel)
+        elif path.suffix in (".mmd", ".mermaid"):
+            yield from mermaid_kayitlari(
+                path.read_text(encoding="utf-8", errors="ignore"), rel, 1
+            )
+        elif path.suffix == ".svg":
+            yield from svg_kayitlari(path, rel)
+        elif path.name == "Cargo.toml":
+            yield from dependency_records(path, rel)
     yield from gate_records(root)
+
+
+POLITIKA_YOLU = Path(__file__).resolve().parent / "servis-politikasi.json"
+
+
+def politika_yukle() -> list[str]:
+    """Cevap yuzeyine cikmayacak kayit yollari (operator karari, fail-closed).
+
+    Politika dosyasi yoksa, bozuksa ya da bir girdisi hicbir kayda
+    dokunmuyorsa korpus KURULMAZ: bayat bir kapsam disi listesi yutmak,
+    dislamanin hic calismadigi bir korpusu sessizce yayinlamak demektir.
+    Donus: servis disi yol listesi.
+    """
+    if not POLITIKA_YOLU.is_file():
+        raise SystemExit(f"servis politikasi yok: {POLITIKA_YOLU} (damgasiz kurulum yapilamaz)")
+    try:
+        veri = json.loads(POLITIKA_YOLU.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"servis politikasi bozuk ({e}): bos sayilmaz, reddedilir") from e
+    girisler = veri.get("servis_disi")
+    if not isinstance(girisler, list) or not girisler:
+        raise SystemExit("servis politikasi bos ya da bicim bozuk: en az bir servis_disi girdisi gerekir")
+    yollar: list[str] = []
+    for girdi in girisler:
+        if not isinstance(girdi, dict) or not str(girdi.get("path", "")).strip() \
+                or not str(girdi.get("gerekce", "")).strip():
+            raise SystemExit("servis politikasi girdisi eksik alan tasiyor: path ve gerekce zorunlu")
+        yollar.append(str(girdi["path"]))
+    return yollar
+
+
+def servis_disi_mi(rel_yol: str, yollar: list[str]) -> bool:
+    return any(rel_yol == y or rel_yol.endswith("/" + y) for y in yollar)
 
 
 def main() -> int:
@@ -241,6 +430,9 @@ def main() -> int:
         })
     spec_by_name = {s["source"]: s for s in per_source}
 
+    politika_yollari = politika_yukle()
+    dokunulan: set[str] = set()
+
     seen: set[str] = set()
     unique = []
     for record in records:
@@ -255,7 +447,34 @@ def main() -> int:
         record["content_id"] = key
         record["asset_id"] = spec["asset_id"]
         record["asset_id_pending"] = True
+        rel = str(record.get("path", ""))
+        if servis_disi_mi(rel, politika_yollari):
+            record["served"] = False
+            for y in politika_yollari:
+                if rel == y or rel.endswith("/" + y):
+                    dokunulan.add(y)
         unique.append(record)
+
+    # Iki bozukluk birden reddedilir: girdi VAR OLAN bir dosyaya ait ama hicbir
+    # kayga dokunmuyorsa politika bayattir (yol degisti ya karar kaldirildi).
+    # Diger ağacı kuran kapi fiksturunde o dosya HIC YOKSA girdi uygulanamaz
+    # demektir - orada yoluna sessizlik degil, sayilan bir "yok" sayaci islenir.
+    kokler = [Path(s["path"]).resolve() for s in sources]
+    bayat, yok_sayilan = [], 0
+    for y in politika_yollari:
+        if y in dokunulan:
+            continue
+        if any((kok / y).exists() for kok in kokler):
+            bayat.append(y)
+        else:
+            yok_sayilan += 1
+    if bayat:
+        raise SystemExit(
+            "servis politikasi bayat: su girdiler var olan yollara ait ama hicbir "
+            "kayda dokunmuyor: "
+            + ", ".join(bayat)
+            + " (ya yol degisti ya karar kaldirildi; ikisi de burada duzeltilir)"
+        )
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -270,12 +489,16 @@ def main() -> int:
     by_kind: dict[str, int] = {}
     by_source_final: dict[str, int] = {}
     characters = 0
+    damgali = 0
     for record in unique:
         by_kind[record["kind"]] = by_kind.get(record["kind"], 0) + 1
         by_source_final[record["source"]] = by_source_final.get(record["source"], 0) + 1
         characters += len(record["text"])
+        if record.get("served") is False:
+            damgali += 1
     print(json.dumps({
         "records": len(unique),
+        "not_served": damgali,
         "by_kind": by_kind,
         "characters": characters,
         "approx_tokens": characters // 4,

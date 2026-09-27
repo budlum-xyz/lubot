@@ -1,0 +1,23 @@
+[package]
+name = "lubot-arayuz"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
+license-file.workspace = true
+description = "Lubot Android bridge: the same ask path the CLI runs, reached over JNI. No logic of its own."
+
+[lib]
+name = "lubot_arayuz"
+# `cdylib` for the device, `rlib` so the host suite can reach the same code.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = "0.21"
+lubot = { path = "../cli", version = "0.1.0" }
+lubot-grant = { path = "../grant", version = "0.1.0" }
+lubot-read = { path = "../read", version = "0.1.0" }
+serde_json = "1"
+
+[lints]
+workspace = true

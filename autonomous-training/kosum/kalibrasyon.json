@@ -1,0 +1,28 @@
+{
+  "adim_basina_saniye": 1.5068,
+  "adim_butcesi": 140,
+  "formul": "(sure_butcesi - yuk) / egim * guvenlik_payi, kadansa hizali",
+  "gozlem": {
+    "adim": 265,
+    "butce": 300,
+    "kaynak": "tekrar-2: ayni adim butcesinde en uzun gercek kosu",
+    "oran": 1.331,
+    "sure": 399.309,
+    "tarih": "2026-09-24T15:06:07"
+  },
+  "gozlem_egimi": 1.5068,
+  "kalibrasyon_kosusu_saniye": 28.55,
+  "olculdu": true,
+  "problar": {
+    "kisa": {
+      "adim": 20,
+      "saniye": 28.55
+    },
+    "uzun": {
+      "adim": 100,
+      "saniye": 145.38
+    }
+  },
+  "sure_butcesi_saniye": 300,
+  "yuk_saniye": 0.0
+}

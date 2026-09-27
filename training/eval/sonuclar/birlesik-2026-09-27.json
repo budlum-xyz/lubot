@@ -1,0 +1,39 @@
+{
+  "is": "Birlesik blok (tasarim 3.8): serit okuma -> sifir merkezli RMS norm -> rotali Hadamard uzmanlari -> engram deger bellegi -> serit yazma; elle yazilmis geri gecis dort noktali sonlu farkla denetlendi",
+  "kanit": {
+    "bilesen": 6.0,
+    "denetlenen": 544.0,
+    "engram_okuma": 5.0,
+    "ihlal": 0.0,
+    "ilk_kayip": 29.44711861,
+    "olcut_sonucu": true,
+    "oran": 0.007928925,
+    "parametre": 544.0,
+    "serit": 2.0,
+    "son_kayip": 4.93556415,
+    "sure_saniye": 0.39,
+    "uzman": 3.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.39
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kompozisyonun model kalitesine etkisi (egitilmis kontrol noktasi ister)",
+    "hangi bilesenin hangi aileye girecegi (M1/M2/M3 isaretli mimari karar)",
+    "gercek korpus uzerinde kosu suresi ve bellek tavani",
+    "rota puanlarinin gradyani (blok disindan gelir)",
+    "cok katmanli yigin: burada tek blok olculdu"
+  ],
+  "olcut": {
+    "ad": "alti_bilesen_tek_blokta_ve_gradyan_ihlali_sifir",
+    "ifade": "bilesen=6 VE denetlenen = sekilden turetilen parametre sayisi VE sonlu fark ihlali = 0 VE son kayip < ilk kayip",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "Olcum sentetik durumlar ve sentetik rota puanlari uzerindedir: egitilmis kontrol noktasi, korpus ve sinav seti yoktur. Blok hicbir model ailesine bagli degildir; model_spec.json degismedi. Rota puanlari blogun disindan gelir, dL/dpuanlar yazilmadi."
+}

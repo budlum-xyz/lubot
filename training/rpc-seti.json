@@ -1,5 +1,5 @@
 {
-  "note": "Lubot zincir aracinin cagirabilecegi RPC seti. Yedi RPC raporun sabit yuzeyi; genisletme icin hem bu dosyaya hem ALLOWED_METHODS'a ayni anda eklenir (kapi iki tarafi denetler). bud_aiGetCeilings: node tarafinin salt-okunur sorgusu; tavanlar + effort araligi.",
+  "note": "Lubot zincir aracinin cagirabilecegi RPC seti: 8 sabit yontem, crates/tools/src/chain.rs::ALLOWED_METHODS ile ayni. Genisletme icin hem bu dosyaya hem ALLOWED_METHODS'a ayni anda eklenir; kapi iki tarafi denetler. bud_aiGetCeilings: node tarafinin salt-okunur sorgusu; ceilings_request ve parse_ceilings bu repoda cagirisiz, yani yuzey tanimli ama Lubot henuz bu tarafi kullanmiyor. Sayi burada elle yaziliyor ve gates/check.py::rpc-surface-consistent karsilastiriyor.",
   "methods": [
     "bud_aiGetModel",
     "bud_aiRegisterModel",

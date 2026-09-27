@@ -1,0 +1,87 @@
+{
+  "surum": 1,
+  "tarih": "2026-09-24T18:56:33",
+  "kosucu": "betik",
+  "is": "Markdown semasinin ret kurallari, her kural icin bir kotu ornekle sinandi.",
+  "olcut": {
+    "ad": "her_ret_kuralinin_bir_kapiya_kanitiyla_atfedilmesi",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 0.012,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kural_sayisi": 6,
+  "kurallar": [
+    "NotUtf8",
+    "Empty",
+    "HeadingSkip",
+    "UnbalancedFence",
+    "TableMismatch",
+    "TooLarge"
+  ],
+  "kapsanan": [
+    "Empty",
+    "HeadingSkip",
+    "UnbalancedFence",
+    "TableMismatch",
+    "TooLarge"
+  ],
+  "kapsanmayan": [],
+  "baska_kapida": [
+    {
+      "kural": "NotUtf8",
+      "ozet": "lubot: prompt: /tmp/tmpzvf81y7m/NotUtf8.md: stream did not contain valid UTF-8",
+      "kanit_test": "invalid_utf8_is_refused"
+    }
+  ],
+  "kanit": {
+    "vakalar": [
+      {
+        "kural": "NotUtf8",
+        "vaka": "NotUtf8.md",
+        "ret": true,
+        "kapi": "baska-kapi",
+        "ozet": "lubot: prompt: /tmp/tmpzvf81y7m/NotUtf8.md: stream did not contain valid UTF-8"
+      },
+      {
+        "kural": "Empty",
+        "vaka": "Empty.md",
+        "ret": true,
+        "kapi": "sema",
+        "ozet": "lubot: prompt /tmp/tmpzvf81y7m/Empty.md rejected by schema: output is empty"
+      },
+      {
+        "kural": "HeadingSkip",
+        "vaka": "HeadingSkip.md",
+        "ret": true,
+        "kapi": "sema",
+        "ozet": "lubot: prompt /tmp/tmpzvf81y7m/HeadingSkip.md rejected by schema: heading on line 3 skips a level: ### after #"
+      },
+      {
+        "kural": "UnbalancedFence",
+        "vaka": "UnbalancedFence.md",
+        "ret": true,
+        "kapi": "sema",
+        "ozet": "lubot: prompt /tmp/tmpzvf81y7m/UnbalancedFence.md rejected by schema: unbalanced code fence around line 3"
+      },
+      {
+        "kural": "TableMismatch",
+        "vaka": "TableMismatch.md",
+        "ret": true,
+        "kapi": "sema",
+        "ozet": "lubot: prompt /tmp/tmpzvf81y7m/TableMismatch.md rejected by schema: malformed table around line 5"
+      },
+      {
+        "kural": "TooLarge",
+        "vaka": "TooLarge.md",
+        "ret": true,
+        "kapi": "sema",
+        "ozet": "lubot: prompt /tmp/tmpzvf81y7m/TooLarge.md rejected by schema: output too large: 65543 bytes"
+      }
+    ]
+  }
+}

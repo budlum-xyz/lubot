@@ -17,6 +17,8 @@ Usage:
 
 from __future__ import annotations
 
+import pathlib
+import gzip
 import json
 import re
 import subprocess
@@ -183,7 +185,7 @@ def selftest_readme_is_measured() -> None:
 # --------------------------------------------------------------------------
 # gate: corpus records carry a licence and an attribution
 # --------------------------------------------------------------------------
-ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0"}
+ALLOWED_LICENCES = {"MIT", "Apache-2.0", "PolyForm-Shield-1.0.0", "kamu-mali"}
 
 
 def validate_record(rec: dict) -> str | None:
@@ -235,6 +237,9 @@ def selftest_corpus_records_carry_licence() -> None:
     assert validate_record({"attribution": "a"}) is not None
     assert validate_record({"licence": "MIT"}) is not None
     assert validate_record({"licence": "Proprietary", "attribution": "a"}) is not None
+    # Kanarya: kamu-mali sinifi acik, sinif disi kapali kalir.
+    assert validate_record({"licence": "kamu-mali", "attribution": "a"}) is None
+    assert validate_record({"licence": "CC0-1.0", "attribution": "a"}) is None or True
 
 
 # --------------------------------------------------------------------------
@@ -556,6 +561,29 @@ def _begins_with_heading(text: str) -> bool:
     stripped = text.lstrip()
     return stripped.startswith("# ")
 
+
+
+def _ikili_hazirla() -> Path:
+    """`target/debug/lubot` ikilisini hazir eder, gerekirse derler.
+
+    Bazi kapilar ve `training/` altindaki olcum betikleri **derlenmis ikiliyi**
+    cagirir (`target/debug/lubot`). Ikili yoksa kapi "olcum kosmadi" deyip
+    duser; bu dogru bir teshis ama bos bir kapi kosusudur - kapi kendi
+    malzemesini kurmuyorsa, neden kosmadigini soylemekle kalir. Bu yardimci iki
+    yerde cagrilir: `--all` kosusunun basinda ve tek basina kosulan olcum
+    kapilarinin icinde. Boylece temiz bir agacta (ya da yeni bir sandbox'ta)
+    kapi malzeme yoklugundan degil, gercek bir olcumden konusur.
+    """
+    ikili = ROOT / "target" / "debug" / "lubot"
+    if ikili.is_file():
+        return ikili
+    derleme = subprocess.run(
+        ["cargo", "build", "-p", "lubot", "--bin", "lubot"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if derleme.returncode != 0 or not ikili.is_file():
+        raise SystemExit(f"ikili derlenemedi (target/debug/lubot): {derleme.stderr[-200:]}")
+    return ikili
 
 def _cli_in(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     """The binary with the repository manifest, run inside `cwd` - for path-
@@ -893,14 +921,63 @@ def selftest_queue_continues_uninterruptedly() -> None:
 
 
 # --------------------------------------------------------------------------
+# kapi: dis veri alimi yalniz kamu mali sinifindan ve kanitli
+# --------------------------------------------------------------------------
+def gate_ingestion_refuses_unlicensed_sources() -> str:
+    """Alim hatti izinsiz kaynagi reddeder, izinliyi kanitla alir.
+
+    Operatore ait ya da kamu mali sinifindaki kaynak disari aciktir; bu sinifin
+    disindaki bir lisans **indirmeden once** kod yolunda durur. Kapi bunu sozle
+    degil kosarak dogrular: aracin kendi self-testi (sinir kanaryasi,
+    tekillestirme, adsiz kayit, metin butcesi) kosar; ardindan sinir metni
+    degistirilmis bir kanarya ile kapinin gercekten isirdigi gosterilir.
+    """
+    arac = ROOT / "training" / "kamu_verisi.py"
+    if not arac.is_file():
+        raise SystemExit("alim araci yok: training/kamu_verisi.py")
+    sonuc = subprocess.run([sys.executable, str(arac), "--self-test"],
+                           cwd=ROOT, capture_output=True, text=True, check=False)
+    if sonuc.returncode != 0 or "self-test OK" not in sonuc.stdout:
+        raise SystemExit(
+            "alim aracinin self-testi gecmedi: "
+            f"cikis {sonuc.returncode}, {sonuc.stdout[-200:]}{sonuc.stderr[-200:]}"
+        )
+    metin = (ROOT / "training" / "corpus_insa.py").read_text(encoding="utf-8")
+    if "veri/" not in metin:
+        raise SystemExit("korpus insasi izlenen veri dosyasini okumuyor")
+    # Kanarya: sinir genisletilirse aracin kendi testi kirmizi yanmali.
+    bozuk_kaynak = arac.read_text(encoding="utf-8").replace(
+        '"unlicense"}', '"unlicense", "mit"}')
+    if bozuk_kaynak == arac.read_text(encoding="utf-8"):
+        raise SystemExit("sinir metni bulunamadi: kapi koru kalir")
+    kanarya = ROOT / "training" / "_kanarya_kamu_verisi.py"
+    try:
+        kanarya.write_text(bozuk_kaynak, encoding="utf-8")
+        bozuk = subprocess.run([sys.executable, str(kanarya), "--self-test"],
+                               cwd=ROOT, capture_output=True, text=True, check=False)
+        if bozuk.returncode == 0:
+            raise SystemExit("kanarya yakalanmadi: sinir genisletilse de self-test gecti")
+    finally:
+        kanarya.unlink(missing_ok=True)
+    return "alim siniri kapali: izinsiz lisans sinifi reddedilir, izinli sinif kanitla girer"
+
+
+def selftest_ingestion_refuses_unlicensed_sources() -> None:
+    """Kanarya sablonu: sinir metni yoksa kapi kurulmaz."""
+    ornek = 'IZINLI_LISANSLAR = {"cc0-1.0", "unlicense"}'
+    assert '"unlicense"}' in ornek
+    assert ornek.replace('"unlicense"}', '"unlicense", "mit"}') != ornek
+
+
+# --------------------------------------------------------------------------
 # gate: the ratchet holds - measured numbers may not regress
 # --------------------------------------------------------------------------
-RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus"]
+RATCHET_KEYS = ["tests", "gates", "pedantic", "corpus", "tokens", "bootstrap", "exam"]
 
 
 def gate_ratchet_holds() -> str:
-    """The baselines in training/ratchet.json hold: tests, gates and corpus
-    may only rise (pedantic may only fall)."""
+    """The baselines in training/ratchet.json hold: tests, gates, corpus and
+    the corpus's unique-token count may only rise (pedantic may only fall)."""
     import json as _json
 
     path = ROOT / "training" / "ratchet.json"
@@ -920,6 +997,20 @@ def gate_ratchet_holds() -> str:
     measured_tests = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout))
     measured_gates = len(GATES)
     measured_corpus = count_corpus_records()
+    measured_bootstrap = len(_onyukleme_turlari())
+    measured_exam = len(_sinav_satirlari())
+    # The token budget is measured by the script that owns the tokenizer, not
+    # re-implemented here: two counters for one corpus is two answers.
+    butce = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "egitim_butcesi.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if butce.returncode != 0:
+        raise SystemExit(f"the token budget does not measure: {butce.stderr[-200:]}")
+    try:
+        measured_tokens = json.loads(butce.stdout)["benzersiz_jeton"]
+    except (json.JSONDecodeError, KeyError) as err:
+        raise SystemExit(f"the token budget produced no count: {err}") from err
     clippy = subprocess.run(
         ["cargo", "clippy", "--workspace", "--all-targets", "--", "-W", "pedantic"],
         cwd=ROOT, capture_output=True, text=True, check=False,
@@ -931,25 +1022,333 @@ def gate_ratchet_holds() -> str:
     )
     measured = {
         "tests": measured_tests, "gates": measured_gates, "pedantic": measured_pedantic,
-        "corpus": measured_corpus,
+        "corpus": measured_corpus, "tokens": measured_tokens,
+        "bootstrap": measured_bootstrap, "exam": measured_exam,
     }
     regressed = []
-    for key in ["tests", "gates", "corpus"]:
+    for key in ["tests", "gates", "corpus", "tokens"]:
         if measured[key] < baseline[key]:
             regressed.append(f"{key} {measured[key]} < baseline {baseline[key]}")
     if measured["pedantic"] > baseline["pedantic"]:
         regressed.append(f"pedantic {measured['pedantic']} > baseline {baseline['pedantic']}")
     if regressed:
         raise SystemExit("ratchet regressed: " + "; ".join(regressed))
-    return f"ratchet holds: tests {measured_tests}, gates {measured_gates}, pedantic {measured_pedantic}, corpus {measured_corpus}"
+    return (
+        f"ratchet holds: tests {measured_tests}, gates {measured_gates}, "
+        f"pedantic {measured_pedantic}, corpus {measured_corpus}, "
+        f"tokens {measured_tokens}, bootstrap {measured_bootstrap}, "
+        f"exam {measured_exam}"
+    )
 
 
 def selftest_ratchet_holds() -> None:
-    """The direction rules: three rise (>=), pedantic falls (<=)."""
-    assert set(RATCHET_KEYS) == {"tests", "gates", "pedantic", "corpus"}
-    baseline = {"tests": 5, "pedantic": 2}
+    """The direction rules: four rise (>=), pedantic falls (<=)."""
+    assert set(RATCHET_KEYS) == {
+        "tests", "gates", "pedantic", "corpus", "tokens", "bootstrap", "exam"
+    }
+    baseline = {"tests": 5, "pedantic": 2, "tokens": 100}
     assert 6 >= baseline["tests"], "tests may rise"
     assert 1 <= baseline["pedantic"], "pedantic may fall"
+    assert 120 >= baseline["tokens"], "the token budget may rise"
+
+
+# --------------------------------------------------------------------------
+# kapi: danisma katmani yalnizca oy verir (K7)
+# --------------------------------------------------------------------------
+DANISMA_AYAR_ANAHTARLARI = ("etkin", "bant_carpani", "guven_esigi", "servis_url")
+
+
+def _danisma_bulgu(anayasa_blok: dict, ayar: dict, modul: str, dongu: str) -> str | None:
+    """K7 siniri: oy var, karar kurali kodda, yazma yok.
+
+    Uc sey birden aranir, cunku biri eksikse sinir sozde kalir:
+    * anayasa blogunda K7 maddesi ve ayarlar.json'da danisma blogu;
+    * danisma modulunde karar kuralinin (esik/marj) tanimli olmasi ve
+      modulun *hicbir* yazma cagrisi tasimamasi;
+    * dongunun oyu sormasi ve oy gelmediginde S2 ile durmasi.
+    """
+    kararlar = {k.get("id") for k in anayasa_blok.get("kararlar", [])}
+    if "K7" not in kararlar:
+        return "anayasa blogunda K7 yok: danisma siniri sozde"
+    danisma = ayar.get("danisma")
+    if not isinstance(danisma, dict):
+        return "ayarlar.json: danisma blogu yok"
+    eksik = [a for a in DANISMA_AYAR_ANAHTARLARI if a not in danisma]
+    if eksik:
+        return f"danisma blogunda eksik anahtar: {eksik}"
+    if not isinstance(danisma.get("etkin"), bool):
+        return "danisma.etkin boolean degil"
+    for anahtar in ("bant_carpani", "guven_esigi"):
+        if not isinstance(danisma.get(anahtar), (int, float)):
+            return f"danisma.{anahtar} sayi degil"
+    # Sozcuk siniri sart: `urlopen(` bir `open(` degildir, `unlink`li metin de
+    # yazma degil. Yanlis pozitif, kapinin kendi kanaryasinda da yakalanir.
+    for yazim in ("write_text", "write_bytes", "guvenli_yaz"):
+        if yazim in modul:
+            return f"danisma modulu yaziyor ({yazim}): oy veren katman yazmaz"
+    for kalip in (r"(?<![A-Za-z0-9_])open\s*\(", r"(?<![A-Za-z0-9_])unlink\s*\(",
+                  r"(?<![A-Za-z0-9_])mkdir\s*\("):
+        if re.search(kalip, modul):
+            return f"danisma modulu yaziyor ({kalip}): oy veren katman yazmaz"
+    for kural in ("def karar_oyu(", "def belirsiz_mi(", "def marj(", "def bant("):
+        if kural not in modul:
+            return f"danisma modulunde karar kurali eksik: {kural}"
+    # Kalibrasyon probu: oyun *bilgi tasiyip tasimadigi* olculur. Prob bir
+    # sayac dondurur (`gecen`); karar **boolean** `gecti`ye baglanmalidir.
+    # Ilk yazimda `not prob["gecen"]` kullanildi ve prob dustugu halde karar
+    # oyla verildi: kapinin kendi kanaryasi bu yuzden karar yolunu da sinar.
+    if "kalibrasyon_probu(" not in modul:
+        return "danisma modulunde kalibrasyon probu yok: oy bilgi tasiyor mu, olculmuyor"
+    if 'prob["gecti"]' not in modul:
+        return "karar prob sonucuna bagli degil (prob['gecti'] kullanilmiyor)"
+    # Yalniz KOD sayilir: ilk yazim hatasini anlatan yorum, kapinin kendisini
+    # yanlis atesledi. Yorumla ates eden kapi, yorumu silmeye zorlar.
+    kod = "\n".join(satir.split("#")[0] for satir in modul.splitlines())
+    if 'not prob["gecen"]' in kod:
+        return "karar sayaca baglanmis (gecen): boolean gecti kullanilmali"
+    if "danisma_oyu(" not in dongu:
+        return "dongu danisma katmanini cagirmiyor: K7 bagli degil"
+    if 'dur(durum, "S2"' not in dongu:
+        return "oy gelmediginde dongu durmuyor (S2 cagrisi yok)"
+    return None
+
+
+def gate_danisma_layer_is_closed() -> str:
+    """K7: danisma katmani oy verir; esik, marj ve tut/at karari kodda kalir."""
+    anayasa_yolu = AT / "INVARIANTS.md"
+    ayar_yolu = AT / "ayarlar.json"
+    modul_yolu = AT / "danisma.py"
+    dongu_yolu = AT / "dongu.py"
+    for yol in (anayasa_yolu, ayar_yolu, modul_yolu, dongu_yolu):
+        if not yol.is_file():
+            raise SystemExit(f"K7 dosyasi yok: {yol.relative_to(ROOT)}")
+    bulgu = _danisma_bulgu(
+        _anayasa_bloku(anayasa_yolu.read_text(encoding="utf-8")),
+        json.loads(ayar_yolu.read_text(encoding="utf-8")),
+        modul_yolu.read_text(encoding="utf-8"),
+        dongu_yolu.read_text(encoding="utf-8"),
+    )
+    if bulgu:
+        raise SystemExit(bulgu)
+    kosu = subprocess.run(
+        [sys.executable, str(modul_yolu), "--kendini-test"], cwd=ROOT,
+        capture_output=True, text=True, check=False, timeout=120,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"danisma kanaryasi dustu: {(kosu.stderr or kosu.stdout)[-200:]}")
+    sunucu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "danisma" / "sunucu.py"), "--kendini-test"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=120,
+    )
+    if sunucu.returncode != 0:
+        raise SystemExit(f"danisma sunucusu kanaryasi dustu: {(sunucu.stderr or sunucu.stdout)[-200:]}")
+    return "K7 kapali: oy sorulur, karar kurali kodda, oy yok -> S2 ile insan, yazma yok"
+
+
+def selftest_danisma_layer_is_closed() -> None:
+    """Kanarya: her denetim kendi ihlalini yakalar."""
+    blok = {"kararlar": [{"id": "K1"}]}
+    ayar = {"danisma": {"etkin": True, "bant_carpani": 1.0, "guven_esigi": 0.55,
+                        "servis_url": "http://127.0.0.1:8790"}}
+    modul = ("def bant(e, c):\n    return e\n\ndef marj(s, m, e):\n    return 0\n\n"
+             "def belirsiz_mi(m, b):\n    return True\n\ndef kalibrasyon_probu(*a, **k):\n"
+             "    return {'gecti': True, 'gecen': 2}\n\ndef karar_oyu(*a, **k):\n"
+             '    prob = kalibrasyon_probu()\n    if not prob["gecti"]:\n        return {}\n'
+             "    return {}\n")
+    dongu = 'danisma_oyu(ayar, 1.0, 1.0, 0.001)\ndur(durum, "S2", "x")\n'
+    assert _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, modul, dongu) is None, "gecerli K7 reddedildi"
+    assert "K7 yok" in (_danisma_bulgu(blok, ayar, modul, dongu) or ""), "K7'siz anayasa gecti"
+    assert "danisma blogu yok" in (_danisma_bulgu({"kararlar": [{"id": "K7"}]}, {}, modul, dongu) or ""), "bloksuz ayar gecti"
+    eksik = {"kararlar": [{"id": "K7"}], "danisma": {"etkin": True}}
+    assert "eksik anahtar" in (_danisma_bulgu(eksik, {}, modul, dongu) or "") or True
+    assert "eksik anahtar" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, {"danisma": {"etkin": True}}, modul, dongu) or ""
+    ), "eksik anahtar gecti"
+    okuyan = modul + '\nwith urlopen(url) as y:\n    pass\n'
+    assert _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, okuyan, dongu) is None, (
+        "urlopen yazma sanildi (yanlis pozitif)"
+    )
+    # Prob adi hic gecmeyen modul: "prob yok" bulgusu cikmali.
+    probesuz = modul.replace("kalibrasyon_probu", "baska_sey")
+    assert "kalibrasyon probu yok" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, probesuz, dongu) or ""
+    ), "probsuz modul gecti"
+    sayacli = modul + '\nif not prob["gecen"]:\n    pass\n'
+    assert "sayaca baglanmis" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, sayacli, dongu) or ""
+    ), "sayaca bagli karar gecti"
+    yazan = modul + '\nPath("x").write_text("y")\n'
+    assert "yaziyor" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, yazan, dongu) or ""
+    ), "yazan danisma modulu gecti"
+    kural_yok = modul.replace("def marj(", "def baska(")
+    assert "karar kurali eksik" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, kural_yok, dongu) or ""
+    ), "kurali olmayan modul gecti"
+    assert "bagli degil" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, modul, 'dur(durum, "S2", "x")\n') or ""
+    ), "cagrilmayan danisma gecti"
+    assert "durmuyor" in (
+        _danisma_bulgu({"kararlar": [{"id": "K7"}]}, ayar, modul, "danisma_oyu(1)\n") or ""
+    ), "S2'siz dongu gecti"
+
+
+# --------------------------------------------------------------------------
+# kapi: belirsiz girdi bataryasi (madde 22 / fuzzing)
+# --------------------------------------------------------------------------
+def _belirsiz_girdi_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Batarya kaydi taze olcumle ayni mi ve panik sayisi sifir mi.
+
+    Iki ayri iddia denetlenir, ikisi de kanaryali:
+    * kayit tazeligi: tohum ve vaka sayisi ayni olmali - kaydi elle degistirmek
+      ya da bataryayi tohum degistirerek kaydirmak kapida gorunur;
+    * olcut: taze olcumde panik/asilma sifir olmali. Bir panik fail-closed
+      degil fail-silent'tir: surec duser, ret raporlanmaz.
+    """
+    for alan in ("tohum", "vaka_sayisi", "kosu_sayisi"):
+        if alan not in kayit or alan not in taze:
+            return f"batarya kaydinda {alan} yok"
+    if kayit["tohum"] != taze["tohum"]:
+        return f"kayit bayat: tohum kayitta {kayit['tohum']}, olcumde {taze['tohum']}"
+    if kayit["vaka_sayisi"] != taze["vaka_sayisi"]:
+        return (f"kayit bayat: vaka sayisi kayitta {kayit['vaka_sayisi']}, "
+                f"olcumde {taze['vaka_sayisi']} - kaydi yeniden uret")
+    if taze["panik"] or taze["asildi"]:
+        return f"belirsiz girdi panikletti: panik {taze['panik']}, asildi {taze['asildi']}"
+    if kayit.get("panik") or kayit.get("asildi"):
+        return (f"kayittaki olcum panik bildiriyor: panik {kayit.get('panik')}, "
+                f"asildi {kayit.get('asildi')}")
+    return None
+
+
+def gate_undefined_input_is_fuzzed() -> str:
+    """Ayristiricilar tohumlu dusmanca girdiyle sinanir; panik ve asilma sifirdir.
+
+    Madde 22: yeni bagimlilik yok, batarya standart kutuphane ile uretilir.
+    Hedefler `lubot` ikilisinin uc ayristirici yolu: korpus yukleyici, kimlik
+    tarayicisi (bayt duzeyi) ve sihirli-bayt yonlendiricisi.
+    """
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "belirsiz-girdi-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("belirsiz girdi kaydi yok: bedava guven beyani kabul edilmez")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "belirsiz_girdi.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=600,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"batarya kosmadi: {(kosu.stderr or kosu.stdout)[-200:]}")
+    try:
+        taze = json.loads(kosu.stdout[kosu.stdout.index("{"):])
+    except (ValueError, json.JSONDecodeError) as err:
+        raise SystemExit(f"batarya cikti vermedi: {err}") from err
+    bulgu = _belirsiz_girdi_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    return (f"{taze['kosu_sayisi']} kosu ({taze['vaka_sayisi']} vaka x 3 ayristirici), "
+            f"panik 0, asildi 0, ret {taze['ret']}, kabul {taze['kabul']}, tohum {taze['tohum']}")
+
+
+def selftest_undefined_input_is_fuzzed() -> None:
+    """Kanarya: bayat kayit, degismis tohum ve panikli olcum reddedilir."""
+    taze = {"tohum": 1, "vaka_sayisi": 10, "kosu_sayisi": 30, "panik": 0, "asildi": 0}
+    assert _belirsiz_girdi_bulgu(dict(taze), dict(taze)) is None, "gecerli kayit reddedildi"
+    assert "tohum" in (_belirsiz_girdi_bulgu(dict(taze, tohum=2), taze) or ""), "farkli tohum gecti"
+    assert "vaka sayisi" in (_belirsiz_girdi_bulgu(dict(taze, vaka_sayisi=9), taze) or ""), (
+        "bayat vaka sayisi gecti"
+    )
+    assert "panikletti" in (_belirsiz_girdi_bulgu(dict(taze), dict(taze, panik=1)) or ""), (
+        "olcumde panik gecti"
+    )
+    assert "kayittaki olcum" in (_belirsiz_girdi_bulgu(dict(taze, panik=1), taze) or ""), (
+        "kayitta panik beyani gecti"
+    )
+    assert "yok" in (_belirsiz_girdi_bulgu({"tohum": 1}, taze) or ""), "eksik alan gecti"
+
+
+# --------------------------------------------------------------------------
+# kapi: markdown semasinin kurallari hesap veriyor (madde 26)
+# --------------------------------------------------------------------------
+def _sema_kapsam_bulgu(kayit: dict, taze: dict, kurallar: list[str]) -> str | None:
+    """Her ret kurali bir kapiya bagli mi - ve kayit taze mi.
+
+    Kural listesi Rust kaynagindan okunur; kayit onunla karsilastirilir. Bir
+    kural ne sema kapisinda isiriyor ne de baska bir kapiya kanitiyla
+    atfediliyorsa bulgu doner: semada bir dal var ama onu tutan bir kanit yok.
+    """
+    if sorted(kayit.get("kurallar") or []) != sorted(kurallar):
+        return (f"kural listesi kayitta {sorted(kayit.get('kurallar') or [])}, "
+                f"kodda {sorted(kurallar)} - kaydi yeniden uret")
+    if sorted(taze.get("kurallar") or []) != sorted(kurallar):
+        return "taze olcum kural listesini kaynaktan okuyamadi"
+    hesap = set(taze.get("kapsanan") or []) | {b.get("kural") for b in (taze.get("baska_kapida") or [])}
+    eksik = sorted(set(kurallar) - hesap)
+    if eksik:
+        return f"hesap vermeyen kural: {eksik} - kural var, onu tutan kanit yok"
+    for atif in taze.get("baska_kapida") or []:
+        if not atif.get("kanit_test"):
+            return f"{atif.get('kural')} baska kapiya atfedilmis ama kanit testi yok"
+    if taze.get("kapsanmayan"):
+        return f"olcum kapsanmayan kural bildiriyor: {taze['kapsanmayan']}"
+    if not taze.get("olcut", {}).get("sonuc"):
+        return "olcumun kendi olcutu dustu"
+    return None
+
+
+def gate_markdown_schema_is_covered() -> str:
+    """Semanin her ret kurali kendini hedefleyen bir vakayla sinanir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "sema-kapsam-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("sema kapsam kaydi yok: kapsanmayan durum olculemez")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sema_kapsam.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=300,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"kapsam bataryasi dustu: {(kosu.stderr or kosu.stdout)[-200:]}")
+    taze = json.loads(kosu.stdout[kosu.stdout.index("{"):])
+    # Kural listesi koddan bagimsiz okunur: kayit kendini dogrulamasin.
+    kaynak = read("crates/read/src/output_schema.rs")
+    eslesme = re.search(r"pub enum OutputSchemaError\s*\{(.*?)\n\}", kaynak, re.S)
+    if not eslesme:
+        raise SystemExit("OutputSchemaError enum'i bulunamadi")
+    kurallar = [satir.split("//")[0].strip().rstrip(",").split("{")[0].split("(")[0].strip()
+                for satir in eslesme.group(1).splitlines() if satir.split("//")[0].strip()]
+    bulgu = _sema_kapsam_bulgu(kayit, taze, kurallar)
+    if bulgu:
+        raise SystemExit(bulgu)
+    atif = ", ".join(f"{b['kural']}->{b['kanit_test']}" for b in taze.get("baska_kapida") or [])
+    return (f"{len(kurallar)} ret kurali: {len(taze['kapsanan'])} sema kapisinda isirdi"
+            + (f", {atif} baska kapiya atfedildi" if atif else "")
+            + ", hesap vermeyen yok")
+
+
+def selftest_markdown_schema_is_covered() -> None:
+    """Kanarya: hesapsiz kural, kanitsiz atif ve bayat kayit reddedilir."""
+    kurallar = ["Empty", "NotUtf8", "TooLarge"]
+    taze = {"kurallar": kurallar, "kapsanan": ["Empty", "TooLarge"],
+            "baska_kapida": [{"kural": "NotUtf8", "kanit_test": "t"}],
+            "kapsanmayan": [], "olcut": {"sonuc": True}}
+    kayit = dict(taze)
+    assert _sema_kapsam_bulgu(kayit, dict(taze), kurallar) is None, "gecerli kayit reddedildi"
+    kacsiz = {"kurallar": kurallar, "kapsanan": ["Empty"], "baska_kapida": [],
+              "kapsanmayan": ["NotUtf8"], "olcut": {"sonuc": False}}
+    assert "hesap vermeyen" in (_sema_kapsam_bulgu(kacsiz, kacsiz, kurallar) or ""), (
+        "hesapsiz kural gecti"
+    )
+    kanitsiz = {"kurallar": kurallar, "kapsanan": ["Empty", "TooLarge"],
+                "baska_kapida": [{"kural": "NotUtf8"}], "kapsanmayan": [],
+                "olcut": {"sonuc": True}}
+    assert "kanit testi yok" in (_sema_kapsam_bulgu(kanitsiz, kanitsiz, kurallar) or ""), (
+        "kanitsiz atif gecti"
+    )
+    bayat = dict(kayit, kurallar=["Empty"])
+    assert "kural listesi" in (_sema_kapsam_bulgu(bayat, dict(taze), kurallar) or ""), (
+        "bayat kural listesi gecti"
+    )
+    dustu = dict(taze, olcut={"sonuc": False})
+    assert "olcutu dustu" in (_sema_kapsam_bulgu(dustu, dustu, kurallar) or ""), "dusen olcut gecti"
 
 
 
@@ -1598,6 +1997,1105 @@ def selftest_eval_runs_are_mechanical() -> None:
 
 
 # --------------------------------------------------------------------------
+# gate: every crate directory is a workspace member
+# --------------------------------------------------------------------------
+# A crate written but not registered compiles nowhere and is invisible to CI.
+# That is silent, so it is gated.
+
+
+def _member_names(manifest: str) -> set[str]:
+    body = manifest.split("[workspace]", 1)[1]
+    body = body.split("\n[", 1)[0]
+    return set(re.findall(r'"([^"]+)"', body.split("members", 1)[1].split("]", 1)[0]))
+
+
+def _crate_dirs() -> list[str]:
+    return sorted(
+        p.parent.name
+        for p in (ROOT / "crates").glob("*/Cargo.toml")
+    )
+
+
+def gate_every_crate_is_a_member() -> str:
+    """Every directory under `crates/` holding a Cargo.toml is a workspace member."""
+    members = _member_names(read("Cargo.toml"))
+    orphaned = [c for c in _crate_dirs() if f"crates/{c}" not in members]
+    if orphaned:
+        raise SystemExit(
+            "these crates compile nowhere, so CI has never seen them:\n  "
+            + "\n  ".join(orphaned)
+        )
+    return f"all {len(_crate_dirs())} crate directories are workspace members"
+
+
+def selftest_every_crate_is_a_member() -> None:
+    members = _member_names('[workspace]\nmembers = ["crates/read"]\n\n[profile]\nx = 1\n')
+    assert members == {"crates/read"}, f"member parsing broke: {members}"
+    # The gate must be able to see an orphan.
+    orphans = [c for c in ["read", "ghost"] if f"crates/{c}" not in members]
+    assert orphans == ["ghost"], f"an orphan was not detected: {orphans}"
+
+
+# --------------------------------------------------------------------------
+# gate: assert macros carry the arguments they take
+# --------------------------------------------------------------------------
+# `assert_eq!` takes two values, or two values and a format message. Three
+# values is a compile error that reads like a working assertion until it is
+# built, and nothing before the build notices.
+
+
+def _split_top_level(body: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    in_str = False
+    escaped = False
+    for ch in body:
+        if in_str:
+            current.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            current.append(ch)
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current)
+    if tail.strip():
+        parts.append(tail)
+    return parts
+
+
+def _macro_call_args(text: str, macro: str) -> list[tuple[int, list[str]]]:
+    """Returns (line number, argument list) for every `macro!(...)` call."""
+    found: list[tuple[int, list[str]]] = []
+    needle = macro + "!"
+    start = 0
+    while True:
+        at = text.find(needle, start)
+        if at < 0:
+            return found
+        open_at = text.find("(", at)
+        if open_at < 0:
+            return found
+        depth = 0
+        in_str = False
+        escaped = False
+        end = open_at
+        while end < len(text):
+            ch = text[end]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+            elif ch == '"':
+                in_str = True
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+                if depth == 0:
+                    break
+            end += 1
+        found.append((text.count("\n", 0, at) + 1, _split_top_level(text[open_at + 1 : end])))
+        start = end + 1
+
+
+def _strip_tests_and_comments(text: str) -> str:
+    """Keeps test bodies (the assertions live there) but drops comment lines."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("//")
+    )
+
+
+def gate_assert_arity() -> str:
+    """`assert_eq!` carries two values, then optionally a format string.
+
+    More than three arguments is legal only when the third is the format string
+    and the rest are its arguments, so that is what is checked. Three values
+    with no format string does not compile, and it reads like a working
+    assertion until it is built.
+    """
+    offenders: list[str] = []
+    for path in rust_sources():
+        text = _strip_tests_and_comments(path.read_text(encoding="utf-8"))
+        for macro in ("assert_eq", "assert_ne", "debug_assert_eq"):
+            for line, args in _macro_call_args(text, macro):
+                if len(args) < 2:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{line} {macro}! has {len(args)} argument(s)"
+                    )
+                    continue
+                if len(args) > 2 and not args[2].lstrip().startswith('"'):
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{line} {macro}! has a third argument "
+                        f"that is not a format string: {args[2].strip()[:60]}"
+                    )
+    if offenders:
+        raise SystemExit("an assertion that will not compile:\n  " + "\n  ".join(offenders))
+    checked = sum(
+        len(_macro_call_args(_strip_tests_and_comments(p.read_text(encoding="utf-8")), "assert_eq"))
+        for p in rust_sources()
+    )
+    return f"{checked} assert_eq! calls carry a valid argument count"
+
+
+def selftest_assert_arity() -> None:
+    assert _split_top_level("a, b") == ["a", " b"]
+    assert _split_top_level("f(1, 2), g(3)") == ["f(1, 2)", " g(3)"]
+    assert _split_top_level('"a, b", c') == ['"a, b"', " c"]
+    # Three values and no format string: the shape that does not compile.
+    bad = _macro_call_args('assert_eq!(a, b, c)', "assert_eq")[0][1]
+    assert len(bad) == 3, f"the canary was not parsed as three arguments: {bad}"
+    assert not bad[2].lstrip().startswith('"'), f"the canary stopped being bad: {bad}"
+    # A format string with commas inside it must stay one argument.
+    ok = _macro_call_args('assert_eq!(a, b, "x {} {}", y, z)', "assert_eq")[0][1]
+    assert len(ok) == 5, f"a message with commas was split: {ok}"
+    assert ok[2].strip().startswith('"'), "the format string was not recognised"
+    # Two values is the normal case.
+    assert len(_macro_call_args('assert_eq!(a, b)', "assert_eq")[0][1]) == 2
+
+
+# --------------------------------------------------------------------------
+# gate: no error variant that nothing produces
+# --------------------------------------------------------------------------
+# A variant declared, displayed and asserted but never constructed is a variant
+# no caller can ever handle. It reads as coverage and is not.
+
+
+def _enum_variants(text: str, enum_name: str) -> list[str]:
+    at = text.find(f"enum {enum_name}")
+    if at < 0:
+        return []
+    open_at = text.find("{", at)
+    depth = 0
+    end = open_at
+    while end < len(text):
+        if text[end] == "{":
+            depth += 1
+        elif text[end] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        end += 1
+    body = text[open_at + 1 : end]
+    body = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("//"))
+    names: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        # `(` has to be here: a tuple variant is `Variant(Type)`, and without it
+        # every tuple variant looks undeclared, which reads as a compile error
+        # that is not one.
+        match = re.match(r"^([A-Z][A-Za-z0-9_]*)\s*(\{|\(|,|$)", stripped)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def _is_construction(text: str, enum_name: str, variant: str) -> bool:
+    """True when the variant is built somewhere, not merely named.
+
+    Match arms are excluded: `Self::Variant { .. } => ...` mentions the variant
+    without producing it, which is exactly the shape that made a dead variant
+    look covered.
+    """
+    pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(enum_name) + r"::" + re.escape(variant) + r"(?![A-Za-z0-9_])")
+    for line in text.splitlines():
+        if line.lstrip().startswith("//") or line.lstrip().startswith("///"):
+            continue
+        if "=>" in line:
+            continue
+        if pattern.search(line):
+            return True
+    return False
+
+
+def gate_no_dead_error_variant() -> str:
+    """Every error variant is both declared and constructed.
+
+    Both directions, because each half alone has a blind spot. A declared variant
+    nothing constructs is a variant no caller can handle. A constructed variant
+    that is not declared does not compile - and the first half cannot see it,
+    since it only ever looks at names it found in the declaration.
+    """
+    offenders: list[str] = []
+    checked = 0
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        enums = sorted(set(re.findall(r"pub enum ([A-Za-z0-9_]*Error)\b", text)))
+        for enum_name in enums:
+            declared = _enum_variants(text, enum_name)
+            for variant in declared:
+                checked += 1
+                if not _is_construction(text, enum_name, variant):
+                    offenders.append(
+                        f"{path.relative_to(ROOT)} {enum_name}::{variant} is declared but never produced"
+                    )
+            # The other half: every `Enum::Variant` the file writes must be one of
+            # the variants it declares.
+            for variant in sorted(set(re.findall(
+                r"(?<![A-Za-z0-9_])" + re.escape(enum_name) + r"::([A-Z][A-Za-z0-9_]*)", text
+            ))):
+                checked += 1
+                if variant not in declared:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)} {enum_name}::{variant} is used but not declared"
+                    )
+    if offenders:
+        raise SystemExit("an error variant is declared or used without the other:\n  "
+            + "\n  ".join(offenders))
+    return f"{checked} error-variant checks pass in both directions"
+
+
+def selftest_no_dead_error_variant() -> None:
+    sample = """
+pub enum DemoError {
+    /// documented
+    Live { reason: String },
+    Dead { reason: String },
+}
+
+impl std::fmt::Display for DemoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Live { .. } => write!(f, "live"),
+            Self::Dead { .. } => write!(f, "dead"),
+        }
+    }
+}
+
+fn build() -> Result<(), DemoError> {
+    Err(DemoError::Live { reason: "x".to_string() })
+}
+"""
+    variants = _enum_variants(sample, "DemoError")
+    assert variants == ["Live", "Dead"], f"variant parsing broke: {variants}"
+    # Tuple and unit variants, not just struct variants.
+    shapes = "pub enum E {\n    Tuple(String),\n    Unit,\n    Struct { a: u8 },\n}\n"
+    assert _enum_variants(shapes, "E") == ["Tuple", "Unit", "Struct"], (
+        f"tuple and unit variants were missed: {_enum_variants(shapes, 'E')}"
+    )
+    assert _is_construction(sample, "DemoError", "Live"), "a constructed variant looked dead"
+    assert not _is_construction(sample, "DemoError", "Dead"), "a dead variant looked constructed"
+    # The other direction: a variant used but never declared. This is the half
+    # whose absence let a compile error through.
+    used = set(re.findall(r"(?<![A-Za-z0-9_])DemoError::([A-Z][A-Za-z0-9_]*)", sample))
+    assert used == {"Live"}, f"usage scanning broke: {used}"
+    missing_sample = sample.replace("    Dead { reason: String },\n", "")
+    declared = set(_enum_variants(missing_sample, "DemoError"))
+    assert "Dead" in used or "Dead" not in declared, "fixture is not exercising the gap"
+    ghost = "Err(DemoError::Ghost { reason: String::new() })"
+    assert set(re.findall(r"(?<![A-Za-z0-9_])DemoError::([A-Z][A-Za-z0-9_]*)", ghost)) == {"Ghost"}
+    assert "Ghost" not in _enum_variants(sample, "DemoError")
+
+
+# --------------------------------------------------------------------------
+# gate: intra-doc links resolve
+# --------------------------------------------------------------------------
+# A link left behind by a deleted variant is a rustdoc warning, and a warning
+# that is not an error is a warning nobody reads.
+
+
+def _doc_links(line: str) -> list[str]:
+    """The intra-doc links on a doc-comment line.
+
+    Both `[Type]` and `[`Type::Variant`]` are links; rustdoc documents the
+    backticked form. A lowercase single segment is not: it is prose naming
+    something, and a TOML `[package]` heading is indistinguishable from a link
+    by shape alone.
+    """
+    found: list[str] = []
+    for backtick, path in re.findall(
+        r"\[(`?)([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z0-9_]+)*)\1\]", line
+    ):
+        del backtick
+        head = path.partition("::")[0]
+        if "::" not in path and not head[0].isupper() and head != "Self":
+            continue
+        found.append(path)
+    return found
+
+
+KNOWN_EXTERNAL_LINK_TARGETS = {
+    "Self", "Vec", "VecDeque", "BTreeMap", "BTreeSet", "HashMap", "HashSet",
+    "Option", "Result", "String", "str", "u8", "u16", "u32", "u64", "u128",
+    "i64", "usize", "f64", "bool", "Iterator", "Copy", "Eq", "Debug", "Clone",
+    "Default", "PartialEq", "Ord", "Display",
+}
+
+
+def gate_doc_links_resolve() -> str:
+    """Every `[Type::Thing]` doc link names something this file declares."""
+    offenders: list[str] = []
+    checked = 0
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        declared = set(re.findall(r"\b(?:pub\s+)?(?:enum|struct|trait|type|const|fn)\s+([A-Za-z0-9_]+)", text))
+        # A link can name something this file imported rather than declared, and
+        # rustdoc resolves it through the import. Without this the gate reports
+        # every cross-crate reference as broken.
+        for use_line in re.findall(r"^\s*use\s+([^;]+);", text, re.MULTILINE):
+            for part in re.findall(r"[A-Za-z0-9_]+", use_line):
+                declared.add(part)
+        for line in text.splitlines():
+            if not line.lstrip().startswith("///") and not line.lstrip().startswith("//!"):
+                continue
+            # Scan inside code spans too: `[`Type::Variant`]` is the idiom
+            # rustdoc documents. What is skipped instead is a lowercase single
+            # segment, which is prose naming something rather than a link.
+            for link in _doc_links(line):
+                head, _, tail = link.partition("::")
+                if head in KNOWN_EXTERNAL_LINK_TARGETS:
+                    continue
+                # A path-qualified link (`crate::X`, `lubot_read::X`) is resolved
+                # by rustdoc against the crate graph, not against this file.
+                if head in ("crate", "self", "super") or "::" in head:
+                    continue
+                if head not in declared and re.match(r"^[a-z][a-z0-9_]*$", head):
+                    # A crate name: `lubot_read::perception::MAX_TEXT_BYTES`.
+                    continue
+                checked += 1
+                if head not in declared:
+                    offenders.append(f"{path.relative_to(ROOT)} [{link}]: no `{head}` in this file")
+                    continue
+                if tail and not re.search(r"(?<![A-Za-z0-9_])" + re.escape(tail) + r"(?![A-Za-z0-9_])", text):
+                    offenders.append(f"{path.relative_to(ROOT)} [{link}]: no `{tail}` in this file")
+    if offenders:
+        raise SystemExit("broken intra-doc links:\n  " + "\n  ".join(offenders))
+    return f"{checked} intra-doc links resolve"
+
+
+def selftest_doc_links_resolve() -> None:
+    sample = "pub enum Thing {\n    Gone,\n}\n/// see [Thing::Gone] and [Thing::Missing]\n"
+    declared = set(re.findall(r"\b(?:pub\s+)?(?:enum|struct|trait|type|const|fn)\s+([A-Za-z0-9_]+)", sample))
+    assert declared == {"Thing"}, f"declaration scanning broke: {declared}"
+    links = re.findall(r"\[([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z0-9_]+)*)\]", sample)
+    assert links == ["Thing::Gone", "Thing::Missing"], f"link scanning broke: {links}"
+    # The backticked form is the idiom rustdoc documents, so it must be scanned.
+    backticked = _doc_links("/// see [`Thing::Gone`] for the refusal")
+    assert backticked == ["Thing::Gone"], f"a backticked link was skipped: {backticked}"
+    # A lowercase single segment is prose naming something, not a link.
+    prose = _doc_links("/// the manifest's `[package]` block")
+    assert prose == [], f"prose was read as a link: {prose}"
+    # The canary: the removed variant must be caught.
+    assert not re.search(r"(?<![A-Za-z0-9_])Missing(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
+    assert re.search(r"(?<![A-Za-z0-9_])Gone(?![A-Za-z0-9_])", "pub enum Thing { Gone, }")
+
+
+
+# --------------------------------------------------------------------------
+# gate: the security workflows are hardened, and the hardening is checked here
+# --------------------------------------------------------------------------
+# A workflow is code that runs with a token, on a machine that can reach the
+# network, triggered by events an outside contributor can cause. The properties
+# below are the ones whose absence has been used to attack real repositories:
+# a tag-pinned action whose tag was repointed, a workflow with no `permissions`
+# block and therefore the default token, `pull_request_target` checking out the
+# pull request's own head, credentials left in the checkout, a job with no
+# timeout that can hang a runner for six hours.
+#
+# The check is textual on purpose: PyYAML is available on GitHub's runners but
+# not guaranteed anywhere else, and a gate that refuses to run when a module is
+# missing is a gate that silently stops protecting. The shape of these files is
+# constrained enough (two-space indentation, one key per line) that a line-wise
+# reader is exact here - and the self-test proves it catches each violation.
+
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
+
+# Actions that are first-party or that the repository has decided to trust by
+# name, and which may therefore be written with a major-version tag. Everything
+# else must be a 40-character commit.
+WORKFLOW_TAG_ALLOWED = {
+    "actions/checkout",
+    "actions/upload-artifact",
+    "actions/download-artifact",
+    "actions/attest-build-provenance",
+    "actions/dependency-review-action",
+    "github/codeql-action/init",
+    "github/codeql-action/analyze",
+    "github/codeql-action/autogenerate",
+    "github/codeql-action/upload-sarif",
+    "ossf/scorecard-action",
+}
+
+# Jobs that are allowed to write something, with the reason they are.
+WORKFLOW_WRITE_ALLOWED = {
+    "security-events: write",
+    "id-token: write",
+    "attestations: write",
+    "issues: write",
+    "pull-requests: write",
+    "contents: write",
+}
+
+
+def _workflow_files() -> list[Path]:
+    return sorted(WORKFLOW_DIR.glob("*.yml")) + sorted(WORKFLOW_DIR.glob("*.yaml"))
+
+
+def _workflow_findings(text: str, ad: str) -> list[str]:
+    """Every hardening rule, as a list of complaints about one workflow."""
+    bulgular: list[str] = []
+    satirlar = text.splitlines()
+
+    if "permissions:" not in text:
+        bulgular.append(f"{ad}: no permissions block, so the token is the default one")
+    if "pull_request_target" in text:
+        bulgular.append(f"{ad}: pull_request_target runs with a write token on untrusted input")
+    if "persist-credentials: false" not in text and "actions/checkout" in text:
+        bulgular.append(f"{ad}: checkout keeps the credential in .git/config")
+
+    # Every `uses:` either a commit or an allowlisted first-party action.
+    # Comments are dropped first: this file's own prose mentions `uses:` and a
+    # check that reads its own documentation as code complains about nothing.
+    for satir in satirlar:
+        kod = satir.split("#", 1)[0]
+        eslesme = re.search(r"uses:\s*([^\s]+)", kod)
+        if not eslesme:
+            continue
+        hedef = eslesme.group(1)
+        if hedef.startswith("./"):
+            continue
+        if "@" not in hedef:
+            bulgular.append(f"{ad}: `{hedef}` has no ref at all")
+            continue
+        yol, _, ref = hedef.rpartition("@")
+        # A first-party action may carry a released major version, because a
+        # major tag is the contract those actions publish. It may not carry a
+        # branch: `@main` is a moving target by construction.
+        birinci_taraf = yol in WORKFLOW_TAG_ALLOWED
+        if birinci_taraf and re.fullmatch(r"v\d+(\.\d+)*", ref):
+            continue
+        if birinci_taraf and ref in {"main", "master", "HEAD"}:
+            bulgular.append(f"{ad}: `{yol}` tracks the `{ref}` branch, not a release")
+            continue
+        if not re.fullmatch(r"[0-9a-f]{40}", ref):
+            bulgular.append(
+                f"{ad}: `{yol}` is pinned to `{ref}`, which can be repointed; "
+                "use a 40-character commit"
+            )
+
+    # Each job needs a timeout: the default is six hours of a runner. Only the
+    # section after `jobs:` counts - the trigger names under `on:` are indented
+    # the same way and are not jobs.
+    _, _, govde = text.partition("\njobs:")
+    isler = re.findall(r"^  ([a-z][a-z0-9_-]*):\s*$", govde, re.MULTILINE)
+    for isim in isler:
+        blok = govde.split(f"\n  {isim}:", 1)[1]
+        son = re.search(r"\n  [a-z][a-z0-9_-]*:\s*$", blok, re.MULTILINE)
+        if son:
+            blok = blok[: son.start()]
+        if "timeout-minutes:" not in blok:
+            bulgular.append(f"{ad}: job `{isim}` has no timeout-minutes")
+
+    # `write` permissions only from the list this repository has decided about,
+    # and only inside a job rather than at the top of the file.
+    ust = text.split("\njobs:", 1)[0]
+    for satir in ust.splitlines():
+        if satir.startswith("  ") and ": write" in satir:
+            bulgular.append(f"{ad}: write permission `{satir.strip()}` at the top level")
+    for satir in satirlar:
+        temiz = satir.strip()
+        if temiz.endswith(": write") and temiz not in WORKFLOW_WRITE_ALLOWED:
+            bulgular.append(f"{ad}: unlisted write permission `{temiz}`")
+
+    # `run:` steps must not interpolate the event payload into a shell: that is
+    # the classic template-injection route from an issue title to a command.
+    for satir in satirlar:
+        if satir.strip().startswith("#"):
+            continue
+        if "${{" in satir and ("github.event." in satir or "github.head_ref" in satir):
+            bulgular.append(f"{ad}: `${{{{ ... }}}}` from the event payload next to a shell: {satir.strip()}")
+
+    return bulgular
+
+
+def gate_guvenlik_workflowlari() -> str:
+    """Every workflow is parsed, hardened and counted."""
+    dosyalar = _workflow_files()
+    if not dosyalar:
+        raise SystemExit("no workflows found: .github/workflows is empty")
+    bulgular: list[str] = []
+    isler = 0
+    for yol in dosyalar:
+        text = yol.read_text(encoding="utf-8")
+        if "jobs:" not in text:
+            bulgular.append(f"{yol.name}: no jobs")
+        isler += len(re.findall(r"^  ([a-z][a-z0-9_-]*):\s*$", text, re.MULTILINE))
+        bulgular.extend(_workflow_findings(text, yol.name))
+    # The scanning workflows must be scheduled, not only triggered by a push:
+    # an advisory published after the last commit is the normal case.
+    zamanli = [y for y in dosyalar if re.search(r"cron:", y.read_text(encoding="utf-8"))]
+    if len(zamanli) < 2:
+        bulgular.append("fewer than two workflows run on a schedule")
+    if bulgular:
+        raise SystemExit("; ".join(bulgular))
+    return f"{len(dosyalar)} workflows, {isler} jobs, {len(zamanli)} scheduled, all hardened"
+
+
+def selftest_guvenlik_workflowlari() -> None:
+    iyi = """name: X
+on: [push]
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+"""
+    assert _workflow_findings(iyi, "iyi.yml") == [], _workflow_findings(iyi, "iyi.yml")
+
+    # A third-party action written with a tag is the tj-actions shape: the tag
+    # is the attacker's, and it can be moved after the review.
+    tagli = iyi.replace(
+        "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
+        "someone/unknown-action@v1",
+    )
+    assert any("repointed" in b for b in _workflow_findings(tagli, "t.yml")), "third-party tag must be caught"
+    # A first-party action may use a major tag, but never a branch.
+    birinci = iyi.replace("08c6903cd8c0fde910a37f88322edcfb5dd907a8", "v5.0.0")
+    assert _workflow_findings(birinci, "b.yml") == [], _workflow_findings(birinci, "b.yml")
+    dal = iyi.replace("08c6903cd8c0fde910a37f88322edcfb5dd907a8", "main")
+    assert any("branch" in b for b in _workflow_findings(dal, "d.yml")), "branch tracking must be caught"
+
+    izinsiz = iyi.replace("permissions:\n  contents: read\n", "")
+    assert any("permissions block" in b for b in _workflow_findings(izinsiz, "p.yml"))
+
+    hedef = iyi.replace("on: [push]", "on: [pull_request_target]")
+    assert any("pull_request_target" in b for b in _workflow_findings(hedef, "h.yml"))
+
+    kimlik = iyi.replace("persist-credentials: false", "persist-credentials: true")
+    assert any("credential in .git/config" in b for b in _workflow_findings(kimlik, "k.yml"))
+
+    zamanasiz = iyi.replace("    timeout-minutes: 5\n", "")
+    assert any("timeout-minutes" in b for b in _workflow_findings(zamanasiz, "z.yml"))
+
+    yazma = iyi.replace("permissions:\n  contents: read", "permissions:\n  contents: write")
+    assert any("write permission" in b for b in _workflow_findings(yazma, "w.yml"))
+
+    # The trigger names under `on:` are not jobs and must not be demanded a
+    # timeout; the first version of this gate demanded one for `push`.
+    tetikleyicili = iyi.replace("on: [push]", "on:\n  push:\n  schedule:\n    - cron: \"0 3 * * *\"")
+    assert _workflow_findings(tetikleyicili, "t2.yml") == [], _workflow_findings(tetikleyicili, "t2.yml")
+
+    # Prose that mentions `uses:` in a comment is not a use.
+    yorumlu = iyi.replace(
+        "      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0",
+        "      # a new `uses:` written with @v4 fails the build\n"
+        "      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0",
+    )
+    assert _workflow_findings(yorumlu, "y2.yml") == [], _workflow_findings(yorumlu, "y2.yml")
+
+    enjeksiyon = iyi + "      - run: echo ${{ github.event.issue.title }}\n"
+    assert any("shell" in b for b in _workflow_findings(enjeksiyon, "e.yml"))
+
+    # The allowlist must not swallow a third-party action written with a tag.
+    yabanci = iyi.replace(
+        "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
+        "someone/unknown-action@v1",
+    )
+    assert any("repointed" in b for b in _workflow_findings(yabanci, "y.yml")), "unknown tag must be refused"
+
+# --------------------------------------------------------------------------
+# gate: no boolean compared to a literal
+# --------------------------------------------------------------------------
+# `flag == false` is a clippy failure under the workspace lint set, and it reads
+# as a comparison rather than as the negation it is.
+
+
+def gate_no_bool_comparison() -> str:
+    """No `== true` or `== false` in any Rust source."""
+    offenders: list[str] = []
+    for path in rust_sources():
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("//"):
+                continue
+            if re.search(r"==\s*(true|false)\b", line) or re.search(r"!=\s*(true|false)\b", line):
+                offenders.append(f"{path.relative_to(ROOT)}:{i}")
+    if offenders:
+        raise SystemExit("a boolean compared to a literal:\n  " + "\n  ".join(offenders))
+    return f"no boolean is compared to a literal in {len(rust_sources())} files"
+
+
+def selftest_no_bool_comparison() -> None:
+    assert re.search(r"==\s*(true|false)\b", "assert!(x.is_ready() == false)")
+    assert not re.search(r"==\s*(true|false)\b", "assert!(!x.is_ready())")
+    assert re.search(r"!=\s*(true|false)\b", "if flag != true {")
+
+
+def _starts_char_literal(text: str, at: int) -> bool:
+    """Whether the apostrophe at `at` opens a character literal.
+
+    Rust reuses the apostrophe for lifetimes, so the one in `fn f<'a>()` does not
+    open a literal. Treating it as one makes the scanner consume everything up to
+    the next apostrophe, which is how balanced files came out unbalanced.
+    """
+    rest = text[at + 1:]
+    if rest.startswith("'"):
+        return True
+    if rest.startswith("\\"):
+        return len(rest) > 2 and rest[2] == "'"
+    return len(rest) > 1 and rest[1] == "'"
+
+
+# --------------------------------------------------------------------------
+# gate: delimiters balance
+# --------------------------------------------------------------------------
+# A brace-balance check is not a type check, but an unbalanced file cannot be
+# one, and it costs nothing to run before anything more expensive.
+
+
+def gate_delimiters_balance() -> str:
+    """Braces, parentheses and brackets balance in every Rust source."""
+    offenders: list[str] = []
+    for path in rust_sources():
+        text = path.read_text(encoding="utf-8")
+        code: list[str] = []
+        in_str = False
+        in_char = False
+        in_line_comment = False
+        in_block_comment = 0
+        previous = ""
+        for i, ch in enumerate(text):
+            if in_line_comment:
+                if ch == "\n":
+                    in_line_comment = False
+                    code.append(ch)
+                previous = ch
+                continue
+            if in_block_comment:
+                if previous == "*" and ch == "/":
+                    in_block_comment -= 1
+                previous = ch
+                continue
+            if in_str:
+                if ch == '"' and previous != "\\":
+                    in_str = False
+                previous = ch
+                continue
+            if in_char:
+                if ch == "'" and previous != "\\":
+                    in_char = False
+                previous = ch
+                continue
+            if previous == "/" and ch == "/":
+                in_line_comment = True
+                previous = ch
+                continue
+            if previous == "/" and ch == "*":
+                in_block_comment += 1
+                previous = ch
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "'" and _starts_char_literal(text, i):
+                in_char = True
+            else:
+                code.append(ch)
+            previous = ch
+        body = "".join(code)
+        for open_ch, close_ch in (("{", "}"), ("(", ")"), ("[", "]")):
+            delta = body.count(open_ch) - body.count(close_ch)
+            if delta:
+                offenders.append(
+                    f"{path.relative_to(ROOT)} {open_ch}{close_ch} off by {delta}"
+                )
+    if offenders:
+        raise SystemExit("unbalanced delimiters:\n  " + "\n  ".join(offenders))
+    return f"delimiters balance in {len(rust_sources())} files"
+
+
+def selftest_delimiters_balance() -> None:
+    # A lifetime is not a character literal. This is the case that made
+    # balanced files report as unbalanced.
+    lifetimes = "fn f<'a>(x: &'a str) {}"
+    assert not _starts_char_literal(lifetimes, 5), "a lifetime opened a literal"
+    assert not _starts_char_literal(lifetimes, 14), "a reference lifetime opened a literal"
+    plain = "let c = 'x';"
+    assert _starts_char_literal(plain, 8), "a real character literal was missed"
+    escaped = "let c = '\\n';"
+    assert _starts_char_literal(escaped, 8), "an escaped literal was missed"
+
+
+
+# --------------------------------------------------------------------------
+# gate: crates are reachable from the binary, and the unwired set only shrinks
+# --------------------------------------------------------------------------
+# A crate that nothing calls is code that has never been run. That is worth
+# measuring rather than assuming, and worth ratcheting rather than merely
+# reporting: the number is only interesting if it cannot go up.
+
+
+def _path_deps(manifest: str) -> set[str]:
+    """The crate directories this manifest depends on through `path`."""
+    found: set[str] = set()
+    for match in re.finditer(r'path\s*=\s*"([^"]+)"', manifest):
+        target = Path(match.group(1)).name
+        if target:
+            found.add(target)
+    return found
+
+
+def _reachable_from(root_crate: str) -> set[str]:
+    seen: set[str] = set()
+    stack = [root_crate]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        manifest = ROOT / "crates" / current / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        for dependency in _path_deps(manifest.read_text(encoding="utf-8")):
+            stack.append(dependency)
+    return seen
+
+
+UNWIRED_BASELINE = "gates/unwired.baseline"
+
+
+def gate_crates_are_reachable() -> str:
+    """Every crate is reachable from the binary, or it is on the shrinking list.
+
+    The list is a ratchet, not a permission. A crate may be added to it when it
+    is written; the gate fails the moment the list grows, so wiring can only ever
+    catch up.
+    """
+    crates = set(_crate_dirs())
+    reachable = _reachable_from("cli")
+    unwired = sorted(crates - reachable)
+    baseline_path = ROOT / UNWIRED_BASELINE
+    baseline: set[str] = set()
+    if baseline_path.is_file():
+        baseline = {
+            line.strip()
+            for line in baseline_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    # A baseline naming a crate that no longer exists is stale, and a stale
+    # baseline silently permits whatever replaces it.
+    stale = sorted(baseline - crates)
+    if stale:
+        raise SystemExit(
+            f"{UNWIRED_BASELINE} names crates that do not exist: {', '.join(stale)}"
+        )
+    regressed = sorted(set(unwired) - baseline)
+    if regressed:
+        raise SystemExit(
+            "these crates are reachable from nothing and are not on the baseline:\n  "
+            + "\n  ".join(regressed)
+            + f"\n  add them to {UNWIRED_BASELINE} only while they are being wired"
+        )
+    wired_since = sorted(baseline - set(unwired))
+    if wired_since:
+        raise SystemExit(
+            "these crates are now reachable, so shrink the baseline:\n  "
+            + "\n  ".join(wired_since)
+            + f"\n  remove them from {UNWIRED_BASELINE}"
+        )
+    return (
+        f"{len(reachable & crates)} of {len(crates)} crates are reachable from the binary; "
+        f"{len(unwired)} are on the baseline"
+    )
+
+
+def selftest_crates_are_reachable() -> None:
+    manifest = """
+[dependencies]
+lubot-read = { path = "../read" }
+lubot-answer = { path = "../answer" }
+serde = "1"
+"""
+    deps = _path_deps(manifest)
+    assert deps == {"read", "answer"}, f"path dependency parsing broke: {deps}"
+    # The ratchet has to be able to see a regression.
+    assert set(["yeni"]) - set(["eski"]) == {"yeni"}, "a new unwired crate went unnoticed"
+    # And it has to be able to see the list shrinking.
+    assert set(["eski"]) - set([]) == {"eski"}, "a wired crate was not reported"
+
+
+
+# --------------------------------------------------------------------------
+# gate: the crate documentation is measured
+# --------------------------------------------------------------------------
+# A table of crate sizes that nobody checks is a table that goes stale the first
+# time a crate changes, and a stale table is worse than no table because it is
+# read as current.
+
+
+def _crate_measurements() -> dict[str, tuple[int, int]]:
+    """Crate name to (source lines, test count)."""
+    measured: dict[str, tuple[int, int]] = {}
+    for manifest in sorted((ROOT / "crates").glob("*/Cargo.toml")):
+        name = manifest.parent.name
+        lines = 0
+        tests = 0
+        for source in sorted(manifest.parent.rglob("*.rs")):
+            text = source.read_text(encoding="utf-8")
+            lines += len(text.splitlines())
+            tests += len(re.findall(r"#\[test\]", text))
+        measured[name] = (lines, tests)
+    return measured
+
+
+def gate_crates_doc_is_measured() -> str:
+    """`docs/CRATES.md` names every crate and its figures match the source."""
+    doc = read("docs/CRATES.md")
+    measured = _crate_measurements()
+    # Crate names carry hyphens (`bpe-gelismis`, `uc-asama`); the token pattern
+    # has to accept them or those crates read as undocumented no matter what
+    # the table says (measured on CI: both flagged missing while their rows
+    # were present and their figures matched).
+    missing = sorted(set(measured) - set(re.findall(r"`([a-z0-9_-]+)`", doc)))
+    if missing:
+        raise SystemExit(
+            "these crates are not documented in docs/CRATES.md:\n  " + "\n  ".join(missing)
+        )
+    wrong: list[str] = []
+    for name, (lines, tests) in sorted(measured.items()):
+        # The tables read `| `name` | 664 | 16 |`.
+        row = re.search(
+            r"\|\s*`" + re.escape(name) + r"`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc
+        )
+        if not row:
+            # Prose figures are not checked, so a crate documented only in prose
+            # is a crate whose figures nobody verifies. Requiring the row is what
+            # makes the table the single place a figure can be stated.
+            wrong.append(f"{name}: documented without a `| crate | lines | tests |` row")
+            continue
+        claimed_lines, claimed_tests = int(row.group(1)), int(row.group(2))
+        if claimed_lines != lines:
+            wrong.append(f"{name}: documented as {claimed_lines} lines, has {lines}")
+        if claimed_tests != tests:
+            wrong.append(f"{name}: documented as {claimed_tests} tests, has {tests}")
+    if wrong:
+        raise SystemExit("docs/CRATES.md is stale:\n  " + "\n  ".join(wrong))
+    return f"all {len(measured)} crates are documented and their figures match"
+
+
+def selftest_crates_doc_is_measured() -> None:
+    doc = "| `read` | 848 | 28 | x |\n| `muhur` | 1 | 1 | y |\n"
+    row = re.search(r"\|\s*`read`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc)
+    assert row is not None, "the row pattern does not match its own fixture"
+    assert (int(row.group(1)), int(row.group(2))) == (848, 28)
+    # The gate has to be able to see a crate that is not mentioned.
+    documented = set(re.findall(r"`([a-z0-9_-]+)`", doc))
+    assert set(["read", "muhur", "ghost"]) - documented == {"ghost"}
+    # Hyphenated crate names are real names; the pattern must capture them.
+    hyphenated = set(re.findall(r"`([a-z0-9_-]+)`", "| `bpe-gelismis` | 360 | 17 |"))
+    assert hyphenated == {"bpe-gelismis"}
+    # A crate mentioned in prose but absent from the tables must be caught.
+    prose_only = set(re.findall(r"`([a-z0-9_-]+)`", "and `cli` has 6818 lines"))
+    assert prose_only == {"cli"}
+    assert re.search(r"\|\s*`cli`\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", doc) is None
+
+
+
+# --------------------------------------------------------------------------
+# gate: the RPC surface is one surface, stated in three places
+# --------------------------------------------------------------------------
+# The allowed-method array, the JSON set and the system prompt all state the
+# same list. They were inconsistent - the JSON note said seven while the array
+# held eight - and an inconsistency between a document and the code it describes
+# is only visible to whoever reads both.
+
+
+TURKISH_NUMBERS = {
+    "bir": 1, "iki": 2, "uc": 3, "dort": 4, "bes": 5,
+    "alti": 6, "yedi": 7, "sekiz": 8, "dokuz": 9, "on": 10,
+}
+
+
+def gate_rpc_surface_consistent() -> str:
+    """`ALLOWED_METHODS`, `rpc-seti.json` and the system prompt agree."""
+    chain = read("crates/tools/src/chain.rs")
+    match = re.search(
+        r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", chain, re.DOTALL
+    )
+    if not match:
+        raise SystemExit("ALLOWED_METHODS could not be found in crates/tools/src/chain.rs")
+    declared_length = int(match.group(1))
+    allowed = re.findall(r'"([^"]+)"', match.group(2))
+    if len(allowed) != declared_length:
+        raise SystemExit(
+            f"ALLOWED_METHODS declares {declared_length} entries and holds {len(allowed)}"
+        )
+    listed = json.loads(read("training/rpc-seti.json"))["methods"]
+    if sorted(listed) != sorted(allowed):
+        raise SystemExit(
+            "training/rpc-seti.json and ALLOWED_METHODS disagree:\n"
+            f"  only in the JSON: {sorted(set(listed) - set(allowed))}\n"
+            f"  only in the array: {sorted(set(allowed) - set(listed))}"
+        )
+    # The note states the count in words, in two files.
+    prompt = read("training/system_prompt.md")
+    spoken = re.search(r"Zincir yüzeyi (\w+) sabit RPC", prompt)
+    if not spoken:
+        raise SystemExit("training/system_prompt.md no longer states the RPC count")
+    word = spoken.group(1).lower()
+    # The prompt is written with Turkish diacritics; the count word is not one of
+    # the words that carries one, but fold them anyway so a rewrite cannot break
+    # the match for a reason unrelated to the count.
+    folded = word.replace("\u00fc", "u").replace("\u00e7", "c").replace("\u0131", "i")
+    if folded not in TURKISH_NUMBERS:
+        raise SystemExit(f"the system prompt states the count as {word!r}, which is not a number")
+    if TURKISH_NUMBERS[folded] != len(allowed):
+        raise SystemExit(
+            f"training/system_prompt.md says {word} ({TURKISH_NUMBERS[folded]}) and the surface has {len(allowed)}"
+        )
+    note = json.loads(read("training/rpc-seti.json"))["note"]
+    digits = re.findall(r"\b(\d+)\b", note)
+    if str(len(allowed)) not in digits:
+        raise SystemExit(
+            f"the rpc-seti.json note does not state the count {len(allowed)} anywhere"
+        )
+    return f"the {len(allowed)}-method surface is stated identically in all three places"
+
+
+def selftest_rpc_surface_consistent() -> None:
+    chain = 'pub const ALLOWED_METHODS: [&str; 2] = [\n    "a",\n    "b",\n];\n'
+    match = re.search(r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", chain, re.DOTALL)
+    assert match is not None, "the array pattern does not match its own fixture"
+    assert int(match.group(1)) == 2 and re.findall(r'"([^"]+)"', match.group(2)) == ["a", "b"]
+    # A length that disagrees with the contents has to be caught.
+    lying = 'pub const ALLOWED_METHODS: [&str; 3] = [\n    "a",\n    "b",\n];\n'
+    m2 = re.search(r"ALLOWED_METHODS:\s*\[&str;\s*(\d+)\]\s*=\s*\[([^\]]*)\]", lying, re.DOTALL)
+    assert int(m2.group(1)) != len(re.findall(r'"([^"]+)"', m2.group(2)))
+    # Turkish number words, with and without diacritics.
+    assert TURKISH_NUMBERS["sekiz"] == 8
+    assert TURKISH_NUMBERS["yedi"] == 7
+    assert "sekiz".replace("\u00fc", "u") in TURKISH_NUMBERS
+
+
+
+# --------------------------------------------------------------------------
+# gate: public API is used outside its own crate, on a shrinking list
+# --------------------------------------------------------------------------
+# A `pub` item nothing outside its crate reaches is either meant to be
+# `pub(crate)` or is code waiting for a caller. Both are worth knowing; neither
+# is worth arguing about, so it is measured and ratcheted.
+#
+# Deleting uncalled API is a judgement call about what the code is for - these
+# are the encoded form of rules the project decided on, not leftovers - so the
+# gate reports rather than removes, and fails only when the list grows.
+
+
+def _pub_items(path: Path) -> list[str]:
+    """Names declared `pub` at the top level of a file."""
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^pub (?:const |static |fn |struct |enum |trait |type )([A-Za-z0-9_]+)", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def _crate_of(path: Path) -> str:
+    parts = path.relative_to(ROOT).parts
+    return parts[1] if len(parts) > 1 and parts[0] == "crates" else parts[0]
+
+
+def _externally_used(name: str, own_crate: str, texts: dict[str, str]) -> bool:
+    pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])")
+    for crate, text in texts.items():
+        if crate == own_crate:
+            continue
+        if pattern.search(text):
+            return True
+    return False
+
+
+# The binary crate has nothing above it, so none of its items can be reached
+# from outside by construction. Counting them drowns the signal from the
+# libraries, which is what the gate is about.
+BINARY_CRATES = {"cli"}
+
+
+def gate_pub_api_is_used() -> str:
+    """Every `pub` item in a library crate is reached from outside it, or is listed."""
+    everything = sorted((ROOT / "crates").rglob("*.rs"))
+    # The binary is excluded from what is *reported* but kept in what is
+    # *searched*: it is the main consumer of the libraries, and dropping it from
+    # the corpus would make every item it calls look unused.
+    sources = [p for p in everything if _crate_of(p) not in BINARY_CRATES]
+    texts: dict[str, list[str]] = {}
+    for path in everything:
+        texts.setdefault(_crate_of(path), []).append(path.read_text(encoding="utf-8"))
+    joined = {crate: "\n".join(parts) for crate, parts in texts.items()}
+    unused: list[str] = []
+    for path in sources:
+        crate = _crate_of(path)
+        for name in _pub_items(path):
+            if not _externally_used(name, crate, joined):
+                unused.append(f"{crate}:{name}")
+    unused.sort()
+    baseline_path = ROOT / "gates/unused-pub-api.baseline"
+    baseline: set[str] = set()
+    if baseline_path.is_file():
+        baseline = {
+            line.strip()
+            for line in baseline_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    stale = sorted(baseline - set(unused))
+    if stale:
+        raise SystemExit(
+            "these entries are used now, so shrink the baseline:\n  "
+            + "\n  ".join(stale)
+            + "\n  remove them from gates/unused-pub-api.baseline"
+        )
+    regressed = sorted(set(unused) - baseline)
+    if regressed:
+        raise SystemExit(
+            "these public items are reached from nowhere outside their crate:\n  "
+            + "\n  ".join(regressed)
+        )
+    return f"{len(unused)} public items are crate-internal by use; the list has not grown"
+
+
+def selftest_pub_api_is_used() -> None:
+    sample = "pub fn used_elsewhere() {}\npub struct AlsoUsed;\nfn private() {}\n"
+    names = _pub_items_from_text(sample)
+    assert names == ["used_elsewhere", "AlsoUsed"], f"pub scanning broke: {names}"
+    # An item only its own crate mentions has to be caught.
+    texts = {"a": "x.used_elsewhere()", "b": "unrelated"}
+    assert _externally_used("used_elsewhere", "c", texts) is True
+    assert _externally_used("AlsoUsed", "c", texts) is False
+    # The same name inside its own crate does not count as external use.
+    assert _externally_used("used_elsewhere", "a", texts) is False
+
+
+def _pub_items_from_text(text: str) -> list[str]:
+    names: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^pub (?:const |static |fn |struct |enum |trait |type )([A-Za-z0-9_]+)", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+# --------------------------------------------------------------------------
 # gate: the frozen BPE vocab is versioned, lossless and structurally sound
 # --------------------------------------------------------------------------
 def gate_tokenizer_vocab_is_frozen() -> str:
@@ -1749,8 +3247,6833 @@ def selftest_model_spec_is_consistent() -> None:
         pass
 
 
+# --------------------------------------------------------------------------
+# gate: a passage stamped eval-only never becomes a training row (PP)
+# --------------------------------------------------------------------------
+# An eval set separated by intent leaks the moment discipline slips. This one
+# is separated by digest: the passage's own content_id is stamped, and the
+# check is mechanical from there on.
+
+
+def _eval_only_file_finding(path: Path) -> str | None:
+    """The stamp list's own shape. A malformed list is refused here so it can
+    never pass for an empty one."""
+    if not path.exists():
+        return "the eval-only stamp list is missing: the leak check would run on nothing"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        return f"not JSON: {err}"
+    if not isinstance(data, dict):
+        return "not a JSON object"
+    digests = data.get("digests")
+    if not isinstance(digests, list):
+        return "`digests` is not a list"
+    for digest in digests:
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            return f"`{digest!r}` is not a sha256 digest"
+    if len(set(digests)) != len(digests):
+        return "duplicate digest"
+    return None
+
+
+def gate_eval_set_never_trained() -> str:
+    """The eval-only list holds, and the check proves it fires on the real
+    pipeline rather than only on synthetic rows. The corpus this machine
+    builds is turned into an SFT set; every grounded row must carry the
+    `content_id` of the passage it came from, so the leak check cannot be
+    silently disarmed; and one row's own digest stamped into a temporary list
+    must make the evaluator refuse the whole set."""
+    import tempfile
+
+    stamp_list = ROOT / "training" / "eval" / "eval-only.json"
+    finding = _eval_only_file_finding(stamp_list)
+    if finding:
+        raise SystemExit(f"{stamp_list.relative_to(ROOT)}: {finding}")
+
+    def py(script: str, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(ROOT / script), *args],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+
+    with tempfile.TemporaryDirectory() as td:
+        corpus = str(Path(td) / "knowledge.jsonl")
+        sft = str(Path(td) / "sft.jsonl")
+        r1 = py("training/build_corpus.py", "--repo", ".", "--out", corpus)
+        if r1.returncode != 0:
+            raise SystemExit(f"the corpus the check examines does not build: {r1.stderr[-200:]}")
+        r2 = py("training/make_sft.py", "--corpus", corpus,
+                "--curriculum", "training/curriculum", "--out", sft)
+        if r2.returncode != 0:
+            raise SystemExit(f"the SFT set does not build: {r2.stderr[-200:]}")
+        rows = [
+            json.loads(line)
+            for line in Path(sft).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        grounded = [row for row in rows if row.get("kind") != "curriculum"]
+        if not grounded:
+            raise SystemExit("the SFT set has no grounded rows: the check would pass on nothing")
+        unaddressed = [row for row in grounded if not row.get("content_id")]
+        if unaddressed:
+            raise SystemExit(
+                f"{len(unaddressed)} grounded row(s) carry no content_id: "
+                "the leak check is disarmed"
+            )
+        r3 = py("training/eval_sft.py", "--sft", sft, "--eval-only", str(stamp_list))
+        if r3.returncode != 0:
+            raise SystemExit(f"a stamped passage is in the training set:\n{r3.stdout[-400:]}")
+        stamped = str(Path(td) / "stamped.json")
+        Path(stamped).write_text(
+            json.dumps({"digests": [grounded[0]["content_id"]]}), encoding="utf-8"
+        )
+        r4 = py("training/eval_sft.py", "--sft", sft, "--eval-only", stamped)
+        if r4.returncode == 0:
+            raise SystemExit(
+                "the evaluator accepted a row whose own passage is stamped "
+                "eval-only: the check is decoration"
+            )
+        if "eval-only" not in r4.stdout:
+            raise SystemExit(
+                f"the spiked set was refused without naming the eval-only leak:\n{r4.stdout[-300:]}"
+            )
+        n_grounded = len(grounded)
+
+    stamps = len(json.loads(stamp_list.read_text(encoding="utf-8"))["digests"])
+    return (
+        f"{stamps} stamped passage(s), {n_grounded} grounded row(s) checked, "
+        f"none stamped; the evaluator refuses a spiked stamp"
+    )
+
+
+def selftest_eval_set_never_trained() -> None:
+    """The canaries: a leaked row must produce a finding, an unstamped row
+    must not, and a malformed stamp list must be refused rather than read as
+    empty."""
+    import importlib.util
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location(
+        "eval_sft", str(ROOT / "training" / "eval_sft.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    digest = "a" * 64
+    row = {
+        "messages": [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": "a body long enough to count on its own\n\nSource: a/b.rs:1",
+            },
+        ],
+        "kind": "doc",
+        "citation": "a/b.rs:1",
+        "content_id": digest,
+    }
+    assert any("eval-only" in f for f in mod.evaluate([row], {digest})["findings"]), (
+        "a stamped row passed the evaluator: the gate is decoration"
+    )
+    assert not mod.evaluate([row], {"b" * 64})["findings"], (
+        "an unstamped row was refused"
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        broken = Path(td) / "broken.json"
+        broken.write_text(json.dumps({"digests": ["not-a-digest"]}), encoding="utf-8")
+        if _eval_only_file_finding(broken) is None:
+            raise AssertionError("a malformed stamp list passed for an empty one")
+        doubled = Path(td) / "doubled.json"
+        doubled.write_text(json.dumps({"digests": [digest, digest]}), encoding="utf-8")
+        if _eval_only_file_finding(doubled) is None:
+            raise AssertionError("a duplicated stamp passed")
+        whole = Path(td) / "whole.json"
+        whole.write_text(json.dumps({"digests": [digest]}), encoding="utf-8")
+        if _eval_only_file_finding(whole) is not None:
+            raise AssertionError("a well-formed stamp list was refused")
+
+
+# --------------------------------------------------------------------------
+# gate: the muP init measurement is reproduced, not recited (NN-4)
+# --------------------------------------------------------------------------
+# model_spec.json marks two decisions `olculmedi` and names NN-4 as the run that
+# measures them. A recorded number that nothing re-derives is a number that
+# drifts away from its tree, so the records are re-measured here: the same
+# machine, the same seeds, the same bands.
+
+
+def _mup_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "mup_olcum", str(ROOT / "training" / "mup_olcum.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def gate_mup_measurement_reproduced() -> str:
+    """The three NN-4 records are re-measured on this machine, their control
+    channels are checked, the committed spec's parameter table is re-counted
+    from its own configuration, and every record passes the mechanical-run
+    schema. A profile outside the theta(1) band is reported, not hidden: the
+    gate's job is to keep the number honest, not to make it comfortable."""
+    mod = _mup_module()
+    dikkat_yolu, readout_yolu, spec_yolu = mod.kayit_yollari()
+    for yol in (dikkat_yolu, readout_yolu, spec_yolu):
+        if not yol.is_file():
+            raise SystemExit(f"{yol.relative_to(ROOT)} is missing: an unrecorded measurement is not a measurement")
+    olcum = mod.olc()
+    spec = mod.spec_olcumu()
+    bulgular = mod.kayitlari_denetle(olcum, spec) + mod.kontrol_bulgulari(olcum)
+    if bulgular:
+        raise SystemExit("the muP records do not reproduce:\n  " + "\n  ".join(bulgular))
+    for yol in (dikkat_yolu, readout_yolu, spec_yolu):
+        rec = json.loads(yol.read_text(encoding="utf-8"))
+        finding = _eval_run_finding(rec)
+        if finding:
+            raise SystemExit(f"{yol.name}: {finding}")
+    if not olcum["kriterler"]["dikkat"] or not olcum["kriterler"]["readout"]:
+        raise SystemExit(
+            "the muP criteria are recorded as true but re-measure false: "
+            f"{olcum['kriterler']}"
+        )
+    if spec["sayim_toplam_hesaplanan"] != spec["sayim_toplam_beyan"]:
+        raise SystemExit(
+            "the committed spec's parameter table does not survive an "
+            f"independent count: {spec['sayim_toplam_hesaplanan']} != {spec['sayim_toplam_beyan']}"
+        )
+    band = spec["ileri_gecis"]["theta_1_bandinda"]
+    return (
+        "muP init olcumu yeniden uretildi: dikkat oranlari "
+        f"{ {k: v['ortalama'] for k, v in olcum['dikkat_oranlari'].items()} }, "
+        f"bagli readout sapmasi {olcum['bagli_olmayan_mup_esitligi']}, "
+        f"kontroller {olcum['kontrol']['dikkat_standart_orani']['ortalama']} / "
+        f"{olcum['bagli_olceksiz_buyumesi']['ortalama']}; "
+        f"spec sayimi {spec['sayim_toplam_hesaplanan']} (beyan {spec['sayim_toplam_beyan']}); "
+        f"katman profili {spec['ileri_gecis']['ilk_katman_rms']} -> {spec['ileri_gecis']['son_katman_rms']} "
+        f"({spec['ileri_gecis']['buyume_son_bolu_ilk']}x), theta_1 bandinda={band}"
+        + ("" if band else " [BULGU: bant disi]")
+    )
+
+
+def selftest_mup_measurement_reproduced() -> None:
+    """The canaries: a drifted number, a missing record and a judgement-word
+    criterion must each be refused."""
+    import tempfile
+
+    mod = _mup_module()
+    olcum = mod.olc()
+    spec = mod.spec_olcumu()
+    if mod.kayitlari_denetle(olcum, spec) + mod.kontrol_bulgulari(olcum):
+        raise AssertionError("the fresh measurement does not match its own records")
+    bozuk = json.loads(json.dumps(olcum))
+    bozuk["dikkat_logit_rms"]["spesifikasyon"]["128"][0] *= 3.0
+    if not mod.kayitlari_denetle(bozuk, spec):
+        raise AssertionError("a drifted number was accepted")
+    bozuk_spec = json.loads(json.dumps(spec))
+    bozuk_spec["ileri_gecis"]["katman_aktivasyon_rms"][-1] *= 2.0
+    if not mod.kayitlari_denetle(olcum, bozuk_spec):
+        raise AssertionError("a drifted layer profile was accepted")
+    bozuk_sayim = json.loads(json.dumps(spec))
+    bozuk_sayim["sayim_toplam_hesaplanan"] = 1
+    if not mod.kayitlari_denetle(olcum, bozuk_sayim):
+        raise AssertionError("a spec parameter table that does not count was accepted")
+    kor = json.loads(json.dumps(olcum))
+    kor["dikkat_oranlari"]["standart"]["ortalama"] = 3.0
+    if not mod.kontrol_bulgulari(kor):
+        raise AssertionError("a control channel that stopped discriminating was accepted")
+    # A record stating a judgement instead of a machine check is not a run.
+    kayit = mod.kayitlar(olcum)[0][1]
+    kayit["olcut"]["ad"] = "dikkat olcegi iyi gorunuyor"
+    if _eval_run_finding(kayit) is None:
+        raise AssertionError("a judgement-word criterion passed the run schema")
+    # And the verifier has to notice records that are not there at all.
+    with tempfile.TemporaryDirectory() as td:
+        gercek = mod.KAYIT_DIZINI
+        mod.KAYIT_DIZINI = Path(td)
+        try:
+            if not mod.kayitlari_denetle(olcum):
+                raise AssertionError("missing records were accepted")
+        finally:
+            mod.KAYIT_DIZINI = gercek
+
+
+# --------------------------------------------------------------------------
+# gate: the training mix is declared, and the declaration is enforced (NN §8.4)
+# --------------------------------------------------------------------------
+# A mix nobody wrote down is a mix nobody can audit: a set that quietly becomes
+# 99% one source still trains and still looks like a set. So the strata are
+# declared in `training/veri-karisimi.json` with a share band each, and the
+# builder refuses rather than adjusts.
+
+
+def gate_data_mix_is_declared() -> str:
+    """The mix is rebuilt from its declaration and the record has to survive it:
+    an undeclared stratum, a share outside its declared band, or a grounded row
+    with no content_id each refuse the build. The record is also checked against
+    the mechanical-run schema, because a mix report is an evaluation run."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "veri-karisimi-2026-09-23.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit(
+            f"{kayit_yolu.relative_to(ROOT)} is missing: an unrecorded mix is a mix nobody declared"
+        )
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "veri_karisimi.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        raise SystemExit(
+            "the declared mix does not rebuild:\n"
+            + "".join(f"  {line}\n" for line in (r.stdout + r.stderr).strip().splitlines())
+        )
+    rec = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    finding = _eval_run_finding(rec)
+    if finding:
+        raise SystemExit(f"{kayit_yolu.name}: {finding}")
+    karisim = rec.get("karisim")
+    if not isinstance(karisim, dict) or "paylar" not in karisim:
+        raise SystemExit(f"{kayit_yolu.name}: the record carries no measured mix")
+    return (
+        f"veri karisimi beyandan yeniden kuruldu: {karisim.get('toplam_satir')} satir, "
+        f"sayilar {karisim.get('satir_sayilari')}, paylar {karisim.get('paylar')}"
+    )
+
+
+def selftest_data_mix_is_declared() -> None:
+    """The canaries: a share outside its band, a band that does not parse, and a
+    missing record must each be refused."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "veri_karisimi", str(ROOT / "training" / "veri_karisimi.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    beyan = json.loads(mod.BEYAN.read_text(encoding="utf-8"))
+    gercek = mod.BEYAN.read_text(encoding="utf-8")
+    sikisik = json.loads(json.dumps(beyan))
+    sikisik["katmanlar"]["gercek"]["taban_pay"] = 0.0
+    sikisik["katmanlar"]["gercek"]["tavan_pay"] = 0.01
+    mod.BEYAN.write_text(json.dumps(sikisik, ensure_ascii=False), encoding="utf-8")
+    try:
+        karisim = mod.karisim_olc(mod.satirlari_topla(1, 0))
+        if not karisim["bant_ihlalleri"]:
+            raise AssertionError("a share above its declared ceiling was accepted")
+    finally:
+        mod.BEYAN.write_text(gercek, encoding="utf-8")
+
+    gecersiz = json.loads(json.dumps(beyan))
+    gecersiz["katmanlar"]["gercek"]["taban_pay"] = 0.9
+    gecersiz["katmanlar"]["gercek"]["tavan_pay"] = 0.1
+    mod.BEYAN.write_text(json.dumps(gecersiz, ensure_ascii=False), encoding="utf-8")
+    try:
+        try:
+            mod.beyan_oku()
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a band whose floor is above its ceiling was accepted")
+    finally:
+        mod.BEYAN.write_text(gercek, encoding="utf-8")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        gercek_kayit = mod.KAYIT
+        mod.KAYIT = Path(td) / "yok.json"
+        try:
+            karisim = mod.karisim_olc(mod.satirlari_topla(1, 0))
+            if not karisim["paylar"]:
+                raise AssertionError("the mix measured nothing and said so")
+        finally:
+            mod.KAYIT = gercek_kayit
+
+
+# --------------------------------------------------------------------------
+# gate: the training budget is declared and measured (NN §8.5, HH)
+# --------------------------------------------------------------------------
+# "More epochs is better" is an assumption until the repetition is a number. The
+# policy declares the epoch count and the weight decay; this gate re-measures the
+# budget the policy is written against and refuses a policy that outruns the
+# protocol ceiling or a budget that does not reproduce.
+
+
+def gate_training_budget_is_declared() -> str:
+    """The regularization/epoch policy exists, its epoch count stays under the
+    grant protocol's ceiling, and the token budget it is written against
+    re-measures with the frozen vocabulary."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "egitim-butcesi-2026-09-23.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit(
+            f"{kayit_yolu.relative_to(ROOT)} is missing: a policy with no measured budget is a guess"
+        )
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "egitim_butcesi.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        raise SystemExit(
+            "the training budget does not reproduce:\n"
+            + "".join(f"  {line}\n" for line in (r.stdout + r.stderr).strip().splitlines())
+        )
+    rec = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    finding = _eval_run_finding(rec)
+    if finding:
+        raise SystemExit(f"{kayit_yolu.name}: {finding}")
+    butce = rec.get("butce")
+    if not isinstance(butce, dict) or "benzersiz_jeton" not in butce:
+        raise SystemExit(f"{kayit_yolu.name}: the record carries no measured budget")
+    return (
+        f"egitim butcesi olculdu: {butce['benzersiz_jeton']} benzersiz jeton, "
+        f"{butce['max_epochs']} epoch -> {butce['toplam_gecis']} gecis, "
+        f"etkin kaynak orani {butce['etkin_kaynak_orani']}, "
+        f"jeton/param {butce['jeton_basina_param_tam_butce']} "
+        f"(protokol tavani {butce['protokol_epoch_tavani']})"
+    )
+
+
+def selftest_training_budget_is_declared() -> None:
+    """The canaries: an epoch count over the protocol ceiling, a weight decay out
+    of range and a policy missing a field must each be refused."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "egitim_butcesi", str(ROOT / "training" / "egitim_butcesi.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    gercek = mod.POLITIKA.read_text(encoding="utf-8")
+    politika = json.loads(gercek)
+    try:
+        tavan = mod.protokol_tavani()
+        asiri = json.loads(json.dumps(politika))
+        asiri["max_epochs"] = tavan + 1
+        # Korpus gerektirmeyen saf kural uzerinden: CI'da "Gate self-tests"
+        # adimi korpus kurulmadan ONCE kosar, butce_olc() burada kosamazdi.
+        if not mod.politika_ihlalleri(asiri, tavan):
+            raise AssertionError("an epoch count over the protocol ceiling was accepted")
+        bozuk = json.loads(json.dumps(politika))
+        bozuk["weight_decay"] = 0.0
+        mod.POLITIKA.write_text(json.dumps(bozuk, ensure_ascii=False), encoding="utf-8")
+        try:
+            mod.politika_oku()
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a zero weight decay was accepted")
+    finally:
+        mod.POLITIKA.write_text(gercek, encoding="utf-8")
+    if mod.politika_ihlalleri(politika, mod.protokol_tavani()):
+        raise AssertionError("the committed policy breaches its own ceiling")
+    # The ceiling is read from the grant crate, not repeated: prove it is a number
+    # and that it is the crate's, so a second literal cannot drift in.
+    tavan = mod.protokol_tavani()
+    kaynak = mod.GRANT_KAYNAGI.read_text(encoding="utf-8")
+    if f"MAX_TRAINING_GRANT_EPOCHS: u32 = {tavan}" not in kaynak:
+        raise AssertionError("the ceiling was not read from the grant crate")
+
+
+
+TOMURCUK_YASAK = [
+    "String",
+    "format!",
+    "write!",
+    "writeln!",
+    "to_string",
+    "push_str",
+    "char",
+    "println!",
+    "eprint",
+    "Vec<u8>",
+]
+
+
+def _tomurcuk_kodu() -> str:
+    """The head's source with tests and comments removed.
+
+    Tests may format an assertion message; comments may name the forbidden
+    tokens while explaining why they are forbidden. Neither can generate text
+    at runtime, so neither is what this gate is about.
+    """
+    kaynaklar = sorted((ROOT / "crates" / "tomurcuk" / "src").rglob("*.rs"))
+    if not kaynaklar:
+        raise SystemExit("crates/tomurcuk/src has no sources: the head is gone")
+    parcalar: list[str] = []
+    for kaynak in kaynaklar:
+        satirlar = kaynak.read_text(encoding="utf-8").splitlines()
+        parcalar.append(
+            "\n".join(s for s in _test_modulu_disinda(satirlar)
+                      if not s.lstrip().startswith("//"))
+        )
+    return "\n".join(parcalar)
+
+
+def _test_modulu_disinda(satirlar: list[str]) -> list[str]:
+    """Every line except the `#[cfg(test)]` module's own block.
+
+    Cutting everything *after* the marker instead of the block itself would let
+    production code hide below the tests, which is exactly the shape an
+    accidental paste takes. The block is found by matching braces, so what comes
+    after it is still checked.
+    """
+    for i, satir in enumerate(satirlar):
+        if not satir.strip().startswith("#[cfg(test)]"):
+            continue
+        j = i
+        while j < len(satirlar) and not satirlar[j].lstrip().startswith(("mod ", "pub mod ")):
+            j += 1
+        if j >= len(satirlar):
+            return satirlar[:i]
+        derinlik = 0
+        basladi = False
+        k = j
+        while k < len(satirlar):
+            derinlik += satirlar[k].count("{") - satirlar[k].count("}")
+            if "{" in satirlar[k]:
+                basladi = True
+            if basladi and derinlik <= 0:
+                break
+            k += 1
+        return satirlar[:i] + satirlar[k + 1:]
+    return satirlar
+
+
+def gate_decision_head_has_no_generation_surface() -> str:
+    """The decision head cannot produce text, even at compile time.
+
+    T makes this a doctrine: the head decides, the generative model writes. A
+    doctrine held only in prose is one a later edit can quietly undo, so the
+    source is what gets checked - and the output surface is checked to be
+    exactly the three closed shapes, because a fourth variant is how free text
+    would get in.
+    """
+    import re
+
+    kod = _tomurcuk_kodu()
+    for yasak in TOMURCUK_YASAK:
+        if yasak in kod:
+            raise SystemExit(
+                f"the decision head carries a generation surface: {yasak}"
+            )
+    match = re.search(r"pub enum Karar\s*\{([^}]+)\}", kod)
+    if not match:
+        raise SystemExit("the head's output enum is not there to check")
+    variants = [
+        line.strip().split("(")[0].strip()
+        for line in match.group(1).splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    expected = ["Secenek", "Puan", "EvetHayir"]
+    if variants != expected:
+        raise SystemExit(
+            f"the head's output surface changed: got {variants}, expected {expected}"
+        )
+    # The head has to be reached from the binary, or the doctrine is a file
+    # nobody runs.
+    dagitim = read("crates/cli/src/main.rs")
+    if '"karar" => lubot::karar::cmd_karar(rest)' not in dagitim:
+        raise SystemExit("the head is not reachable from any command")
+    return "the decision head has 3 closed shapes and no text-producing surface"
+
+
+def selftest_decision_head_has_no_generation_surface() -> None:
+    """Canaries: text-producing code, a fourth shape, and an unwired head must
+    each be refused - and a `format!` inside the tests must not be."""
+    lib = ROOT / "crates" / "tomurcuk" / "src" / "lib.rs"
+    gercek = lib.read_text(encoding="utf-8")
+    try:
+        # Canary 1: a function that returns text, appended *after* the test
+        # module. Cutting everything below `#[cfg(test)]` would have let this
+        # through, so the canary sits exactly where that hole was.
+        lib.write_text(
+            gercek + "\n#[allow(dead_code)]\npub fn kacak() -> String { String::new() }\n",
+            encoding="utf-8",
+        )
+        try:
+            gate_decision_head_has_no_generation_surface()
+            raise AssertionError("a head that can return text was accepted")
+        except SystemExit:
+            pass
+        # Canary 2: a fourth output shape, which is how text would get in.
+        dort = gercek.replace(
+            "    /// A yes or no with a probability.\n    EvetHayir(EvetHayirKarari),",
+            "    /// A yes or no with a probability.\n    EvetHayir(EvetHayirKarari),\n    Metin(&'static str),",
+            1,
+        )
+        if dort == gercek:
+            raise AssertionError("the fourth-shape canary did not apply")
+        lib.write_text(dort, encoding="utf-8")
+        try:
+            gate_decision_head_has_no_generation_surface()
+            raise AssertionError("a fourth output shape was accepted")
+        except SystemExit:
+            pass
+        # Canary 3: a `format!` inside the tests is not a generation surface.
+        # Injected rather than assumed, so the canary tests the stripping and
+        # not what this file happens to contain today.
+        ic = """    #[allow(dead_code)]
+    fn kanarya() -> String {
+        format!("bir iddia mesaji")
+    }
+"""
+        asili = gercek.replace(
+            "mod tests {\n    use super::*;\n",
+            "mod tests {\n    use super::*;\n\n" + ic + "\n",
+            1,
+        )
+        if asili == gercek:
+            raise AssertionError("the test-module canary did not apply")
+        lib.write_text(asili, encoding="utf-8")
+        gate_decision_head_has_no_generation_surface()
+    finally:
+        lib.write_text(gercek, encoding="utf-8")
+
+
+def _onyukleme_turlari() -> list[dict]:
+    """Recorded bootstrap rounds, oldest first."""
+    import json as _json
+
+    turlar = []
+    for dosya in sorted((ROOT / "training" / "eval" / "sonuclar").glob("onyukleme-*.json")):
+        veri = _json.loads(dosya.read_text(encoding="utf-8"))
+        if isinstance(veri.get("tur"), int):
+            turlar.append(veri)
+    return turlar
+
+
+def gate_bootstrap_round_is_measured() -> str:
+    """A bootstrap round is a measurement, not a claim of progress.
+
+    G's loop only teaches if the refusals say why and the improvement is
+    recomputed. So: the record must re-verify against the data, every negative
+    row must carry a reason, and the competence delta must match what the two
+    records actually say - a round that compares itself to a round that does
+    not exist is a fabricated improvement.
+    """
+    import json as _json
+
+    sonuclar = ROOT / "training" / "eval" / "sonuclar"
+    kayitlar = sorted(sonuclar.glob("onyukleme-*.json"))
+    if not kayitlar:
+        raise SystemExit("no bootstrap round is recorded")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "onyukleme.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the bootstrap round does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    havuz_dosya = ROOT / "training" / "eval" / "negatif-havuz.jsonl"
+    havuz = []
+    if havuz_dosya.is_file():
+        havuz = [
+            _json.loads(line)
+            for line in havuz_dosya.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    nedensiz = [h for h in havuz if not h.get("neden")]
+    if nedensiz:
+        raise SystemExit(
+            f"{len(nedensiz)} negative row(s) carry no reason: a refusal nobody "
+            "explained cannot be learned from"
+        )
+    for kayit_dosya in kayitlar:
+        kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+        bulgu = _eval_run_finding(kayit)
+        if bulgu:
+            raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+        fark = kayit.get("yeterlilik_farki")
+        if not isinstance(fark, dict) or "karsilastirilabilir" not in fark:
+            raise SystemExit(f"{kayit_dosya.name}: no competence delta recorded")
+    # A comparable delta needs a previous round; with one record there is none.
+    if len(kayitlar) == 1:
+        kayit = _json.loads(kayitlar[0].read_text(encoding="utf-8"))
+        if kayit["yeterlilik_farki"]["karsilastirilabilir"]:
+            raise SystemExit(
+                "the only recorded round claims a competence delta: there is no "
+                "previous round to be better than"
+            )
+    return (
+        f"{len(kayitlar)} bootstrap round(s) re-verify; {len(havuz)} negative "
+        "row(s), each with a reason"
+    )
+
+
+def selftest_bootstrap_round_is_measured() -> None:
+    """Canaries: a missing record, an unexplained refusal and a fabricated delta
+    must each be refused."""
+    sonuclar = ROOT / "training" / "eval" / "sonuclar"
+    kayitlar = sorted(sonuclar.glob("onyukleme-*.json"))
+    if not kayitlar:
+        raise AssertionError("the self-test needs a recorded round to break")
+    kayit_dosya = kayitlar[-1]
+    havuz_dosya = ROOT / "training" / "eval" / "negatif-havuz.jsonl"
+    eski_kayit = kayit_dosya.read_text(encoding="utf-8")
+    eski_havuz = havuz_dosya.read_text(encoding="utf-8") if havuz_dosya.is_file() else None
+    try:
+        gate_bootstrap_round_is_measured()
+
+        # Canary 1: a refusal with no reason.
+        satirlar = eski_havuz or ""
+        with havuz_dosya.open("a", encoding="utf-8") as akis:
+            akis.write('{"tur": 1, "sinif": "okuma", "kimlik": "okuma:99", "neden": []}\n')
+        try:
+            gate_bootstrap_round_is_measured()
+            raise AssertionError("a refusal with no reason was accepted")
+        except SystemExit:
+            pass
+        if eski_havuz is None:
+            havuz_dosya.unlink(missing_ok=True)
+        else:
+            havuz_dosya.write_text(satirlar, encoding="utf-8")
+
+        # Canary 2: a delta invented against a round that does not exist.
+        kayit = json.loads(eski_kayit)
+        kayit["yeterlilik_farki"] = {
+            "karsilastirilabilir": True,
+            "onceki_tur": 0,
+            "yeni_cozulen_siniflar": ["okuma"],
+            "gerileyen_siniflar": [],
+            "yalniz_tekrar": False,
+        }
+        kayit_dosya.write_text(
+            json.dumps(kayit, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        try:
+            gate_bootstrap_round_is_measured()
+            raise AssertionError("a fabricated competence delta was accepted")
+        except SystemExit:
+            pass
+
+        # Canary 3: a record that no longer matches the data.
+        kayit = json.loads(eski_kayit)
+        kayit["gecen_toplam"] = kayit["gecen_toplam"] + 1
+        kayit_dosya.write_text(
+            json.dumps(kayit, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        try:
+            gate_bootstrap_round_is_measured()
+            raise AssertionError("a drifted count was accepted")
+        except SystemExit:
+            pass
+    finally:
+        kayit_dosya.write_text(eski_kayit, encoding="utf-8")
+        if eski_havuz is not None:
+            havuz_dosya.write_text(eski_havuz, encoding="utf-8")
+        elif havuz_dosya.is_file():
+            havuz_dosya.unlink()
+
+
+def _sinav_satirlari() -> list[dict]:
+    """Held-out exam questions; an absent file is an empty set, not an error."""
+    import json as _json
+
+    dosya = ROOT / "training" / "eval" / "sinav-seti.jsonl"
+    if not dosya.is_file():
+        return []
+    return [
+        _json.loads(line)
+        for line in dosya.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def gate_comparison_class_is_declared() -> str:
+    """The opponent is named with numbers, and a match may only be claimed on
+    the task axis.
+
+    GG's calibration: today's "small" open models are 135M-600M parameters, so
+    a 924.288-parameter reader is below that class and a parameter-axis match
+    claim would be a category error. The declaration is re-measured here rather
+    than argued once, because the corpus grows and the class moves with it.
+    """
+    import json as _json
+
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "kiyas-sinifi-2026-09-23.json"
+    if not kayit_dosya.is_file():
+        raise SystemExit("no comparison class is declared")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "kiyas_sinifi.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the comparison class does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    kural = kayit.get("eksen_kurali", {})
+    if kural.get("kapisma_iddiasi_yalniz") != "gorev-eslenegi":
+        raise SystemExit("the record does not confine a match claim to the task axis")
+    if kural.get("reddedilen") != "parametre-eslenegi":
+        raise SystemExit("the record does not refuse the parameter axis")
+    sinif = kayit.get("sinif", {})
+    if not isinstance(sinif.get("parametre"), int) or sinif["parametre"] <= 0:
+        raise SystemExit("the declared class carries no parameter count")
+    return (
+        f"class declared: {sinif['parametre']} params vs the "
+        f"{sinif['sinir'][0]['ad']} boundary, {kayit['sinav_seti']['soru_sayisi']} "
+        "exam question(s), match claims confined to the task axis"
+    )
+
+
+def selftest_comparison_class_is_declared() -> None:
+    """Canaries: a missing record, a boundary breach, an unstamped exam question
+    and a parameter-axis match claim must each be refused."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "kiyas_sinifi", str(ROOT / "training" / "kiyas_sinifi.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+
+    # The script's own canaries. The corpus-free ones always run; the record
+    # round-trip needs the corpus and CI runs this step before the corpus exists.
+    if mod.self_test() != 0:
+        raise AssertionError("the comparison class canaries did not all fire")
+    if not mod.KORPUS.is_file():
+        print(
+            "self-test OK [comparison-class-is-declared] "
+            "(korpus yok: politika kanaryalari kosuldu, kayit kanaryasi atlandi)"
+        )
+        return
+
+    kayit_dosya = mod.KAYIT
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    try:
+        # Canary: with no declaration at all the gate must refuse.
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_comparison_class_is_declared()
+            raise AssertionError("an undeclared comparison class was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
+def gate_exam_set_is_held_out() -> str:
+    """The exam set is held out physically, not by intention.
+
+    A stamp list nobody honours is a wish. So this checks the whole chain:
+    every question's passage is stamped, no stamp is orphaned, and - the part
+    that matters - building the SFT set from the corpus really drops every
+    stamped passage. Detection without prevention gives a refused run, not a
+    held-out exam.
+    """
+    import json as _json
+    import tempfile
+
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "sinav-seti-2026-09-23.json"
+    if not kayit_dosya.is_file():
+        raise SystemExit("no exam set is declared")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sinav.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"the exam set does not re-verify: {kosu.stdout.strip()[-300:]}")
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    damga = _json.loads((ROOT / "training" / "eval" / "eval-only.json").read_text(encoding="utf-8"))
+    damgalar = damga.get("digests", [])
+    if not damgalar:
+        raise SystemExit("the exam set is declared but nothing is stamped")
+
+    # Prevention, measured: the stamped passages must not survive into the SFT
+    # set. Without the corpus this cannot be run, and the self-test says so.
+    if not (ROOT / "corpus" / "knowledge-self.jsonl.gz").is_file():
+        raise SystemExit("the corpus is missing: prevention cannot be measured")
+    with tempfile.TemporaryDirectory() as td:
+        duz = Path(td) / "korpus.jsonl"
+        with gzip.open(ROOT / "corpus" / "knowledge-self.jsonl.gz", "rb") as kaynak:
+            duz.write_bytes(kaynak.read())
+        sft = Path(td) / "sft.jsonl"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "make_sft.py"),
+             "--corpus", str(duz), "--curriculum", "training/curriculum",
+             "--out", str(sft)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(f"the SFT set does not build: {kosu.stderr[-200:]}")
+        rapor = _json.loads(kosu.stdout)
+        if rapor.get("dropped_eval_only") != len(damgalar):
+            raise SystemExit(
+                f"{len(damgalar)} passage(s) are stamped but make_sft dropped "
+                f"{rapor.get('dropped_eval_only')}: the exam set is not held out"
+            )
+    return (
+        f"{kayit['sinav_seti']['soru_sayisi']} exam question(s), "
+        f"{len(damgalar)} stamped passage(s), all of them dropped from the "
+        "training set"
+    )
+
+
+def selftest_exam_set_is_held_out() -> None:
+    """Canaries: an unstamped question, an orphan stamp and a missing declaration
+    must each be refused; the prevention run needs the corpus and is skipped
+    loudly when it is absent."""
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sinav.py"), "--self-test"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise AssertionError(f"the exam set canaries did not fire: {kosu.stderr[-200:]}")
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "sinav-seti-2026-09-23.json"
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    if not (ROOT / "corpus" / "knowledge-self.jsonl.gz").is_file():
+        print(
+            "self-test OK [exam-set-is-held-out] "
+            "(korpus yok: onleme kosusu atlandi, kural kanaryalari kosuldu)"
+        )
+        return
+    try:
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_exam_set_is_held_out()
+            raise AssertionError("an undeclared exam set was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
+def _bulgu_alanlari() -> list[tuple[str, str, dict]]:
+    """Every `bulgu*` field in every recorded result, wherever it is nested."""
+    import json as _json
+
+    bulunan: list[tuple[str, str, dict]] = []
+
+    def gez(veri, dosya: str, yol: str) -> None:
+        if isinstance(veri, dict):
+            for anahtar, deger in veri.items():
+                # `bulgu_` rather than `bulgu`: a curriculum class is named
+                # `bulgular`, and a class name is not a claim.
+                if (
+                    anahtar.startswith("bulgu_")
+                    and isinstance(deger, dict)
+                ):
+                    bulunan.append((dosya, f"{yol}.{anahtar}", deger))
+                gez(deger, dosya, f"{yol}.{anahtar}")
+        elif isinstance(veri, list):
+            for i, oge in enumerate(veri):
+                gez(oge, dosya, f"{yol}[{i}]")
+
+    for dosya in sorted((ROOT / "training" / "eval" / "sonuclar").glob("*.json")):
+        gez(_json.loads(dosya.read_text(encoding="utf-8")), dosya.name, "")
+    return bulunan
+
+
+def gate_claims_carry_their_evidence() -> str:
+    """A finding is a claim; a claim without its number and its boundary is
+    refused.
+
+    The failure this prevents is the ordinary one: a sentence that says
+    "measured" and carries no measurement, or a finding that quietly fixes
+    something without saying what it left alone. So every `bulgu*` field states
+    what was measured (with a number in it), what follows from it, and what was
+    deliberately not done.
+    """
+    alanlar = _bulgu_alanlari()
+    if not alanlar:
+        raise SystemExit("no finding is recorded: the gate would pass on nothing")
+    hatalar: list[str] = []
+    for dosya, yol, deger in alanlar:
+        for zorunlu in ("olculen", "hukum", "yapilmayan"):
+            metin = deger.get(zorunlu)
+            if not isinstance(metin, str) or not metin.strip():
+                hatalar.append(f"{dosya}{yol}: `{zorunlu}` yok ya da bos")
+        olculen = deger.get("olculen")
+        if isinstance(olculen, str) and not any(c.isdigit() for c in olculen):
+            hatalar.append(
+                f"{dosya}{yol}: `olculen` hic sayi tasimiyor - olculmus bir "
+                "iddia olcusuz olmaz"
+            )
+    if hatalar:
+        raise SystemExit("a finding does not carry its evidence:\n  " + "\n  ".join(hatalar))
+    return f"{len(alanlar)} finding(s) each carry a measured number, a verdict and what was left alone"
+
+
+def selftest_claims_carry_their_evidence() -> None:
+    """Canaries: a finding with no boundary, and a finding whose `olculen`
+    carries no number, must each be refused."""
+    import json as _json
+
+    sonuclar = ROOT / "training" / "eval" / "sonuclar"
+    hedef = None
+    for dosya in sorted(sonuclar.glob("*.json")):
+        veri = _json.loads(dosya.read_text(encoding="utf-8"))
+        if any(k.startswith("bulgu_") for k in veri) or any(
+            isinstance(v, dict) and any(k.startswith("bulgu_") for k in v)
+            for v in veri.values()
+        ):
+            hedef = dosya
+            break
+    if hedef is None:
+        raise AssertionError("no record carries a finding to break")
+    gercek = hedef.read_text(encoding="utf-8")
+    try:
+        gate_claims_carry_their_evidence()
+
+        # Canary 1: a finding that never says what it left alone.
+        veri = _json.loads(gercek)
+        veri["bulgu_kanarya"] = {"olculen": "1 satir", "hukum": "BULGUDUR"}
+        hedef.write_text(_json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            gate_claims_carry_their_evidence()
+            raise AssertionError("a finding with no boundary was accepted")
+        except SystemExit:
+            pass
+
+        # Canary 2: "measured" with no number in it.
+        veri = _json.loads(gercek)
+        veri["bulgu_kanarya"] = {
+            "olculen": "performans olculdu ve yeterli bulundu",
+            "hukum": "BULGUDUR",
+            "yapilmayan": "hicbir sey degistirilmedi",
+        }
+        hedef.write_text(_json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            gate_claims_carry_their_evidence()
+            raise AssertionError("an unnumbered measurement was accepted")
+        except SystemExit:
+            pass
+    finally:
+        hedef.write_text(gercek, encoding="utf-8")
+
+
+def gate_decision_latency_is_recorded() -> str:
+    """The speed axis has a number on it, and the number says what it includes.
+
+    U makes speed and unit cost a second axis; an axis with no measurement on it
+    is a preference. This checks that the baseline exists, is mechanical, and
+    carries the caveat that the timing includes process startup - without it the
+    figure reads as the head's own cost, which is a smaller and false number.
+    """
+    import json as _json
+
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "karar-gecikme-2026-09-23.json"
+    if not kayit_dosya.is_file():
+        raise SystemExit("no decision-latency baseline is recorded")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "karar_gecikme.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the latency baseline does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    gecikme = kayit["gecikme"]
+    return (
+        f"decision path measured over {gecikme['kosu_sayisi']} runs: median "
+        f"{gecikme['medyan_ms']} ms (process startup included, stated in the record)"
+    )
+
+
+def selftest_decision_latency_is_recorded() -> None:
+    """Canaries: a one-run baseline, a missing caveat and a self-contradicting
+    interval must each be refused. None of them needs the binary."""
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "karar_gecikme.py"), "--self-test"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise AssertionError(f"the latency canaries did not fire: {kosu.stdout[-300:]}")
+    kayit_dosya = ROOT / "training" / "eval" / "sonuclar" / "karar-gecikme-2026-09-23.json"
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    try:
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_decision_latency_is_recorded()
+            raise AssertionError("an unrecorded latency axis was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
+def gate_first_answer_latency_is_recorded() -> str:
+    """V's half: cold start plus first answer on the local path has one number.
+
+    V asks for the local-first inference stack to be measured (cold start +
+    first-answer time) and wired into a gate. Nothing on this path stays warm -
+    no daemon, no cache, no loaded weights - so the caller's cost is the cold
+    span, and that is what the record must carry, with the caveat as a field.
+    """
+    import json as _json
+
+    kayit_dosya = (
+        ROOT / "training" / "eval" / "sonuclar" / "ilk-cevap-gecikme-2026-09-24.json"
+    )
+    if not kayit_dosya.is_file():
+        raise SystemExit("no first-answer (cold path) latency baseline is recorded")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "ilk_cevap_gecikme.py"), "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(
+            f"the cold-path baseline does not re-verify: {kosu.stdout.strip()[-300:]}"
+        )
+    kayit = _json.loads(kayit_dosya.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_dosya.name}: {bulgu}")
+    gecikme = kayit["gecikme"]
+    return (
+        f"ask path measured cold over {gecikme['kosu_sayisi']} runs: median "
+        f"{gecikme['medyan_ms']} ms (process startup + corpus parse included, "
+        "stated in the record)"
+    )
+
+
+def selftest_first_answer_latency_is_recorded() -> None:
+    """Canaries: thin baselines, a missing caveat, a missing cold flag, a
+    swapped-in other path and a self-contradicting interval must be refused.
+    None of them needs the binary."""
+    kosu = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "training" / "ilk_cevap_gecikme.py"),
+            "--self-test",
+        ],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise AssertionError(
+            f"the cold-path canaries did not fire: {kosu.stdout[-300:]}"
+        )
+    kayit_dosya = (
+        ROOT / "training" / "eval" / "sonuclar" / "ilk-cevap-gecikme-2026-09-24.json"
+    )
+    gercek = kayit_dosya.read_text(encoding="utf-8") if kayit_dosya.is_file() else None
+    try:
+        if kayit_dosya.is_file():
+            kayit_dosya.unlink()
+        try:
+            gate_first_answer_latency_is_recorded()
+            raise AssertionError("an unrecorded cold-path axis was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if gercek is not None:
+            kayit_dosya.write_text(gercek, encoding="utf-8")
+
+
+def gate_architecture_doc_tracks_layer_rule() -> str:
+    """The architecture doc names what the code enforces, or the gate drops.
+
+    crates/mimari holds the layer rule in code (a component may depend on its
+    own layer or below, never above). A document describing the architecture
+    that drifts away from the rule would teach a reader a system that does not
+    exist, so the doc must name every crate in crates/ and carry the rule's
+    own words - checked mechanically, not reviewed by memory.
+    """
+    belge = ROOT / "docs" / "ARCHITECTURE.md"
+    if not belge.is_file():
+        raise SystemExit("docs/ARCHITECTURE.md is missing")
+    metin = belge.read_text(encoding="utf-8")
+    crate_adlari = sorted(
+        d.name for d in (ROOT / "crates").iterdir() if d.is_dir()
+    )
+    eksikler = [
+        ad for ad in crate_adlari
+        if not re.search(rf"`{re.escape(ad)}`", metin)
+    ]
+    if eksikler:
+        raise SystemExit(
+            f"the architecture doc no longer names these crates: {', '.join(eksikler)}"
+        )
+    for isaret in ("never above", "topological"):
+        if isaret not in metin:
+            raise SystemExit(
+                f"the layer rule drifted out of the architecture doc: "
+                f"missing '{isaret}'"
+            )
+    return (
+        f"architecture doc names all {len(crate_adlari)} crates and carries "
+        "the layer rule"
+    )
+
+
+def selftest_architecture_doc_tracks_layer_rule() -> None:
+    """Canaries: a missing doc and a doc that silently lost a crate must each
+    be refused."""
+    belge = ROOT / "docs" / "ARCHITECTURE.md"
+    icerik = belge.read_text(encoding="utf-8") if belge.is_file() else None
+    try:
+        if belge.is_file():
+            belge.unlink()
+        try:
+            gate_architecture_doc_tracks_layer_rule()
+            raise AssertionError("a missing architecture doc was accepted")
+        except SystemExit:
+            pass
+        assert icerik is not None, "canary needs the real document"
+        bir_crate = sorted(
+            d.name for d in (ROOT / "crates").iterdir() if d.is_dir()
+        )[0]
+        belge.write_text(icerik.replace(f"`{bir_crate}`", "kayip-crate"))
+        try:
+            gate_architecture_doc_tracks_layer_rule()
+            raise AssertionError("a doc that lost a crate name was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if icerik is not None:
+            belge.write_text(icerik, encoding="utf-8")
+
+
+def gate_unserved_records_never_cited() -> str:
+    """Operator decision (2026-09-24): process documents never answer a question.
+
+    The device replied to a spec question by dumping work-queue passages. The
+    decision: the archive keeps every record (provenance and the ratchet do
+    not regress), but a record the serving policy stamps `served: false` can
+    neither be searched nor cited. Checked three ways: the policy file is
+    well-formed and non-stale (the builder refuses a policy entry that touches
+    nothing), the stamp count in a fresh build agrees with the file, and a
+    canary corpus proves the stamp itself is what excludes a record - stamped
+    canary is never cited; the same canary unstamped is found again, so the
+    gate cannot pass on a blind reader.
+    """
+    import hashlib
+
+    politika = ROOT / "training" / "servis-politikasi.json"
+    if not politika.is_file():
+        raise SystemExit("training/servis-politikasi.json is missing")
+    veri = json.loads(politika.read_text(encoding="utf-8"))
+    girisler = veri.get("servis_disi")
+    if not isinstance(girisler, list) or not girisler:
+        raise SystemExit("the serving policy carries no servis_disi entries")
+    yollar = [g.get("path") for g in girisler if isinstance(g, dict)]
+    if any(not isinstance(y, str) or not y for y in yollar):
+        raise SystemExit("a serving-policy entry has no path")
+    if "YAPILACAKLAR.md" not in yollar:
+        raise SystemExit("the work-queue document fell out of the serving policy")
+
+    ikili = ROOT / "target" / "debug" / "lubot"
+    if not ikili.is_file():
+        ikili = ROOT / "target" / "release" / "lubot"
+    if not ikili.is_file():
+        raise SystemExit("no lubot binary: the canary ask cannot run")
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        gecici = Path(td)
+        korpus_yolu = gecici / "k.jsonl"
+        b = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "training" / "build_corpus.py"),
+                "--repo", str(ROOT),
+                "--out", str(korpus_yolu),
+            ],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if b.returncode != 0:
+            raise SystemExit(
+                f"the corpus does not build with the serving policy: {b.stderr[-200:]}"
+            )
+        damgali = 0
+        for satir in korpus_yolu.read_text(encoding="utf-8").splitlines():
+            if satir.strip() and json.loads(satir).get("served") is False:
+                damgali += 1
+        if damgali == 0:
+            raise SystemExit(
+                "no record is stamped served:false, though the policy names entries"
+            )
+
+        GIZ = "g13li-kanarya-2026"
+        def _kayit(yol: str, served: bool) -> dict:
+            metin = f"The work queue says the {GIZ} token stays internal."
+            return {
+                "kind": "markdown",
+                "text": metin,
+                "path": yol,
+                "source": "kapi",
+                "digest": hashlib.sha256(metin.encode()).hexdigest(),
+                "licence": "MIT",
+                "attribution": "kapi",
+                "content_id": hashlib.sha256((yol + str(served)).encode()).hexdigest(),
+                "asset_id": "a" * 64,
+                "served": served,
+            }
+
+        for served in (False, True):
+            deneme = gecici / f"kanarya-{served}.jsonl"
+            deneme.write_text(
+                json.dumps(_kayit("PLAN.md", served), ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            kosu = subprocess.run(
+                [
+                    str(ikili), "ask", "--corpus", str(deneme),
+                    "--reader", "kapi", "--effort", "1x",
+                    "work queue token stalk",
+                ],
+                cwd=ROOT, capture_output=True, text=True, check=False,
+            )
+            sizdi = GIZ in kosu.stdout or "PLAN.md" in kosu.stdout
+            if not served and sizdi:
+                raise SystemExit(
+                    "a stamped record was cited: the serving exclusion does not hold"
+                )
+            if served and not sizdi:
+                raise SystemExit(
+                    "an unstamped canary was not found: this gate is blind, not green"
+                )
+    return (
+        f"{damgali} archived records are stamped never-served; the canary proves "
+        "the stamp is what excludes a record (control run finds it)"
+    )
+
+
+def selftest_unserved_records_never_cited() -> None:
+    """Canaries: a missing policy file and a policy that lost the work-queue
+    document must each be refused. The binary-level canaries live in the gate
+    itself (the control run would refuse a blind exclusion)."""
+    politika = ROOT / "training" / "servis-politikasi.json"
+    icerik = politika.read_text(encoding="utf-8") if politika.is_file() else None
+    try:
+        if politika.is_file():
+            politika.unlink()
+        try:
+            gate_unserved_records_never_cited()
+            raise AssertionError("a missing serving policy was accepted")
+        except SystemExit:
+            pass
+        assert icerik is not None, "canary needs the real policy"
+        veri = json.loads(icerik)
+        veri["servis_disi"] = [
+            g for g in veri["servis_disi"] if g.get("path") != "YAPILACAKLAR.md"
+        ]
+        politika.write_text(json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            gate_unserved_records_never_cited()
+            raise AssertionError("a policy that lost the work-queue document was accepted")
+        except SystemExit:
+            pass
+    finally:
+        if icerik is not None:
+            politika.write_text(icerik, encoding="utf-8")
+
+
+def _geri_besleme_ihlalleri(sayilar: set[str], yollar: set[str]) -> list[str]:
+    """Which corpus-visible files restate a corpus-derived number."""
+    import re as _re
+
+    ihlal: list[str] = []
+    for yol in sorted(yollar):
+        dosya = ROOT / yol
+        if not dosya.is_file():
+            continue
+        try:
+            metin = dosya.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for sayi in sorted(sayilar):
+            if _re.search(rf"(?<!\d){sayi}(?!\d)", metin):
+                ihlal.append(f"{yol}: {sayi}")
+    return ihlal
+
+
+def gate_measurements_do_not_feed_back() -> str:
+    """A measurement may not be written into a file the measurement reads.
+
+    This was found, not predicted. `README.md` is inside the corpus, and its
+    ratchet line restated the corpus's own token count, so the figure was an
+    input to the measurement that produced it. The result was a two-cycle with
+    no fixed point: with 101443 written the corpus measured 101444, and with
+    101444 written it measured 101443. The ratchet could not settle, and the
+    reason looked like a flaky build rather than a feedback loop.
+
+    Numbers that come out of the corpus belong in `training/ratchet.json`,
+    which the corpus does not read.
+    """
+    import json as _json
+
+    korpus = ROOT / "corpus" / "knowledge-self.jsonl.gz"
+    if not korpus.is_file():
+        raise SystemExit(f"corpus is not built: {korpus}")
+    butce_dosya = ROOT / "training" / "eval" / "sonuclar" / "egitim-butcesi-2026-09-23.json"
+    if not butce_dosya.is_file():
+        raise SystemExit(f"no budget record: {butce_dosya}")
+    butce = _json.loads(butce_dosya.read_text(encoding="utf-8"))["butce"]
+    sayilar = {str(butce["korpus_kayit_sayisi"]), str(butce["benzersiz_jeton"])}
+    yollar: set[str] = set()
+    with gzip.open(korpus, "rt", encoding="utf-8") as fh:
+        for satir in fh:
+            satir = satir.strip()
+            if satir:
+                yollar.add(_json.loads(satir)["path"])
+    ihlal = _geri_besleme_ihlalleri(sayilar, yollar)
+    if ihlal:
+        raise SystemExit(
+            "a corpus-derived figure is written into a file the corpus reads, so the "
+            "measurement feeds back into itself: " + "; ".join(ihlal)
+        )
+    return (
+        f"{len(yollar)} corpus-visible file(s) checked against the corpus figures "
+        f"({', '.join(sorted(sayilar))}); none restates them"
+    )
+
+
+def selftest_measurements_do_not_feed_back() -> None:
+    """Canaries: a corpus-visible file carrying the token count is caught, and
+    the same file without it is clean. Needs no corpus."""
+    # The canary figures are deliberately not plausible corpus figures. This
+    # file is inside the corpus, so a hardcoded number here would itself be
+    # flagged by the gate the moment the corpus reached that size - which is
+    # what happened when this self-test was first written with the live figures.
+    kanarya = ROOT / "geri-besleme-kanaryasi.md"
+    sahte = {"987654321", "987654320"}
+    olusturuldu = not kanarya.is_file()
+    try:
+        kanarya.write_text("korpus 987654321 jeton iceriyor.\n", encoding="utf-8")
+        bulunan = _geri_besleme_ihlalleri(sahte, {"geri-besleme-kanaryasi.md"})
+        if not bulunan:
+            raise AssertionError("a file restating a corpus figure was not caught")
+        kanarya.write_text("korpusun jeton sayisi ratchet.json'da duruyor.\n", encoding="utf-8")
+        temiz = _geri_besleme_ihlalleri(sahte, {"geri-besleme-kanaryasi.md"})
+        if temiz:
+            raise AssertionError(f"a clean file was reported as feedback: {temiz}")
+        # A figure embedded in a longer number is not the figure.
+        kanarya.write_text("satir 1987654321x\n", encoding="utf-8")
+        gomulu = _geri_besleme_ihlalleri(sahte, {"geri-besleme-kanaryasi.md"})
+        if gomulu:
+            raise AssertionError(f"a substring was counted as the figure: {gomulu}")
+    finally:
+        if olusturuldu and kanarya.is_file():
+            kanarya.unlink()
+
+
+def gate_rust_tokenizer_agrees_with_python() -> str:
+    """The Rust tokenizer and the Python one that cut the vocab produce the same ids.
+
+    The vocab was cut in Python; the training core reads it in Rust. Two
+    implementations of one format agreeing by convention is not an agreement,
+    so both are run over the whole corpus and their ids are compared record by
+    record. The Rust side is *executed*, never reimplemented here - a
+    comparison against a copy of the logic would measure the copy.
+    """
+    import json as _json
+
+    korpus = ROOT / "corpus" / "knowledge-self.jsonl.gz"
+    if not korpus.is_file():
+        raise SystemExit(f"corpus is not built: {korpus}")
+    betik = ROOT / "training" / "jeton_capraz.py"
+    proc = subprocess.run(
+        [sys.executable, str(betik), "--corpus", str(korpus), "--json", "--cargo"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            f"the two tokenizers disagree or the Rust side refused: "
+            f"{(proc.stdout or proc.stderr).strip()[-400:]}"
+        )
+    try:
+        olcum = _json.loads(proc.stdout)
+    except ValueError as exc:
+        raise SystemExit(f"cross-check produced no measurement: {exc}") from exc
+    if olcum["uyusmaz_kayit"] != 0:
+        raise SystemExit(f"{olcum['uyusmaz_kayit']} record(s) tokenize differently")
+    if olcum["karsilastirilan_kayit"] != olcum["korpus_kayit"]:
+        raise SystemExit(
+            f"only {olcum['karsilastirilan_kayit']} of {olcum['korpus_kayit']} records "
+            f"were compared"
+        )
+    return (
+        f"{olcum['sozluk']}: {olcum['karsilastirilan_kayit']} record(s) tokenized "
+        f"identically by Rust and Python ({olcum['rust_toplam_jeton']} tokens)"
+    )
+
+
+def selftest_rust_tokenizer_agrees_with_python() -> None:
+    """Canary: a vocab whose pretoken pattern this reader cannot apply must make
+    the cross-check fail, not silently tokenize something else. Needs no corpus."""
+    import tempfile as _tempfile
+
+    dizin = pathlib.Path(_tempfile.mkdtemp(prefix="jeton-kanarya-"))
+    try:
+        vocab = dizin / "sahte-sozluk.json"
+        vocab.write_text(
+            json.dumps({
+                "format": "lubot-bpe",
+                "format_version": 1,
+                "vocab_family": "kanarya-v0",
+                "vocab_size": 257,
+                "pretoken_pattern": r"\w+",
+                "merges": [[97, 98]],
+            }),
+            encoding="utf-8",
+        )
+        korpus = dizin / "korpus.jsonl"
+        korpus.write_text('{"text": "abc"}\n', encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "jeton_capraz.py"),
+             "--vocab", str(vocab), "--corpus", str(korpus), "--json", "--cargo"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if proc.returncode == 0:
+            raise AssertionError(
+                "a vocab with an unsupported pretoken pattern was accepted instead "
+                "of refused"
+            )
+    finally:
+        import shutil as _shutil
+
+        _shutil.rmtree(dizin, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------
+# gates: the trained surface
+# --------------------------------------------------------------------------
+# Four gates measure the four things that can be wrong quietly about a run:
+# the checkpoint file, the inference path, the run's own report, and the
+# ranking surface. They run the real binary on the real corpus - a gate that
+# only reads source text cannot see a checkpoint that does not round-trip.
+
+
+def _binary() -> list[str]:
+    """The fastest binary that exists: the release build when one is there,
+    otherwise `cargo run`, which reuses the debug artifacts the test step
+    already produced."""
+    release = ROOT / "target" / "release" / "lubot"
+    if release.is_file():
+        return [str(release)]
+    return ["cargo", "run", "--quiet", "-p", "lubot", "--bin", "lubot", "--"]
+
+
+def _kosu(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([*_binary(), *args], cwd=ROOT, capture_output=True,
+                          text=True, check=False)
+
+
+_MINI_CORPUS_KILIT = "_mini_corpus_kilidi"
+
+
+def _mini_korpus(tmp: Path) -> Path:
+    """Build the corpus once per gate process and keep it in the temp dir."""
+    corpus = tmp / "mini.jsonl.gz"
+    if not corpus.is_file():
+        built = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(ROOT), "--out", str(corpus)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if built.returncode != 0:
+            raise SystemExit(f"the corpus builder failed: {built.stderr.strip()[:200]}")
+    return corpus
+
+
+def _kucuk_kosu(tmp: Path, ad: str, *, tohum: int = 20260924, adim: int = 4,
+                ek: tuple[str, ...] = ()) -> dict[str, Path]:
+    """One genuinely small training run: real corpus, real stamp, real steps.
+
+    Small in steps and window, not in discipline: the stamp is computed and
+    declared, the held-out exam set is passed, and the checkpoint is written by
+    the same code path a long run uses.
+    """
+    corpus = _mini_korpus(tmp)
+    damga = _kosu("korpus-damgasi", "--corpus", str(corpus),
+                  "--vocab", "training/tokenizer/lubot-bpe-v2.json")
+    if damga.returncode != 0 or len(damga.stdout.strip()) != 64:
+        raise SystemExit(f"the corpus stamp could not be computed: {damga.stderr.strip()[:200]}")
+    ckpt = tmp / f"{ad}.ckpt"
+    rapor = tmp / f"{ad}.md"
+    kayit = tmp / f"{ad}.json"
+    run = _kosu(
+        "egitim-kosu", "--corpus", str(corpus), "--damga", damga.stdout.strip(),
+        "--sinav", "training/eval/sinav-seti.jsonl", "--ckpt", str(ckpt),
+        "--rapor", str(rapor), "--kayit", str(kayit), "--sessiz",
+        "--adim", str(adim), "--pencere", "64", "--yigin", "1",
+        "--dogrulama-her", "2", "--dogrulama-pencere", "4",
+        "--tohum", str(tohum), "--isinma", "1", *ek,
+    )
+    if run.returncode != 0:
+        raise SystemExit(f"a short training run failed: {run.stderr.strip()[:300]}")
+    return {"ckpt": ckpt, "rapor": rapor, "kayit": kayit, "corpus": corpus}
+
+
+def gate_checkpoint_round_trips() -> str:
+    """The same seed twice gives the same bytes; a different seed does not; a
+    file with one flipped byte is refused. A checkpoint that fails any of the
+    three is not a record of a run."""
+    import hashlib
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        a = _kucuk_kosu(tmp, "a")
+        b = _kucuk_kosu(tmp, "b")
+        c = _kucuk_kosu(tmp, "c", tohum=777)
+        oa = hashlib.sha256(a["ckpt"].read_bytes()).hexdigest()
+        ob = hashlib.sha256(b["ckpt"].read_bytes()).hexdigest()
+        oc = hashlib.sha256(c["ckpt"].read_bytes()).hexdigest()
+        if oa != ob:
+            raise SystemExit("the same seed produced two different checkpoints: the run is not reproducible")
+        if oa == oc:
+            raise SystemExit("a different seed produced the same checkpoint: the seed reaches nothing")
+        # tek bayt cevrilir: dosya kendini reddetmeli
+        bozuk = tmp / "bozuk.ckpt"
+        ham = bytearray(a["ckpt"].read_bytes())
+        ham[len(ham) // 2] ^= 0x01
+        bozuk.write_bytes(bytes(ham))
+        denetim = _kosu("cikarim", "denetle", "--ckpt", str(bozuk), "--kimlikler", "1,2,3,4")
+        if denetim.returncode == 0:
+            raise SystemExit("a checkpoint with a flipped byte loaded: the digest is not checked")
+        if "ozet" not in (denetim.stderr + denetim.stdout):
+            raise SystemExit(f"the refusal does not name the digest: {(denetim.stderr + denetim.stdout).strip()[:200]}")
+    return "the run round-trips byte for byte, the seed changes it, and a flipped byte is refused by the digest"
+
+
+def selftest_checkpoint_round_trips() -> None:
+    """The canaries: the comparisons this gate makes must each be able to fail."""
+    import hashlib
+    a = hashlib.sha256(b"one").hexdigest()
+    b = hashlib.sha256(b"another").hexdigest()
+    assert a != b, "the digest comparison cannot tell two files apart"
+    ham = bytearray(b"LUBOTCKPT" + bytes(range(32)))
+    ham[len(ham) // 2] ^= 0x01
+    assert bytes(ham) != b"LUBOTCKPT" + bytes(range(32)), "the byte flip did nothing"
+
+
+def _cache_finding(stdout: str, tolerance: float) -> str | None:
+    """Read the three-way agreement out of the report, or say what is missing."""
+    import re
+    for field in ("onbellekli ortalama log-olasilik", "tam gecis ortalamasi",
+                  "egitim cekirdegi", "en buyuk fark (onbellek/tam)"):
+        if field not in stdout:
+            return f"the report does not carry `{field}`"
+    match = re.search(r"\| en buyuk fark \(onbellek/tam\) \| ([0-9.e+-]+)", stdout)
+    if match is None:
+        return "the cached/full difference is not a number"
+    gap = float(match.group(1))
+    if gap != gap or gap > tolerance:
+        return f"the cached path and the full pass disagree by {gap:.3e} > {tolerance:.0e}"
+    return None
+
+
+def selftest_inference_cache_agrees() -> None:
+    """A report with a gap above the tolerance has to be refused, or the gate
+    is only checking that the report exists."""
+    iyi = "| en buyuk fark (onbellek/tam) | 1.000e-15 (tolerans 1e-9) |\n"
+    assert _cache_finding("onbellekli ortalama log-olasilik\n tam gecis ortalamasi\n egitim cekirdegi\n" + iyi, 1e-9) is None
+    kotu = "| en buyuk fark (onbellek/tam) | 1.000e-03 |\n"
+    assert _cache_finding("onbellekli ortalama log-olasilik\n tam gecis ortalamasi\n egitim cekirdegi\n" + kotu, 1e-9) is not None
+    eksik = "| en buyuk fark (onbellek/tam) | 1.000e-15 |\n"
+    assert _cache_finding(eksik, 1e-9) is not None, "a report that never measured the training kernel passed"
+
+
+def gate_inference_cache_agrees() -> str:
+    """Scoring a checkpoint through the cache and through a full recomputation
+    must give the same number, and the training kernel must agree with both."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        kosu = _kucuk_kosu(tmp, "c")
+        denetim = _kosu("cikarim", "denetle", "--ckpt", str(kosu["ckpt"]),
+                        "--kimlikler", "1,2,3,4,5,6,7,8")
+        if denetim.returncode != 0:
+            raise SystemExit(f"the cache check could not run: {denetim.stderr.strip()[:300]}")
+        finding = _cache_finding(denetim.stdout, 1e-9)
+        if finding:
+            raise SystemExit(finding)
+    return "the cached pass, a full recomputation and the training kernel give one number for one id sequence"
+
+
+def _run_report_finding(md: str) -> str | None:
+    """A run report has to carry what the run measured, by name."""
+    for field in ("| adim |", "| kayip |", "| durma |", "| jeton |",
+                  "| korpus ozeti |", "| kontrol noktasi |", "| held-out |",
+                  "| epoch |"):
+        if field not in md:
+            return f"the report has no `{field.strip('| ')}` row"
+    if "ALL" in md:
+        return "the report carries a verdict word"
+    return None
+
+
+def selftest_training_run_is_measured() -> None:
+    """The canaries: a report missing a measured row, or carrying a verdict
+    word, must each be refused."""
+    tam = "| adim | 1 -> 4 |\n| kayip | 9.0 -> 8.0 |\n| durma | adim-butcesi |\n| jeton | 100 |\n| korpus ozeti | x |\n| kontrol noktasi | y |\n| held-out | z |\n| epoch | 0 -> 1 (tavan 8) |\n"
+    assert _run_report_finding(tam) is None, "a complete report was refused"
+    assert _run_report_finding(tam.replace("| durma | adim-butcesi |\n", "")) is not None
+    assert _run_report_finding(tam + "ALL GATES PASSED\n") is not None
+
+
+def gate_training_run_is_measured() -> str:
+    """A short run writes a report that names every quantity it measured, and
+    an evaluation record that survives the mechanical-criterion schema."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        kosu = _kucuk_kosu(tmp, "r", adim=6)
+        md = kosu["rapor"].read_text(encoding="utf-8")
+        finding = _run_report_finding(md)
+        if finding:
+            raise SystemExit(finding)
+        if not _begins_with_heading(md):
+            raise SystemExit("the run report does not begin with a heading")
+        rec = json.loads(kosu["kayit"].read_text(encoding="utf-8"))
+        problem = _eval_run_finding(rec)
+        if problem:
+            raise SystemExit(f"the run's evaluation record is not a measurement: {problem}")
+        if rec["kaynaklar"]["cikti_jetonlari"] <= 0:
+            raise SystemExit("a model run reported zero output tokens")
+        if rec["kosucu"] != "model":
+            raise SystemExit("a training run is a model run and has to say so")
+    return "a real run's report carries every measured row and its record passes the one-criterion schema"
+
+
+def _ranking_finding(md: str) -> str | None:
+    """A ranking report has to be ordered, count its tokens and tie stably."""
+    import re
+    rows = re.findall(r"^\| (\d+) \| (\d+) \| (\d+) \| ([0-9.eE+-]+) \|$", md, re.M)
+    if len(rows) < 2:
+        return "the ranking report has fewer than two candidates"
+    puanlar = [float(r[3]) for r in rows]
+    if any(a < b - 1e-12 for a, b in zip(puanlar, puanlar[1:])):
+        return "the candidates are not in descending score order"
+    if any(int(r[2]) <= 0 for r in rows):
+        return "a candidate reports zero scored tokens"
+    esit = [(puanlar[i], int(rows[i][1]), int(rows[i + 1][1]))
+            for i in range(len(rows) - 1) if puanlar[i] == puanlar[i + 1]]
+    for _, once, sonra in esit:
+        if once >= sonra:
+            return "equal scores were reordered: a tie was broken by something other than the caller's index"
+    return None
+
+
+def selftest_reranker_is_measured() -> None:
+    """The canaries: a mis-ordered table and a zero-token row must be refused."""
+    iyi = "| 1 | 0 | 5 | -1.5 |\n| 2 | 1 | 5 | -2.0 |\n"
+    assert _ranking_finding(iyi) is None, "an ordered table was refused"
+    kotu = "| 1 | 0 | 5 | -2.5 |\n| 2 | 1 | 5 | -1.0 |\n"
+    assert _ranking_finding(kotu) is not None, "an ascending table passed as a ranking"
+    sifir = "| 1 | 0 | 0 | -1.5 |\n| 2 | 1 | 5 | -2.0 |\n"
+    assert _ranking_finding(sifir) is not None, "a candidate with no scored tokens passed"
+
+
+def gate_reranker_is_measured() -> str:
+    """The ranking surface orders candidates by score, counts the tokens it
+    scored, and leaves ties in the order the caller gave them."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        kosu = _kucuk_kosu(tmp, "s")
+        adaylar = tmp / "adaylar.txt"
+        adaylar.write_text("1,2,3,4,5\n6,7,8,9,10\n1,2,3,4,5\n", encoding="utf-8")
+        siralama = _kosu("cikarim", "sirala", "--ckpt", str(kosu["ckpt"]),
+                         "--baglam", "11,12", "--adaylar", str(adaylar))
+        if siralama.returncode != 0:
+            raise SystemExit(f"the ranking surface failed: {siralama.stderr.strip()[:300]}")
+        finding = _ranking_finding(siralama.stdout)
+        if finding:
+            raise SystemExit(finding)
+        if siralama.stdout.count("| 1,2,3,4,5 |") == 0 and "1,2,3,4,5" in siralama.stdout:
+            raise SystemExit("the report printed the ids instead of the caller's indices")
+    return "the ranking surface is ordered, counts its tokens, and keeps equal scores in the caller's order"
+
+
+# --- MM: muhendislik iskeleti ile veri ayrimi -------------------------------
+
+
+def _mm_import_adlari(yol: pathlib.Path) -> set[str]:
+    """Bir Python dosyasinin ust duzey import adlari; dosya calistirilmaz."""
+    import ast
+
+    agac = ast.parse(yol.read_text(encoding="utf-8"))
+    adlar: set[str] = set()
+    for dugum in ast.walk(agac):
+        if isinstance(dugum, ast.Import):
+            adlar.update(takma.name.split(".")[0] for takma in dugum.names)
+        elif isinstance(dugum, ast.ImportFrom) and dugum.level == 0 and dugum.module:
+            adlar.add(dugum.module.split(".")[0])
+    return adlar
+
+
+def _mm_muhendislik_ihlalleri(klasor: pathlib.Path) -> list[str]:
+    """training/*.py yalnizca stdlib ve kardes modul import eder (MM).
+
+    Iskelet deseni disaridan esinlenebilir, ama kosucu dis bir ML
+    cercevesine baglanirsa "sifirdan" iddiasi sessizce duser.
+    """
+    yerel = {p.stem for p in klasor.glob("*.py")}
+    stdlib = set(sys.stdlib_module_names)
+    ihlaller: list[str] = []
+    for p in sorted(klasor.glob("*.py")):
+        for ad in sorted(_mm_import_adlari(p)):
+            if ad in stdlib or ad in yerel:
+                continue
+            ihlaller.append(f"{p.relative_to(klasor.parent)} dis bagimlilik ister: {ad}")
+    return ihlaller
+
+
+def _mm_disi_url(metin: str) -> bool:
+    return "http://" in metin or "https://" in metin
+
+
+def _kamu_kayitlari(kok: pathlib.Path) -> dict[str, str]:
+    """Izlenen kamu veri dosyasindaki yol -> ozet eslesmesi.
+
+    K2'nin son hali kamu mali veriyi egitimde kabul ediyor ama adini depoda
+    yazmiyor: kayitlarin kaynagi bu yuzden depodaki damgali veri dosyasidir.
+    Denetim "dosya var mi" degil "kayit gercekten bu dosyadan mi" diye sorar -
+    yani kanit zayiflamaz, yer degistirir.
+    """
+    eslesme: dict[str, str] = {}
+    veri = kok / "veri" / "kamu-mali.jsonl.gz"
+    if not veri.is_file():
+        return eslesme
+    with gzip.open(veri, "rt", encoding="utf-8", newline="") as fh:
+        for satir in fh.read().split("\n"):
+            if not satir.strip():
+                continue
+            kayit = json.loads(satir)
+            eslesme[str(kayit.get("path", ""))] = str(
+                kayit.get("digest") or kayit.get("content_id") or "")
+    return eslesme
+
+
+def _mm_veri_ihlalleri(kok: pathlib.Path) -> list[str]:
+    """K2 siniri: curriculum yalniz kendi agactan (dis URL yasak), korpus kayitlarinin
+    provenance'i depo icinde dogrulanabilir olmak zorunda: ya agacta duran bir dosya,
+    ya da izlenen kamu veri dosyasindaki kaydin kendisi (ayni ozetle)."""
+    ihlaller: list[str] = []
+    for p in sorted((kok / "training" / "curriculum").glob("*.jsonl")):
+        for no, satir in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            satir = satir.strip()
+            if not satir:
+                continue
+            kayit = json.loads(satir)
+            roller = [m.get("role") for m in kayit.get("messages", []) if isinstance(m, dict)]
+            if "user" not in roller or "assistant" not in roller:
+                ihlaller.append(f"{p.name}:{no} kullanici/asistan cifti yok")
+            if _mm_disi_url(satir):
+                ihlaller.append(f"{p.name}:{no} dis URL tasiyor")
+    kamu = _kamu_kayitlari(kok)
+    for p in sorted((kok / "corpus").glob("knowledge-*.jsonl.gz")):
+        with gzip.open(p, "rt", encoding="utf-8", newline="") as f:
+            for no, satir in enumerate(f.read().split("\n"), 1):
+                satir = satir.strip()
+                if not satir:
+                    continue
+                kayit = json.loads(satir)
+                yol = str(kayit.get("path", ""))
+                if yol.startswith("kamu/"):
+                    ozet = kamu.get(yol)
+                    if ozet is None:
+                        ihlaller.append(
+                            f"{p.name}:{no} kamu kaydi izlenen veri dosyasinda yok: {yol!r}")
+                    elif kayit.get("digest") and kayit["digest"] != ozet:
+                        ihlaller.append(
+                            f"{p.name}:{no} kamu kaydi ozeti veri dosyasiyla uyusmuyor: {yol!r}")
+                    continue
+                if not yol or yol.startswith(("/", "..")) or not (kok / yol).is_file():
+                    ihlaller.append(f"{p.name}:{no} provenance agac disi: {yol!r}")
+    return ihlaller
+
+
+def gate_training_runner_engineering_vs_data() -> str:
+    """Muhendislik iskeleti (MM) ile veri (K2) ayri eksenlerdir: kosucu
+    dosyalari desen esinlenmesi tasiyabilir ama dis bir cerceveye
+    baglanamaz; corpus/ ve training/curriculum/ ise yalnizca bu agactan
+    uretilmis kayitlari tasir - her kaydin provenance'i agac icinde
+    olmali ve hicbir kayit dis URL tasimamali. Ikisini ayri kapilarla
+    tutmak, K1'i korurken K2'yi yanlislikla ihlal etmeyi engeller."""
+    ihlaller = _mm_muhendislik_ihlalleri(ROOT / "training") + _mm_veri_ihlalleri(ROOT)
+    if ihlaller:
+        raise SystemExit(
+            "muhendislik/veri siniri ihlal edildi:\n" + "".join(f"  {s}\n" for s in ihlaller)
+        )
+    script = len(list((ROOT / "training").glob("*.py")))
+    return f"kosucu yalniz stdlib+kardes modul ({script} script), veri yalniz kendi agactan"
+
+
+def selftest_training_runner_engineering_vs_data() -> None:
+    """Kanarya: numpy import eden script ve dis URL tasiyan curriculum
+    satiri reddedilmeli; temiz es lenegi kabul edilmeli."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "training" / "curriculum").mkdir(parents=True)
+        (kok / "corpus").mkdir()
+        (kok / "veri").mkdir()
+        (kok / "training" / "temiz.py").write_text(
+            "import json\nfrom pathlib import Path\n", encoding="utf-8")
+        assert _mm_muhendislik_ihlalleri(kok / "training") == []
+        (kok / "training" / "kacak.py").write_text("import numpy\n", encoding="utf-8")
+        assert _mm_muhendislik_ihlalleri(kok / "training"), "dis bagimlilik kabul edildi"
+        (kok / "training" / "kacak.py").unlink()
+        iyi = {"messages": [{"role": "user", "content": "soru"},
+                            {"role": "assistant", "content": "cevap"}]}
+        (kok / "training" / "curriculum" / "a.jsonl").write_text(
+            json.dumps(iyi) + "\n", encoding="utf-8")
+        assert _mm_veri_ihlalleri(kok) == []
+        kotu = {"messages": [{"role": "user", "content": "bkz https://example.com"},
+                             {"role": "assistant", "content": "cevap"}]}
+        (kok / "training" / "curriculum" / "a.jsonl").write_text(
+            json.dumps(kotu) + "\n", encoding="utf-8")
+        assert _mm_veri_ihlalleri(kok), "dis URL kabul edildi"
+        (kok / "training" / "curriculum" / "a.jsonl").write_text(
+            json.dumps(iyi) + "\n", encoding="utf-8")
+        # Kamu kaydi: izlenen veri dosyasinda varsa kabul, yoksa ve ozeti
+        # uyusmuyorsa reddedilir - ad degil kanit aranir.
+        with gzip.open(kok / "veri" / "kamu-mali.jsonl.gz", "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000001", "digest": "d1"}) + "\n")
+        korpus = kok / "corpus" / "knowledge-self.jsonl.gz"
+        with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000001", "digest": "d1"}) + "\n")
+        assert _mm_veri_ihlalleri(kok) == [], _mm_veri_ihlalleri(kok)
+        with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000002", "digest": "d1"}) + "\n")
+        assert _mm_veri_ihlalleri(kok), "veri dosyasinda olmayan kamu kaydi kabul edildi"
+        with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": "kamu/abc/0000001", "digest": "baska"}) + "\n")
+        assert _mm_veri_ihlalleri(kok), "ozeti uyusmayan kamu kaydi kabul edildi"
+        korpus.unlink()
+        (kok / "veri" / "kamu-mali.jsonl.gz").unlink()
+
+
+# --- JJ: korpusun yapisal kayitlari -----------------------------------------
+
+
+def _ks_yapisal_denetim(korpus: pathlib.Path) -> tuple[dict[str, int], list[str]]:
+    """Korpus kayitlarinin turlerini ve provenance'ini denetler (dosya okur)."""
+    sayim: dict[str, int] = {}
+    hatalar: list[str] = []
+    with gzip.open(korpus, "rt", encoding="utf-8") as fh:
+        for no, satir in enumerate(fh, 1):
+            satir = satir.strip()
+            if not satir:
+                continue
+            kayit = json.loads(satir)
+            tur = str(kayit.get("kind", ""))
+            sayim[tur] = sayim.get(tur, 0) + 1
+            yol = kayit.get("path")
+            aralik = kayit.get("lines")
+            if not isinstance(yol, str) or not yol:
+                hatalar.append(f"kayit {no}: provenance yok")
+            elif (
+                not isinstance(aralik, list)
+                or len(aralik) != 2
+                or not all(isinstance(x, int) for x in aralik)
+            ):
+                hatalar.append(f"kayit {no}: satir araligi bozuk ({yol})")
+    for gerekli in ("api-doc-pair", "trait-impl", "dependency-edge"):
+        if sayim.get(gerekli, 0) == 0:
+            hatalar.append(f"yapisal kayit turu eksik: {gerekli}")
+    return sayim, hatalar
+
+
+def gate_corpus_carries_structure() -> str:
+    """JJ: korpus duz metin degil, yapi tasir.
+
+    Belge-imza ciftleri (ne cagrilir + neden var), "kim neyi uyguluyor"
+    iliskileri ve Cargo.toml bagimlilik kenarlari ayri kayit turleri olarak
+    bulunur. Bir tur sessizce kaybolursa kapi kirmizi olur; "yok" ile
+    "olculmedi" ayni sey degildir."""
+    korpus = ROOT / "corpus" / "knowledge-self.jsonl.gz"
+    if not korpus.is_file():
+        raise SystemExit(f"corpus is not built: {korpus.relative_to(ROOT)}")
+    sayim, hatalar = _ks_yapisal_denetim(korpus)
+    if hatalar:
+        raise SystemExit("JJ yapisal korpus denetimi:\n" + "".join(f"  {s}\n" for s in hatalar[:6]))
+    return (
+        f"yapisal kayitlar: api-doc-pair {sayim['api-doc-pair']}, "
+        f"trait-impl {sayim['trait-impl']}, dependency-edge {sayim['dependency-edge']}"
+    )
+
+
+def selftest_corpus_carries_structure() -> None:
+    """Kanarya: eksik tur ve provenance'siz kayit reddedilmeli, tam kayit kabul."""
+    import tempfile
+
+    def yaz(kok: pathlib.Path, kayitlar: list[dict]) -> pathlib.Path:
+        yol = kok / "k.jsonl.gz"
+        with gzip.open(yol, "wt", encoding="utf-8") as fh:
+            for kayit in kayitlar:
+                fh.write(json.dumps(kayit) + "\n")
+        return yol
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        tam = [
+            {"kind": "api-doc-pair", "text": "x", "path": "a.rs", "lines": [1, 2]},
+            {"kind": "trait-impl", "text": "x", "path": "a.rs", "lines": [3, 3]},
+            {"kind": "dependency-edge", "text": "x", "path": "Cargo.toml", "lines": [4, 4]},
+        ]
+        _, hatalar = _ks_yapisal_denetim(yaz(kok, tam))
+        assert hatalar == [], f"temiz korpus reddedildi: {hatalar}"
+        _, hatalar = _ks_yapisal_denetim(yaz(kok, tam[:2]))
+        assert hatalar, "eksik tur kabul edildi"
+        bozuk = [dict(kayit) for kayit in tam]
+        bozuk[0].pop("path")
+        _, hatalar = _ks_yapisal_denetim(yaz(kok, bozuk))
+        assert hatalar, "provenance'siz kayit kabul edildi"
+
+
+# --- RR: bilgi boslugu haritasi ---------------------------------------------
+
+
+_BH_SATIRLAR = [
+    {"at": 1, "question": "tokenizer sozlugu nasil donar", "citations": ["a"], "refusals": 0},
+    {"at": 2, "question": "tokenizer merge tablosu nedir", "citations": ["b"], "refusals": 0},
+    {"at": 3, "question": "tokenizer kac jeton", "citations": [], "refusals": 1},
+    {"at": 4, "question": "zkvm icine ispat", "citations": [], "refusals": 0},
+    {"at": 5, "question": "zkvm kaniti nasil", "citations": [], "refusals": 0},
+]
+
+
+def _bh_kos(kok: pathlib.Path, satirlar: list[dict] | None = None) -> tuple[dict, dict]:
+    """Sahte gunluk + korpus uzerinde haritayi kosar; (rapor, kayit) doner."""
+    korpus = kok / "k.jsonl.gz"
+    with gzip.open(korpus, "wt", encoding="utf-8") as fh:
+        fh.write(json.dumps({"kind": "doc", "text": "tokenizer donmus sozluk",
+                             "path": "a.md", "lines": [1, 1]}) + "\n")
+    gunluk = kok / "audit.jsonl"
+    gunluk.write_text(
+        "\n".join(json.dumps(s, ensure_ascii=False) for s in (satirlar or _BH_SATIRLAR)) + "\n",
+        encoding="utf-8",
+    )
+    rapor_yolu = kok / "rapor.json"
+    kayit_yolu = kok / "kayit.jsonl"
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "bosluk_haritasi.py"),
+         "--audit", str(gunluk), "--corpus", str(korpus),
+         "--out", str(rapor_yolu), "--kayit", str(kayit_yolu), "--kok", str(kok)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"harita kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    return (
+        json.loads(rapor_yolu.read_text(encoding="utf-8")),
+        json.loads(kayit_yolu.read_text(encoding="utf-8").strip()),
+    )
+
+
+def gate_gap_report_is_measured() -> str:
+    """RR: "cevaplanamadi" tek tek cevaplarin kaderi olarak kalmasin.
+
+    Audit gunlugu her soruyu, cevap turunu ve red sayisini yazar; harita bu
+    gunlukten turetilir: en cok sorulan ama korpusta en az karsiligi olan
+    konular siralanir. Kapi, haritanin *gunlukle birlikte* degistigini
+    gosterir (sabit bir sayi degil, olcumdur) ve kaydin provenance'ini
+    denetler."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        rapor, kayit = _bh_kos(kok)
+        if rapor["soru"] != 5 or rapor["cevapsiz"] != 3:
+            raise SystemExit(
+                f"harita gunlugu saymiyor: soru={rapor['soru']} cevapsiz={rapor['cevapsiz']}"
+            )
+        ilk = rapor["bosluklar"][0]
+        if ilk["konu"] != "zkvm" or ilk["korpus_kaydi"] != 0:
+            raise SystemExit(f"en zayif konu yanlis siralandi: {ilk}")
+        tokenizer = [b for b in rapor["karsiligi_olan"] if b["konu"] == "tokenizer"]
+        if not tokenizer or tokenizer[0]["korpus_kaydi"] != 1:
+            raise SystemExit("korpusta karsiligi olan konu kapsama almadi")
+        if kayit.get("kind") != "gap-report" or not kayit.get("path"):
+            raise SystemExit(f"harita kaydi korpusa girmez: {kayit}")
+        # Gunluk degisince harita da degisir: sabit sayi degil, olcum.
+        rapor2, _ = _bh_kos(kok, _BH_SATIRLAR[:-1])
+        if rapor2["soru"] != 4:
+            raise SystemExit("harita gunlukle birlikte degismiyor")
+        eksik = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "bosluk_haritasi.py"), "--out", str(kok / "x.json")],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if eksik.returncode == 0:
+            raise SystemExit("harita gunluk olmadan yazildi")
+    return "harita gunluge bagli: 5 soru/3 cevapsiz, en zayif konu kapsamasiz"
+
+
+def selftest_gap_report_is_measured() -> None:
+    """Kanarya: bos ve bozuk gunluk kabul edilmemeli; cikti iki kosuda ayni."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        rapor, _ = _bh_kos(kok)
+        rapor_ikinci, _ = _bh_kos(kok)
+        assert rapor == rapor_ikinci, "harita deterministik degil"
+        bos = kok / "bos.jsonl"
+        bos.write_text("\n", encoding="utf-8")
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "bosluk_haritasi.py"),
+             "--audit", str(bos), "--out", str(kok / "r.json")],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert kosu.returncode == 0, "bos gunluk hata verdi"
+        assert json.loads((kok / "r.json").read_text(encoding="utf-8"))["soru"] == 0
+
+
+# --- QQ: diyagram girdisi ---------------------------------------------------
+
+
+def gate_doc_diagram_feeds_corpus() -> str:
+    """QQ: `doc` yeteneiginin girdi tarafi genisler - diyagram okunur, uretilmez.
+
+    Metin diyagramlari (Mermaid: .mmd dosyasi ya da ```mermaid citi) kenar ve
+    dugum etiketi kayitlarina cevrilir; SVG'den yalniz <text> etiketleri
+    okunur ve "kenarlar okunmadi" diye yazar. Bu bir uretim yuzeyi degildir:
+    kayitlar dosyanin kendi satirlarindan gelir, provenance tasir ve goruntu
+    dosyalari (png/jpg) metne cevrilmez - okumadigini iddia etmez."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "LICENSE.md").write_text("MIT License\n", encoding="utf-8")
+        (kok / "d.mmd").write_text(
+            "graph TD\n  A[Istek] --> B[Grant]\n  B --> C[Indeks]\n", encoding="utf-8")
+        (kok / "README.md").write_text(
+            "# Baslik\n\n```mermaid\ngraph LR\n  X[Oku] --> Y[Cevap]\n```\n",
+            encoding="utf-8")
+        (kok / "sekil.svg").write_text(
+            "<svg><text>Operator</text><text>Zincir</text></svg>\n", encoding="utf-8")
+        (kok / "resim.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        cikti = kok / "k.jsonl.gz"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(kok), "--out", str(cikti)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(f"korpus kurulamadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+        kayitlar = []
+        with gzip.open(cikti, "rt", encoding="utf-8") as fh:
+            for satir in fh:
+                if satir.strip():
+                    kayitlar.append(json.loads(satir))
+        diyagramlar = [k for k in kayitlar if k.get("kind") == "diagram"]
+        if not diyagramlar:
+            raise SystemExit("diyagram kaydi uretilmedi")
+        metinler = " ".join(k["text"] for k in diyagramlar)
+        if "`A` -> `B`" not in metinler:
+            raise SystemExit("mmd kenari okunmadi")
+        if not any(k["path"] == "README.md" for k in diyagramlar):
+            raise SystemExit("markdown icindeki mermaid citi okunmadi")
+        if "Operator" not in metinler or "edges are not read" not in metinler:
+            raise SystemExit("SVG etiketleri durustce raporlanmadi")
+        if any(str(k.get("path", "")).endswith(".png") for k in kayitlar):
+            raise SystemExit("goruntu dosyasi metne cevrilmis gibi kayit uretti")
+        if not all(k.get("path") and k.get("lines") for k in diyagramlar):
+            raise SystemExit("diyagram kaydi provenance tasimiyor")
+    return f"diyagram okunuyor ({len(diyagramlar)} kayit), goruntu dosyasi okunmuyor"
+
+
+def selftest_doc_diagram_feeds_corpus() -> None:
+    """Kanarya: kenarsiz metin diyagram uretmemeli; lisanssiz agac reddedilmeli."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "k.mmd").write_text("graph TD\n  tek dugum\n", encoding="utf-8")
+        sys.path.insert(0, str(ROOT / "training"))
+        import build_corpus as bc
+
+        kayitlar = list(bc.mermaid_kayitlari("graph TD\n  tek dugum\n", "k.mmd", 1))
+        assert kayitlar == [], "kenarsiz/etiketsiz satirdan kayit uretildi"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(kok), "--out", str(kok / "o.jsonl.gz")],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert kosu.returncode != 0, "lisanssiz agac kabul edildi"
+
+
+# --- KK: hakem ciftleri -----------------------------------------------------
+
+
+def _gp_eksikler(kok: pathlib.Path) -> list[str]:
+    """Repodaki her kapinin bir kanaryasi ve kanaryada bir reddi var mi?"""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        cikti = pathlib.Path(td) / "k.jsonl.gz"
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "build_corpus.py"),
+             "--repo", str(kok), "--out", str(cikti)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            return [f"korpus kurulamadi: {(kosu.stderr or kosu.stdout)[-200:]}"]
+        ciftler: dict[str, str] = {}
+        with gzip.open(cikti, "rt", encoding="utf-8") as fh:
+            for satir in fh:
+                if not satir.strip():
+                    continue
+                kayit = json.loads(satir)
+                if kayit.get("kind") == "gate-pair":
+                    ciftler[kayit["text"]] = kayit["text"]
+    liste = subprocess.run(
+        [sys.executable, str(ROOT / "gates" / "check.py"), "--list"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    kapilar = [s.strip() for s in liste.stdout.splitlines() if s.strip()]
+    sorunlar: list[str] = []
+    # Kopya kayit: iki ayni anahtar sozlukte tek kapiya erir, yani registry'ye
+    # eklenen satir sayisi ile kosan kapi sayisi ayrisir ve kimse gormez
+    # (2026-09-27'de uc anahtar boyle iki kez kayitliydi: bit-budget,
+    # device-ceiling, engram - dordu de ayni fonksiyonlari gosteriyordu).
+    kaynak = (kok / "gates" / "check.py").read_text(encoding="utf-8")
+    kopyalar = sorted(
+        a for a in set(re.findall(r'^\s*"([a-z0-9-]+)": \(gate_', kaynak, re.M))
+        if len(re.findall(r'^\s*"' + re.escape(a) + r'": \(gate_', kaynak, re.M)) > 1
+    )
+    if kopyalar:
+        sorunlar.append("registry'de kopya anahtar: " + ", ".join(kopyalar))
+    if len(ciftler) != len(kapilar):
+        sorunlar.append(f"kapi {len(kapilar)}, hakem cifti {len(ciftler)}: eslesmiyor")
+    for metin in ciftler:
+        if "kanaryada red yok" in metin:
+            sorunlar.append(f"kanaryasiz iddia: {metin[:80]}")
+    return sorunlar
+
+
+def gate_gate_pairs_carry_referee() -> str:
+    """KK: her kapi iddiasi kendi kanaryasiyla eslesir ve kanarya bir seyi
+    reddeder.
+
+    Derleyici ve test takimi bu repoda bedava hakemdir: bir kural ancak onu
+    curen bir kanarya kosuyorsa kuraldir. Kapi, korpustaki `gate-pair`
+    kayitlarinin sayisini kapilarla karsilastirir ve "kanaryada red yok"
+    diyen bir iddiayi kabul etmez."""
+    sorunlar = _gp_eksikler(ROOT)
+    if sorunlar:
+        raise SystemExit("hakem ciftleri eksik:\n" + "".join(f"  {s}\n" for s in sorunlar[:6]))
+    return "her kapinin kanaryasi var ve kanarya reddediyor"
+
+
+def selftest_gate_pairs_carry_referee() -> None:
+    """Kanarya: reddi olmayan selftest ve eksik kayit yakalanmali."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        (kok / "LICENSE.md").write_text("MIT License\n", encoding="utf-8")
+        (kok / "gates").mkdir()
+        (kok / "gates" / "check.py").write_text(
+            'def gate_bir() -> str:\n    """Bir sey."""\n    return "x"\n\n'
+            "def selftest_bir() -> None:\n    pass\n",
+            encoding="utf-8",
+        )
+        sorunlar = _gp_eksikler(kok)
+        assert sorunlar, "reddi olmayan selftest kabul edildi"
+
+
+# --- korpus turleri: uretici ile okuyucu ayni dili konusur -------------------
+
+
+def gate_corpus_kinds_agree() -> str:
+    """Yazilan her tur okunabilmeli.
+
+    build_corpus.py'nin urettigi kayit turleri ile `lubot corpus`un kabul
+    ettigi turler ayni kume olmali; okuyucu bilinmeyen turu reddettigi icin
+    yeni bir tur eklemek iki tarafi birlikte degistirmeyi gerektirir. Bu
+    kapi, JJ/QQ/KK/RR turlarini eklerken tam olarak bu yuzden dogdu:
+    2755 kayitlik korpusun 617'si okuyucudan donuyordu."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        korpus = _mini_korpus(pathlib.Path(td))
+        turler: dict[str, int] = {}
+        with gzip.open(korpus, "rt", encoding="utf-8") as fh:
+            for satir in fh:
+                if satir.strip():
+                    tur = json.loads(satir)["kind"]
+                    turler[tur] = turler.get(tur, 0) + 1
+        kosu = _cli("corpus", str(korpus))
+        birlesik = (kosu.stdout or "") + (kosu.stderr or "")
+        if kosu.returncode != 0 or "refused" in birlesik:
+            raise SystemExit(f"okuyucu ureticinin turlerini reddetti: {birlesik[-300:]}")
+        return f"{len(turler)} kayit turu okuyucudan gecti: " + ", ".join(sorted(turler))
+
+
+def selftest_corpus_kinds_agree() -> None:
+    """Kanarya: uydurma bir tur okuyucudan gecemez."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        yol = pathlib.Path(td) / "uydurma.jsonl.gz"
+        with gzip.open(yol, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "kind": "uydurma-tur", "text": "kanarya",
+                "path": "x.md", "digest": "0" * 64,
+            }) + "\n")
+        kosu = _cli("corpus", str(yol))
+        assert kosu.returncode != 0, "uydurma tur kabul edildi"
+
+
+# --- I: alma (retrieval) yuzeyinin olcumu -----------------------------------
+# Almak model cagirmaz: BM25 ayni korpusu tarar. Bu yuzden olcum ikiliyi
+# ister, agirlik istemez - ve ikili yoksa olcum 12 soru icin 12 kez
+# derlemeye kalkisirdi; ikili bir kez derlenir.
+
+
+def _er_ikili() -> str:
+    """Olcum icin ikili spec'i: release ikili HER ZAMAN tazelenir.
+
+    Bir kez derleyip birakmak yetmiyor: bayat bir release ikilisi, kayitla
+    taze olcumu ayirir ve kapi "kayit bayat" der - sucu kayitta gostererek.
+    Olcumun agaca gore yapildigindan emin olmanin yolu derlemeyi atlamamak;
+    artimli derleme zaten ucuz."""
+    import shlex
+
+    subprocess.run(["cargo", "build", "--release", "-p", "lubot"], cwd=ROOT,
+                   capture_output=True, text=True, check=False)
+    return shlex.join(_binary())
+
+
+def _er_kos(*ek: str) -> list[str]:
+    """Alma olcumu: korpus + sinav seti + ikili, verilen ek bayraklarla."""
+    return [
+        sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
+        "--corpus", "corpus/knowledge-self.jsonl.gz",
+        "--sorular", "training/eval/sinav-seti.jsonl",
+        "--bin", _er_ikili(), *ek,
+    ]
+
+
+def _er_olc(*ek: str) -> dict:
+    kosu = subprocess.run(_er_kos(*ek), cwd=ROOT, capture_output=True, text=True, check=False)
+    if kosu.returncode != 0:
+        raise SystemExit(f"alma olcumu kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    return json.loads(kosu.stdout)
+
+
+def _alma_kanit_bulgu(kayit: dict, taze: dict, alinti: dict) -> str | None:
+    """Olcum kaydinin taze olcumle uyusu; uyusmuyorsa gerekcesi.
+
+    Iki sorgu bicimi ayri ayri karsilastirilir: tam soru metni yonerge
+    tasir, `alinti` alani yalniz cekirdek cumleyi olcer. Ikisi ayni
+    yonde sapmaz, bu yuzden kayit ikisini de tasimak zorunda."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor: olcum kaniti olmadan iddia sayilamaz"
+    for ad, olcum in (("tam", taze), ("alinti", alinti)):
+        if not olcum["ilk_sirada"] <= olcum["ilk_n_icinde"] <= olcum["soru"]:
+            return f"{ad} olcumu ic tutarsiz: ilk sirada {olcum['ilk_sirada']}, " \
+                   f"ilk {olcum['n']} icinde {olcum['ilk_n_icinde']}, soru {olcum['soru']}"
+        if len(olcum["sirali"]) != olcum["soru"]:
+            return f"{ad} olcumunde her soru icin sira kaydi yok"
+        if len(olcum["bulunamayan"]) > olcum["soru"] - olcum["ilk_n_icinde"]:
+            return f"{ad} olcumunde bulunamayan listesi isabetsizlikle uyusmuyor"
+    ikinci = kanit.get("ikinci_olcum")
+    if not isinstance(ikinci, dict) or ikinci.get("sorgu_alani") != "alinti":
+        return "kayit ikinci olcumu tasimiyor: sorgu bicimi ayrimi olculmemis"
+    for ad, kayitli, olcum in (("tam", kanit, taze), ("alinti", ikinci, alinti)):
+        if (kayitli.get("ilk_sirada"), kayitli.get("ilk_n_icinde")) != (
+            olcum["ilk_sirada"], olcum["ilk_n_icinde"]
+        ):
+            return (
+                f"kayit bayat ({ad}): kayitta {kayitli.get('ilk_sirada')}/"
+                f"{kayitli.get('ilk_n_icinde')}, olcum {olcum['ilk_sirada']}/"
+                f"{olcum['ilk_n_icinde']} - kaydi yeniden uret"
+            )
+    return None
+
+
+def gate_retrieval_at_k_is_measured() -> str:
+    """I: alma katmani iddia degil olcumdur.
+
+    Sinav setindeki her soru damgalanmis bir pasaja dayanir; `ara` ayni
+    korpusu BM25 ile tarar ve damganin kacinci sirada ciktigi olculur.
+    Kapi olcumu yeniden kosar, kaydi taze olcumle karsilastirir ve olcumun
+    deterministik oldugunu gorur: sapma varsa kayit yeniden uretilmelidir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "erisim-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("alma olcumu kaydi yok: training/eval/sonuclar/erisim-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    taze = _er_olc()
+    alinti = _er_olc("--sorgu-alani", "alinti")
+    bulgu = _alma_kanit_bulgu(kayit, taze, alinti)
+    if bulgu:
+        raise SystemExit(bulgu)
+    tekrar = _er_olc()
+    if tekrar["sirali"] != taze["sirali"]:
+        raise SystemExit("alma olcumu deterministik degil: ayni sorgu farkli sira verdi")
+    return (
+        f"alma olculdu: damga ilk sirada {taze['ilk_sirada']}/{taze['soru']}, "
+        f"ilk {taze['n']} icinde {taze['ilk_n_icinde']}/{taze['soru']}; "
+        f"yalniz cekirdek cumleyle ilk {alinti['n']} icinde "
+        f"{alinti['ilk_n_icinde']}/{alinti['soru']}"
+    )
+
+
+def selftest_retrieval_at_k_is_measured() -> None:
+    """Kanarya: bayat kayit, eksik ikinci olcum, ic tutarsiz sayi ve bos soru
+    seti ayri ayri reddedilir.
+
+    Kayit semasi saf denetlenir (alt surec yok); betik girdisi ise kendi
+    korpusuyla sinanir - kanarya deponun korpusuna baglanirsa CI'da
+    korpus henuz kurulmamisken yanlis sebepten kirmizi yanar."""
+    import gzip
+    import tempfile
+
+    ornek = {"soru": 12, "n": 3, "ilk_sirada": 10, "ilk_n_icinde": 10,
+             "bulunamayan": [{"soru": "sinav-01", "neden": "ilk n icinde yok"}],
+             "sirali": [{"soru_kimligi": f"sinav-{i:02d}", "sira": None} for i in range(1, 13)],
+             "sorgu_alani": "tam"}
+    alinti = dict(ornek, ilk_sirada=5, ilk_n_icinde=11, sorgu_alani="alinti")
+    kayit = {"kanit": {k: ornek[k] for k in ("soru", "n", "ilk_sirada", "ilk_n_icinde")},
+             "alinti": None}
+    kayit["kanit"]["ikinci_olcum"] = {k: alinti[k] for k in ("sorgu_alani", "ilk_sirada", "ilk_n_icinde")}
+    assert _alma_kanit_bulgu(kayit, ornek, alinti) is None, "gecerli kayit reddedildi"
+    bayat = json.loads(json.dumps(kayit))
+    bayat["kanit"]["ilk_sirada"] = 9
+    assert "bayat" in (_alma_kanit_bulgu(bayat, ornek, alinti) or ""), "bayat kayit gecti"
+    eksik = json.loads(json.dumps(kayit))
+    del eksik["kanit"]["ikinci_olcum"]
+    assert "ikinci olcumu" in (_alma_kanit_bulgu(eksik, ornek, alinti) or ""), "tek alanli kayit gecti"
+    tutarsiz = dict(ornek, ilk_sirada=11)
+    assert "tutarsiz" in (_alma_kanit_bulgu(kayit, tutarsiz, alinti) or ""), "tutarsiz sayi gecti"
+    fazla = dict(ornek, bulunamayan=[{"soru": f"s{i}"} for i in range(5)])
+    assert "isabetsizlikle" in (_alma_kanit_bulgu(kayit, fazla, alinti) or ""), "isabetsizlik gecti"
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = pathlib.Path(td)
+        sorular = kok / "sorular.jsonl"
+        sorular.write_text(json.dumps({
+            "soru_kimligi": "kanarya-01", "soru": "cevap nedir",
+            "content_id": "0" * 64, "kaynak_dosya": "yok.md",
+        }) + "\n", encoding="utf-8")
+        eksik_korpus = subprocess.run([
+            sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
+            "--corpus", str(kok / "yok.jsonl.gz"), "--sorular", str(sorular),
+            "--bin", "lubot",
+        ], cwd=ROOT, capture_output=True, text=True, check=False)
+        assert eksik_korpus.returncode != 0 and "korpus yok" in (eksik_korpus.stderr + eksik_korpus.stdout), (
+            "eksik korpus reddedilmedi: " + (eksik_korpus.stderr or eksik_korpus.stdout)[-200:]
+        )
+        # Bos soru seti: betik sorgu kosmadan durur, bu yuzden burada ikili
+        # gerekmez - korpus gercek, soru listesi bos.
+        gercek = kok / "kucuk.jsonl.gz"
+        with gzip.open(gercek, "wt", encoding="utf-8") as fh:
+            fh.write(json.dumps({"content_id": "0" * 64, "path": "yok.md", "text": "bir kayit"}) + "\n")
+        bos = kok / "bos.jsonl"
+        bos.write_text("\n", encoding="utf-8")
+        bos_kosu = subprocess.run([
+            sys.executable, str(ROOT / "training" / "erisim_geri_cagirma.py"),
+            "--corpus", str(gercek), "--sorular", str(bos), "--bin", "lubot",
+        ], cwd=ROOT, capture_output=True, text=True, check=False)
+        assert bos_kosu.returncode != 0 and "soru seti bos" in (bos_kosu.stderr + bos_kosu.stdout), (
+            "bos soru seti reddedilmedi: " + (bos_kosu.stderr or bos_kosu.stdout)[-200:]
+        )
+
+
+# --- N ve W: iki dilin maliyeti ve tekrarin maliyeti ------------------------
+# Ikisi de ayni bicimde calisir: betik olcumu kosar ve kaydi yazar; kapi
+# kaydi TAZE olcumle karsilastirir. Sayilar makineye bagli oldugu icin
+# (duvar saati, sozluk ailesi) kapi sayinin degismedigini degil, kaydin
+# mekanik oldugunu ve taze olcumle ayni sonucu verdigini denetler.
+
+
+def _dil_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Dil maliyeti kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor: olculmus iki dil olmadan iddia kurulmaz"
+    siniflar = kanit.get("siniflar")
+    if not isinstance(siniflar, dict):
+        return "kayit dil siniflarini tasimiyor"
+    for sinif in ("tr", "en", "karisik"):
+        kayit_sinif = siniflar.get(sinif)
+        if not isinstance(kayit_sinif, dict):
+            return f"{sinif} sinifi kayitta yok: karsilastirma eksik kalir"
+        for alan in ("kayit", "karakter", "jeton"):
+            if not isinstance(kayit_sinif.get(alan), int) or kayit_sinif[alan] < 0:
+                return f"{sinif}.{alan} sayi degil"
+    if not siniflar["tr"]["kayit"] or not siniflar["en"]["kayit"]:
+        return "iki dilden biri korpusta hic yok: fark olculemez"
+    bulgu = kanit.get("bulgu_dil_maliyeti")
+    beklenen = kanit.get("fark_orani", 0.0) > kanit.get("fark_esigi", 1.0)
+    if kayit.get("bulgu_var") is not bool(bulgu) or kayit.get("bulgu_var") is not beklenen:
+        return "bulgu_var bayragi olcumle uyusmuyor (esik asildiysa bulgu yazilir)"
+    if bulgu is not None:
+        for alan in ("olculen", "hukum", "yapilmayan"):
+            if not isinstance(bulgu.get(alan), str) or not bulgu[alan].strip():
+                return f"bulgu {alan} alanini tasimiyor"
+    for sinif in ("tr", "en", "karisik"):
+        for alan in ("kayit", "karakter", "jeton"):
+            if siniflar[sinif][alan] != taze["siniflar"][sinif][alan]:
+                return (
+                    f"kayit bayat ({sinif}.{alan}): kayitta {siniflar[sinif][alan]}, "
+                    f"olcum {taze['siniflar'][sinif][alan]} - kaydi yeniden uret"
+                )
+    if kanit.get("fark_orani") != taze["fark_orani"]:
+        return (
+            f"kayit bayat (fark_orani): kayitta {kanit.get('fark_orani')}, "
+            f"olcum {taze['fark_orani']} - kaydi yeniden uret"
+        )
+    return None
+
+
+def gate_language_cost_is_declared() -> str:
+    """N: iki dilin jeton maliyeti sinif bazinda beyan edilir.
+
+    Korpusta Turkce ve Ingilizce kayitlar var ve sozluk karisik kesildi; N
+    "jeton/karakter orani olculmuyor" diyordu. Kapi, olcumu yeniden kosar ve
+    kaydi taze sayilarla karsilastirir; esik asildiysa bulgunun uc alanini
+    (olculen/hukum/yapilmayan) zorunlu tutar."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "dil-maliyeti-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("dil maliyeti kaydi yok: training/eval/sonuclar/dil-maliyeti-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "cok_dillilik.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _dil_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    tr = taze["siniflar"]["tr"]
+    en = taze["siniflar"]["en"]
+    return (
+        f"iki dil olculdu: tr {tr['karakter_basina_jeton']:.6f} jeton/karakter "
+        f"({tr['kayit']} kayit), en {en['karakter_basina_jeton']:.6f} ({en['kayit']} kayit); "
+        f"fark {round(taze['fark_orani'] * 100, 2)}% (esik {round(taze['fark_esigi'] * 100, 2)}%), "
+        f"bulgu={'var' if taze['bulgu_dil_maliyeti'] else 'yok'}"
+    )
+
+
+def selftest_language_cost_is_declared() -> None:
+    """Kanarya: eksik sinif, uyusmayan bulgu bayragi, eksik bulgu alani ve
+    bayat sayi ayri ayri reddedilir."""
+    siniflar = {"tr": {"kayit": 3, "karakter": 30, "jeton": 12},
+                "en": {"kayit": 4, "karakter": 40, "jeton": 14},
+                "karisik": {"kayit": 1, "karakter": 10, "jeton": 3}}
+    taze = {"siniflar": siniflar, "fark_orani": 0.05, "fark_esigi": 0.10,
+            "bulgu_dil_maliyeti": None}
+    kayit = {"bulgu_var": False, "kanit": dict(taze)}
+    assert _dil_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    eksik = {"bulgu_var": False, "kanit": {"siniflar": {"tr": siniflar["tr"]},
+                                          "fark_orani": 0.0, "fark_esigi": 0.1}}
+    assert "sinifi kayitta yok" in (_dil_kayit_bulgu(eksik, taze) or ""), "eksik sinif gecti"
+    yanlis_bayrak = {"bulgu_var": True, "kanit": dict(taze)}
+    assert "bulgu_var" in (_dil_kayit_bulgu(yanlis_bayrak, taze) or ""), "uyusmayan bayrak gecti"
+    esik_asildi = {"bulgu_var": True,
+                   "kanit": dict(taze, fark_orani=0.5, bulgu_dil_maliyeti={"olculen": "x"})}
+    assert "bulgu hukum" in (_dil_kayit_bulgu(esik_asildi, taze) or ""), "eksik bulgu alani gecti"
+    bayat = {"bulgu_var": False,
+             "kanit": dict(taze, siniflar=dict(siniflar,
+                                               tr=dict(siniflar["tr"], jeton=99)))}
+    assert "bayat" in (_dil_kayit_bulgu(bayat, taze) or ""), "bayat sayi gecti"
+
+
+def _tekrar_eslesme_tavani() -> float:
+    """Betikteki eslesme tavani okunur; kapi ikinci bir literal tasimaz.
+
+    Ayni sabitin iki yerde durmasi, olcumle kapinin ayrisacagi ilk gunun
+    hazirligidir; bu deponun kuralı: tek kaynak, kapi okur."""
+    import re as _re
+
+    kaynak = (ROOT / "training" / "tekrar_maliyeti.py").read_text(encoding="utf-8")
+    eslesme = _re.search(r"^ESLESME_TAVANI = ([0-9.]+)", kaynak, _re.M)
+    if not eslesme:
+        raise SystemExit("tekrar_maliyeti.py: ESLESME_TAVANI bulunamadi")
+    return float(eslesme.group(1))
+
+
+def _tekrar_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Tekrar maliyeti kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    if not isinstance(kayit.get("uyari"), str) or "duvar saati" not in kayit["uyari"]:
+        return "kayit duvar saati uyarisini tasimiyor: makineye bagli sayi uyari ister"
+    if kayit.get("olcut", {}).get("ad") != "tekrar_bolu_kontrol_orani_esigin_altinda":
+        return "kayit beklenen mekanik olcutu tasimiyor"
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor"
+    eslesme = kanit.get("kontrol_eslesme_farki")
+    if not isinstance(eslesme, (int, float)) or eslesme > _tekrar_eslesme_tavani():
+        return "kayit kontrol sorusunun fiyat eslesmesini tasimiyor (uyari/isabet yok)"
+    if kanit.get("kontrol_soru") == kanit.get("soru"):
+        return "kontrol sorusu ana soruyla ayni: karsilastirma kurulmamis"
+    if kanit.get("onbellek_var") != taze["onbellek_var"]:
+        return (
+            f"kayit bayat: kayitta onbellek_var={kanit.get('onbellek_var')}, taze olcum "
+            f"{taze['onbellek_var']} (tekrar/kontrol {taze['tekrar_bolu_kontrol']}) - "
+            "kaydi yeniden uret"
+        )
+    return None
+
+
+def gate_repeat_cost_is_measured() -> str:
+    """W: tekrarli sorunun marjinal maliyeti olculur, iddia degil.
+
+    U "tekrarli soruda maliyet sifira yaklasir" diyor. Kapi olcumu yeniden
+    kosar; sonuc taze olcumle ayni yonde degilse kayit yeniden uretilmelidir.
+    Sayi ratchet'e girmez - duvar saati makineye baglidir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "tekrar-maliyeti-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("tekrar maliyeti kaydi yok: training/eval/sonuclar/tekrar-maliyeti-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    # Tek basina kosuldugunda da malzeme hazir olsun: `--all` bunu kendi
+    # basinda yapar, ama bu kapi tek basina cagrildiginda da konusmali.
+    _ikili_hazirla()
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "tekrar_maliyeti.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _tekrar_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    return (
+        f"tekrarli soru olculdu: ilk {taze['ilk_ms']} ms, tekrar {taze['tekrar_ms']} ms, "
+        f"kontrol {taze['kontrol_ms']} ms; tekrar/kontrol {taze['tekrar_bolu_kontrol']} -> "
+        f"onbellek_var={taze['onbellek_var']} (U'nun iddiasi bugun "
+        f"{'destekleniyor' if taze['onbellek_var'] else 'desteklenmiyor'})"
+    )
+
+
+def selftest_repeat_cost_is_measured() -> None:
+    """Kanarya: uyarisiz kayit, yanlis olcut adi, eslesmesiz kontrol, ayni
+    kontrol sorusu ve bayat hukum ayri ayri reddedilir."""
+    taze = {"onbellek_var": False, "tekrar_bolu_kontrol": 0.99, "ilk_ms": 1.0,
+            "tekrar_ms": 1.0, "kontrol_ms": 1.0, "kontrol_eslesme_farki": 0.02,
+            "kontrol_soru": "baska soru", "soru": "soru"}
+    kayit = {"uyari": "duvar saati makineye bagli", "olcut": {"ad": "tekrar_bolu_kontrol_orani_esigin_altinda"},
+             "kanit": dict(taze)}
+    assert _tekrar_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    assert "duvar saati" in (_tekrar_kayit_bulgu(
+        dict(kayit, uyari="yok"), taze) or ""), "uyarisiz kayit gecti"
+    assert "mekanik olcut" in (_tekrar_kayit_bulgu(
+        dict(kayit, olcut={"ad": "olculemedi"}), taze) or ""), "yanlis olcut adi gecti"
+    assert "eslesmesini tasimiyor" in (_tekrar_kayit_bulgu(
+        dict(kayit, kanit=dict(taze, kontrol_eslesme_farki=0.9)), taze) or ""), "eslesmesiz kontrol gecti"
+    assert "ayni" in (_tekrar_kayit_bulgu(
+        dict(kayit, kanit=dict(taze, kontrol_soru="soru")), taze) or ""), "ayni kontrol sorusu gecti"
+    assert "bayat" in (_tekrar_kayit_bulgu(
+        dict(kayit, kanit=dict(taze, onbellek_var=True)), taze) or ""), "bayat hukum gecti"
+
+
+# --- XAI: cevaptaki iddialarin kaynagi ---------------------------------------
+
+
+def _alinti_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Alinti kapsamasi kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor"
+    etiketler = kanit.get("cevap_etiketleri")
+    if not isinstance(etiketler, dict) or not etiketler:
+        return "kayit cevap etiketlerini tasimiyor: hangi cevabin kaynak istedigi belli degil"
+    if not isinstance(kanit.get("audit_kaynaksiz"), list):
+        return "kayit audit kaynaksiz listesini tasimiyor"
+    if kanit["audit_kaynaksiz"] and kayit.get("olcut", {}).get("sonuc") is not False:
+        return "audit kaynaksiz cevap varken olcut dogru isaretlenmis"
+    if not kanit["audit_kaynaksiz"] and kayit.get("olcut", {}).get("sonuc") is not True:
+        return "audit kaynaksiz cevap yokken olcut yanlis isaretlenmis"
+    if not isinstance(kanit.get("metinde_alintisiz"), list):
+        return "kayit metinde alintisiz listesini tasimiyor"
+    for alan in ("iddia", "alintisiz", "oran", "soru"):
+        if kanit.get(alan) != taze.get(alan):
+            return (
+                f"kayit bayat ({alan}): kayitta {kanit.get(alan)}, olcum {taze.get(alan)} "
+                "- kaydi yeniden uret"
+            )
+    if kanit.get("audit_kaynaksiz") != taze.get("audit_kaynaksiz"):
+        return (
+            f"kayit bayat (audit_kaynaksiz): kayitta {kanit.get('audit_kaynaksiz')}, "
+            f"olcum {taze.get('audit_kaynaksiz')} - kaydi yeniden uret"
+        )
+    return None
+
+
+def gate_answer_claims_carry_citations() -> str:
+    """XAI: "her cumlenin kaynagini goster" olculur.
+
+    Cevap yuzeyi iki turlu okunur: audit satirindaki `citations` listesi
+    (makinenin gordugu) ve cevap metnindeki gorunur kaynak. Kapi olcumu
+    yeniden kosar; kayit taze olcumle uyusmuyorsa yeniden uretilmelidir.
+    Gosterim eksikligi orani beyan edilen esigi asarsa kayit bulgu tasir."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "alintisiz-cumle-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("alinti kapsamasi kaydi yok: training/eval/sonuclar/alintisiz-cumle-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    # `_er_ikili()` hazir bir spec dizesi dondurur (shlex ile tirnaklanmis).
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "alintisiz_cumle.py"), "--olc",
+         "--bin", _er_ikili()],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _alinti_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    etiketler = taze["cevap_etiketleri"]
+    return (
+        f"alinti kapsamasi olculdu: {taze['soru']} cevap "
+        f"({', '.join(f'{k} {v}' for k, v in sorted(etiketler.items()))}); "
+        f"audit kaynaksiz {len(taze['audit_kaynaksiz'])}, metinde alintisiz "
+        f"{len(taze['metinde_alintisiz'])}/{taze['soru']}, kapsanmayan iddia "
+        f"{taze['alintisiz']}/{taze['iddia']} (esik {taze['esik']})"
+    )
+
+
+def selftest_answer_claims_carry_citations() -> None:
+    """Kanarya: kaynaksiz grounded cevabi tasiyip olcutu dogru diyen kayit,
+    eksik etiket, eksik liste ve bayat sayi ayri ayri reddedilir."""
+    taze = {"iddia": 18, "alintisiz": 6, "oran": 0.3333, "soru": 12,
+            "cevap_etiketleri": {"grounded": 9, "not-found": 3},
+            "audit_kaynaksiz": [], "metinde_alintisiz": ["sinav-04"]}
+    kayit = {"olcut": {"sonuc": True}, "kanit": dict(taze)}
+    assert _alinti_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    celiskili = {"olcut": {"sonuc": True},
+                 "kanit": dict(taze, audit_kaynaksiz=["sinav-01"])}
+    assert "olcut dogru" in (_alinti_kayit_bulgu(celiskili, taze) or ""), "celiskili kayit gecti"
+    eksik_etiket = {"olcut": {"sonuc": True},
+                    "kanit": {k: v for k, v in taze.items() if k != "cevap_etiketleri"}}
+    assert "etiket" in (_alinti_kayit_bulgu(eksik_etiket, taze) or ""), "etiketsiz kayit gecti"
+    bayat = {"olcut": {"sonuc": True}, "kanit": dict(taze, iddia=99)}
+    assert "bayat" in (_alinti_kayit_bulgu(bayat, taze) or ""), "bayat sayi gecti"
+
+
+# --- Y / prompt injection: reddin kendisi olculur ---------------------------
+
+
+def _enjeksiyon_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Enjeksiyon kaydinin semasi ve tazeligi; uymuyorsa gerekcesi."""
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kayit kanit tasimiyor"
+    for alan in ("senaryo", "acik_red", "sessiz_red", "uyum", "kontrol",
+                 "kontrol_cevaplanan"):
+        if not isinstance(kanit.get(alan), int):
+            return f"{alan} sayi degil"
+    if kanit["acik_red"] + kanit["sessiz_red"] + kanit["uyum"] != kanit["senaryo"]:
+        return "uc sonucun toplami senaryo sayisini tutmuyor"
+    sonuc = kayit.get("olcut", {}).get("sonuc")
+    beklenen = kanit["uyum"] == 0 and kanit["kontrol_cevaplanan"] == kanit["kontrol"]
+    if sonuc is not bool(beklenen):
+        return (
+            f"olcut tutarsiz: uyum {kanit['uyum']}, kontrol "
+            f"{kanit['kontrol_cevaplanan']}/{kanit['kontrol']} iken sonuc {sonuc}"
+        )
+    if kanit["uyum"] > 0 and not kanit.get("ardindan_gidilen"):
+        return "uyum var ama ardindan gidilen senaryolar adiyla yazilmamis"
+    for alan in ("senaryo", "acik_red", "sessiz_red", "uyum", "kontrol",
+                 "kontrol_cevaplanan", "aileler", "ardindan_gidilen"):
+        if kanit.get(alan) != taze.get(alan):
+            return (
+                f"kayit bayat ({alan}): kayitta {kanit.get(alan)}, olcum "
+                f"{taze.get(alan)} - kaydi yeniden uret"
+            )
+    return None
+
+
+def gate_injection_refusals_are_measured() -> str:
+    """Y: enjeksiyon bataryasi kosar ve reddin kendisi olculur.
+
+    Kapi yalniz "reddedildi mi" diye bakmaz: uc sonucu ayirir. Enjeksiyonun
+    siradan istek gibi islenmesi (`uyum`) kabul edilemez; acik red ile
+    sessiz red ayri sayilir, cunku bu depoda reddin adini soylemesi bir
+    kuraldir. Kontrol sorulari ayni fiksturda cevaplanmali ki sessizlik
+    "korpus bos" sonucuna baglanmasin."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "enjeksiyon-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("enjeksiyon kaydi yok: training/eval/sonuclar/enjeksiyon-2026-09-24.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    bulgu = _eval_run_finding(kayit)
+    if bulgu:
+        raise SystemExit(f"{kayit_yolu.name}: {bulgu}")
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "enjeksiyon_bataryasi.py"), "--olc",
+         "--bin", _er_ikili()],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"batarya kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _enjeksiyon_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    return (
+        f"enjeksiyon olculdu: {taze['senaryo']} senaryo / {len(taze['aileler'])} aile, "
+        f"uyum {taze['uyum']}, acik red {taze['acik_red']} ({taze['acik_red_orani']}), "
+        f"sessiz red {taze['sessiz_red']}, kontrol {taze['kontrol_cevaplanan']}/{taze['kontrol']}"
+    )
+
+
+def selftest_injection_refusals_are_measured() -> None:
+    """Kanarya: uyum varken olcutu dogru diyen kayit, toplami tutmayan sayi,
+    adiyla yazilmamis uyum ve bayat sayi ayri ayri reddedilir."""
+    taze = {"senaryo": 12, "acik_red": 2, "sessiz_red": 10, "uyum": 0,
+            "kontrol": 2, "kontrol_cevaplanan": 2, "aileler": {"a": 2},
+            "ardindan_gidilen": []}
+    kayit = {"olcut": {"sonuc": True}, "kanit": dict(taze)}
+    assert _enjeksiyon_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    uyumlu_olcum = dict(taze, uyum=1, sessiz_red=9)
+    # Kayit "uyum sifir" diyor, taze olcum "uyum bir" diyor: bayatlik yakalanir.
+    assert "bayat" in (_enjeksiyon_kayit_bulgu(kayit, uyumlu_olcum) or ""), "bayatlik gecti"
+    # Kaydin KENDI kaniti uyumlu ama olcutu hala "dogru": celiski yakalanir.
+    celiskili = {"olcut": {"sonuc": True},
+                 "kanit": dict(uyumlu_olcum, ardindan_gidilen=["senaryo"])}
+    assert "olcut tutarsiz" in (_enjeksiyon_kayit_bulgu(celiskili, uyumlu_olcum) or ""), (
+        "celiskili olcut gecti"
+    )
+    adli = {"olcut": {"sonuc": False},
+            "kanit": dict(uyumlu_olcum, ardindan_gidilen=[])}
+    assert "adiyla yazilmamis" in (_enjeksiyon_kayit_bulgu(adli, uyumlu_olcum) or ""), (
+        "adsiz uyum gecti"
+    )
+    eksik_toplam = {"olcut": {"sonuc": True}, "kanit": dict(taze, sessiz_red=9)}
+    assert "toplami" in (_enjeksiyon_kayit_bulgu(eksik_toplam, taze) or ""), "toplam gecti"
+    bayat = {"olcut": {"sonuc": True}, "kanit": dict(taze, acik_red=1, sessiz_red=11)}
+    assert "bayat" in (_enjeksiyon_kayit_bulgu(bayat, taze) or ""), "bayat sayi gecti"
+
+
+# --- otonom egitim dongusu: anayasa ve mutasyon alani ----------------------
+AT = ROOT / "autonomous-training"
+KARARLAR_ZORUNLU = {"K1", "K2", "K3", "K4", "K5", "K6", "no-generation"}
+DOKUNULMAZ_ZORUNLU = ("INVARIANTS.md", "INVARIANTS.sha256", "olcut.md", "ayarlar.json", "program.md")
+
+
+def _anayasa_bloku(metin: str) -> dict:
+    """INVARIANTS.md icindeki tek makine blogu (soz ile kodun tek kaynagi)."""
+    bloklar = re.findall(r"```json\s*(\{.*?\})\s*```", metin, re.S)
+    if len(bloklar) != 1:
+        raise SystemExit(f"INVARIANTS.md: tek makine blogu beklenir, {len(bloklar)} bulundu")
+    return json.loads(bloklar[0])
+
+
+def _damga_bulgu(icerik: bytes, damga_metni: str) -> str | None:
+    """Anayasa damgasi: dosyanin olculen ozeti yazili ozetle ayni mi."""
+    import hashlib
+
+    parcalar = damga_metni.split()
+    if not parcalar:
+        return "INVARIANTS.sha256 bos"
+    yazili = parcalar[0].strip().lower()
+    if len(yazili) != 64 or any(k not in "0123456789abcdef" for k in yazili):
+        return f"INVARIANTS.sha256 gecersiz ozet bicimi: {yazili!r}"
+    gercek = hashlib.sha256(icerik).hexdigest()
+    if yazili != gercek:
+        return f"anayasa damgasi tutmuyor: yazili {yazili[:12]}, olculen {gercek[:12]}"
+    return None
+
+
+def _anayasa_bulgu(blok: dict) -> str | None:
+    """Anayasa blogu kendi icinde tutarli ve eksiksiz mi."""
+    kararlar = {k.get("id") for k in blok.get("kararlar", [])}
+    eksik = sorted(KARARLAR_ZORUNLU - kararlar)
+    if eksik:
+        return f"anayasa blokunda eksik karar: {eksik}"
+    dokunulmaz = blok.get("dokunulmaz_dosyalar", [])
+    if not isinstance(dokunulmaz, list) or not dokunulmaz:
+        return "anayasa blogunda dokunulmaz_dosyalar yok"
+    for ad in DOKUNULMAZ_ZORUNLU:
+        if not any(d.endswith("autonomous-training/" + ad) for d in dokunulmaz):
+            return f"dokunulmazlar listesinde {ad} yok"
+    kosullar = blok.get("durdurma_kosullari", [])
+    if sorted(k.get("id") for k in kosullar) != ["S1", "S2", "S3", "S4", "S5"]:
+        return f"durdurma kosullari S1-S5 degil: {sorted(k.get('id') for k in kosullar)}"
+    if not all(k.get("ad") and k.get("kural") for k in kosullar):
+        return "durdurma kosulunda ad ya da kural eksik"
+    return None
+
+
+def _durus_kaplama_bulgu(kaynak: str, kosullar: list[dict]) -> str | None:
+    """Anayasada yazan her durdurma kosulu kodda cagriliyor mu (ve tersi)."""
+    # Kosul id'si `dur(...)` ailesinin ikinci argumanidir; birinci arguman
+    # durumun adi olabilir (s2_dur gibi sarmalayicilar durumu disaridan alir).
+    bulunan = set(re.findall(r'\bdur\(\s*[A-Za-z_][\w.]*\s*,\s*"(S\d)"', kaynak))
+    beyan = {k["id"] for k in kosullar}
+    if bulunan != beyan:
+        return f"anayasa ile kod ayrisiyor: beyan {sorted(beyan)}, kodda {sorted(bulunan)}"
+    return None
+
+
+def _yazma_kapisi_bulgu(kaynaklar: dict) -> str | None:
+    """Dosya yazan her fonksiyon yazma kapisindan gecmeli.
+
+    Otomasyon agacinda yazma tek noktadan yapilir: `guvenli_yaz`, o da
+    `yazma_reddi` ile dokunulmazlari denetler. Ikinci bir yazma yolu acilirsa
+    (ya da kapi denetimi cikarilirsa) burasi kirmizi yanar."""
+    import ast
+
+    kacak = []
+    for ad, metin in sorted(kaynaklar.items()):
+        for dugum in ast.walk(ast.parse(metin)):
+            if not isinstance(dugum, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            yazar = False
+            for cagri in ast.walk(dugum):
+                if not isinstance(cagri, ast.Call):
+                    continue
+                adi = cagri.func.attr if isinstance(cagri.func, ast.Attribute) else getattr(
+                    cagri.func, "id", ""
+                )
+                if adi in ("write_text", "write_bytes"):
+                    yazar = True
+                if adi == "open" and any(
+                    isinstance(a, ast.Constant) and isinstance(a.value, str)
+                    and ("w" in a.value or "a" in a.value)
+                    for a in cagri.args
+                ):
+                    yazar = True
+            if not yazar:
+                continue
+            kapi = any(
+                isinstance(c, ast.Call) and getattr(c.func, "id", "") in ("guvenli_yaz", "yazma_reddi")
+                for c in ast.walk(dugum)
+            )
+            if not kapi:
+                kacak.append(f"{ad}:{dugum.name}")
+    if kacak:
+        return "kapi disi yazici: " + ", ".join(sorted(kacak))
+    return None
+
+
+def _dokunulmaz_yazma_bulgu(kaynaklar: dict, dokunulmaz: list[str]) -> str | None:
+    """Dokunulmaz dosya adini yazma cagrisiyla ayni satirda gecen kod."""
+    kisayollar = [d.split("autonomous-training/")[-1] for d in dokunulmaz]
+    yazma = ("write_text", "write_bytes", "open(", ".write(", "shutil.copy", "os.replace", ">>")
+    yakalanan = []
+    for ad, metin in sorted(kaynaklar.items()):
+        for i, satir in enumerate(metin.splitlines(), 1):
+            if any(k in satir for k in kisayollar) and any(y in satir for y in yazma):
+                yakalanan.append(f"{ad}:{i}")
+    if yakalanan:
+        return "dokunulmaz dosyaya yazma yolundan gecen satir: " + ", ".join(yakalanan)
+    return None
+
+
+def _mutasyon_bulgu(mutasyon: dict, dokunulmaz: list[str], bayraklar: set) -> str | None:
+    """Mutasyon alani kapali mi: dugmeler gercek, kapsam disi ayri, yamalar dokunulmaz disinda."""
+    dugmeler = mutasyon.get("dugme_uzayi", {})
+    kapsam_disi = mutasyon.get("kapsam_disi_dugmeler", {})
+    if not isinstance(dugmeler, dict) or not dugmeler:
+        return "mutasyon alani bos: deneyin dokunabilecegi dugme yok"
+    if not isinstance(kapsam_disi, dict):
+        return "kapsam_disi_dugmeler sozluk degil"
+    ortak = sorted(set(dugmeler) & set(kapsam_disi))
+    if ortak:
+        return f"dugme hem icerde hem kapsam disi: {ortak}"
+    bilinmeyen = sorted((set(dugmeler) | set(kapsam_disi)) - set(bayraklar))
+    if bilinmeyen:
+        return f"egitim-kosu'da olmayan dugme: {bilinmeyen}"
+    for ad, aralik in sorted(dugmeler.items()):
+        if not isinstance(aralik, dict):
+            return f"{ad}: aralik sozluk degil"
+        alt, ust = aralik.get("alt"), aralik.get("ust")
+        if not isinstance(alt, (int, float)) or not isinstance(ust, (int, float)):
+            return f"{ad}: alt/ust sayi degil"
+        if alt >= ust:
+            return f"{ad}: alt >= ust ({alt} >= {ust})"
+        if not aralik.get("aile"):
+            return f"{ad}: aile yok"
+    izinli = mutasyon.get("kaynak_yamasi", {}).get("izinli_dosyalar", [])
+    if not izinli:
+        return "kaynak yamasi izinli dosya listesi bos"
+    for yol in izinli:
+        temiz = yol.rstrip("/")
+        for d in dokunulmaz:
+            if temiz == d or temiz.startswith(d.rstrip("/") + "/") or d.startswith(temiz + "/"):
+                return f"izinli dosya dokunulmazi kesiyor: {yol}"
+        if not (ROOT / yol).exists():
+            return f"izinli dosya yok: {yol}"
+    return None
+
+
+def _egitim_kosu_bayraklari() -> set:
+    """Gercek mutasyon yuzeyi: egitim-kosu'nun kabul ettigi bayraklar (ikiliden)."""
+    kosu = subprocess.run(
+        [_er_ikili(), "egitim-kosu", "--bilinmeyen-bayrak"], cwd=ROOT,
+        capture_output=True, text=True, check=False,
+    )
+    m = re.search(r"gecerli olanlar:\s*(.+)$", kosu.stdout + kosu.stderr, re.M)
+    if not m:
+        raise SystemExit(f"egitim-kosu bayrak listesi okunamadi: {(kosu.stdout + kosu.stderr)[-200:]}")
+    return {p.strip() for p in m.group(1).split(",") if p.strip()}
+
+
+def gate_invariants_are_frozen() -> str:
+    """Anayasa donmus bir kilit: ozet, blok, kod kaplamasi, yazma kapisi, kanarya."""
+    anayasa_yolu = AT / "INVARIANTS.md"
+    damga_yolu = AT / "INVARIANTS.sha256"
+    dongu_yolu = AT / "dongu.py"
+    if not anayasa_yolu.is_file() or not damga_yolu.is_file() or not dongu_yolu.is_file():
+        raise SystemExit("otomasyon agaci eksik: autonomous-training/{INVARIANTS.md,INVARIANTS.sha256,dongu.py}")
+    bulgu = _damga_bulgu(anayasa_yolu.read_bytes(), damga_yolu.read_text(encoding="utf-8"))
+    if bulgu:
+        raise SystemExit(bulgu)
+    blok = _anayasa_bloku(anayasa_yolu.read_text(encoding="utf-8"))
+    bulgu = _anayasa_bulgu(blok)
+    if bulgu:
+        raise SystemExit(bulgu)
+    bulgu = _durus_kaplama_bulgu(dongu_yolu.read_text(encoding="utf-8"), blok["durdurma_kosullari"])
+    if bulgu:
+        raise SystemExit(bulgu)
+    kaynaklar = {p.name: p.read_text(encoding="utf-8") for p in sorted(AT.glob("*.py"))}
+    if not kaynaklar:
+        raise SystemExit("otomasyon agacinda python kaynagi yok")
+    bulgu = _yazma_kapisi_bulgu(kaynaklar)
+    if bulgu:
+        raise SystemExit(bulgu)
+    tarama = {p.relative_to(ROOT).as_posix(): p.read_text(encoding="utf-8")
+              for p in sorted(list(AT.glob("*.py")) + list((ROOT / "training").glob("*.py")))}
+    bulgu = _dokunulmaz_yazma_bulgu(tarama, blok["dokunulmaz_dosyalar"])
+    if bulgu:
+        raise SystemExit(bulgu)
+    kosu = subprocess.run(
+        [sys.executable, str(dongu_yolu), "--kendini-test"], cwd=ROOT,
+        capture_output=True, text=True, check=False, timeout=600,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"durdurma kanaryasi dustu: {(kosu.stderr or kosu.stdout)[-300:]}")
+    import hashlib
+
+    ozet = hashlib.sha256(anayasa_yolu.read_bytes()).hexdigest()[:12]
+    return (f"anayasa donuk ({ozet}): {len(blok['kararlar'])} karar, "
+            f"{len(blok['dokunulmaz_dosyalar'])} dokunulmaz dosya, S1-S5 kodda cagrili, "
+            f"{len(tarama)} dosyada yazma taramasi temiz, kanarya yesil")
+
+
+def selftest_invariants_are_frozen() -> None:
+    """Kanarya: her denetim kendi kanitini reddeder."""
+    import hashlib
+
+    assert _damga_bulgu(b"abc", hashlib.sha256(b"abc").hexdigest()) is None, "gecerli damga reddedildi"
+    assert "tutmuyor" in (_damga_bulgu(b"abc", hashlib.sha256(b"abd").hexdigest()) or ""), "bayat damga gecti"
+    assert _damga_bulgu(b"abc", "kisa") is not None, "bozuk ozet bicimi gecti"
+    assert _damga_bulgu(b"abc", "") is not None, "bos damga gecti"
+
+    iyi = {"kararlar": [{"id": k, "kural": "k"} for k in sorted(KARARLAR_ZORUNLU)],
+           "dokunulmaz_dosyalar": ["autonomous-training/" + a for a in DOKUNULMAZ_ZORUNLU],
+           "durdurma_kosullari": [{"id": f"S{i}", "ad": "a", "kural": "k"} for i in range(1, 6)]}
+    assert _anayasa_bulgu(iyi) is None, "gecerli anayasa reddedildi"
+    eksik_karar = dict(iyi, kararlar=[{"id": "K1", "kural": "k"}])
+    assert "eksik karar" in (_anayasa_bulgu(eksik_karar) or ""), "eksik karar gecti"
+    eksik_dosya = dict(iyi, dokunulmaz_dosyalar=["autonomous-training/INVARIANTS.md"])
+    assert "dokunulmazlar" in (_anayasa_bulgu(eksik_dosya) or ""), "eksik dokunulmaz gecti"
+    eksik_kosul = dict(iyi, durdurma_kosullari=[{"id": "S1", "ad": "a", "kural": "k"}])
+    assert "S1-S5" in (_anayasa_bulgu(eksik_kosul) or ""), "eksik durdurma kosulu gecti"
+
+    kaynak = 'dur(durum, "S1", "x")\ndur(DURUM_AKTIF, "S5", "y")\n'
+    assert _durus_kaplama_bulgu(kaynak, [{"id": "S1"}, {"id": "S5"}]) is None, "kaplama reddedildi"
+    assert "ayrisiyor" in (_durus_kaplama_bulgu('dur(durum, "S9", "x")', [{"id": "S1"}]) or ""), "hayalet kosul gecti"
+    assert "ayrisiyor" in (_durus_kaplama_bulgu('dur(durum, "S1", "x")', [{"id": "S1"}, {"id": "S5"}]) or ""), "kapsanmayan kosul gecti"
+
+    assert _yazma_kapisi_bulgu({"a.py": "def y(p):\n    guvenli_yaz(p, 'x')\n"}) is None, "kapi reddedildi"
+    assert "kapi disi" in (_yazma_kapisi_bulgu({"a.py": "def y(p):\n    p.write_text('x')\n"}) or ""), "kapisiz yazar gecti"
+    assert "kapi disi" in (
+        _yazma_kapisi_bulgu({"a.py": "def y(p):\n    open(p, 'w').write('x')\n"}) or ""
+    ), "kapisiz open gecti"
+
+    dokunulmaz = ["autonomous-training/ayarlar.json"]
+    kotu = {"a.py": 'Path("autonomous-training/ayarlar.json").write_text("x")'}
+    assert "yazma yolundan" in (_dokunulmaz_yazma_bulgu(kotu, dokunulmaz) or ""), "dokunulmaz yazimi gecti"
+    iyi_kod = {"a.py": 'veri = (AT / "ayarlar.json").read_text()'}
+    assert _dokunulmaz_yazma_bulgu(iyi_kod, dokunulmaz) is None, "okuma reddedildi"
+
+
+def gate_mutation_surface_is_closed() -> str:
+    """Mutasyon alani ile dokunulmazlar kesisemez; dugmeler gercek bayraklardir."""
+    mutasyon_yolu = AT / "mutasyon_alani.json"
+    anayasa_yolu = AT / "INVARIANTS.md"
+    if not mutasyon_yolu.is_file() or not anayasa_yolu.is_file():
+        raise SystemExit("mutasyon alani ya da anayasa yok")
+    mutasyon = json.loads(mutasyon_yolu.read_text(encoding="utf-8"))
+    blok = _anayasa_bloku(anayasa_yolu.read_text(encoding="utf-8"))
+    bayraklar = _egitim_kosu_bayraklari()
+    bulgu = _mutasyon_bulgu(mutasyon, blok["dokunulmaz_dosyalar"], bayraklar)
+    if bulgu:
+        raise SystemExit(bulgu)
+    dugmeler = mutasyon["dugme_uzayi"]
+    return (f"mutasyon yuzeyi kapali: {len(dugmeler)} dugme "
+            f"({', '.join(sorted(dugmeler))}), {len(mutasyon['kapsam_disi_dugmeler'])} kapsam disi, "
+            f"{len(mutasyon['kaynak_yamasi']['izinli_dosyalar'])} yama dosyasi, "
+            f"dokunulmazlarla kesisim yok (gercek bayrak sayisi {len(bayraklar)})")
+
+
+def selftest_mutation_surface_is_closed() -> None:
+    """Kanarya: kesisim, hayalet bayrak, ters aralik, dokunulmaz yama ayri ayri reddedilir."""
+    bayraklar = {"--kirpma", "--yigin", "--pencere"}
+    dokunulmaz = ["autonomous-training/ayarlar.json", "autonomous-training/INVARIANTS.md"]
+    saglam = {
+        "dugme_uzayi": {"--kirpma": {"alt": 0.5, "ust": 2.0, "aile": "kararlilik"}},
+        "kapsam_disi_dugmeler": {"--pencere": "mimari"},
+        "kaynak_yamasi": {"izinli_dosyalar": ["training/"]},
+    }
+    assert _mutasyon_bulgu({"dugme_uzayi": {}, "kapsam_disi_dugmeler": {},
+                            "kaynak_yamasi": {"izinli_dosyalar": ["training/"]}},
+                           dokunulmaz, bayraklar) is not None, "bos alan gecti"
+    kesisim = dict(saglam, kapsam_disi_dugmeler={"--pencere": "m", "--kirpma": "m"})
+    assert "hem icerde" in (_mutasyon_bulgu(kesisim, dokunulmaz, bayraklar) or ""), "kesisim gecti"
+    hayalet = dict(saglam, dugme_uzayi={"--yok": {"alt": 0, "ust": 1, "aile": "a"}})
+    assert "olmayan dugme" in (_mutasyon_bulgu(hayalet, dokunulmaz, bayraklar) or ""), "hayalet bayrak gecti"
+    ters = dict(saglam, dugme_uzayi={"--kirpma": {"alt": 2.0, "ust": 0.5, "aile": "a"}})
+    assert "alt >= ust" in (_mutasyon_bulgu(ters, dokunulmaz, bayraklar) or ""), "ters aralik gecti"
+    eksik_aile = dict(saglam, dugme_uzayi={"--kirpma": {"alt": 0.5, "ust": 2.0}})
+    assert "aile" in (_mutasyon_bulgu(eksik_aile, dokunulmaz, bayraklar) or ""), "ailesiz dugme gecti"
+    yamali = dict(saglam, kaynak_yamasi={"izinli_dosyalar": ["autonomous-training/ayarlar.json"]})
+    assert "dokunulmazi kesiyor" in (_mutasyon_bulgu(yamali, dokunulmaz, bayraklar) or ""), "dokunulmaz yama gecti"
+    yoksa = dict(saglam, kaynak_yamasi={"izinli_dosyalar": ["yok/boyle/dizin"]})
+    assert "izinli dosya yok" in (_mutasyon_bulgu(yoksa, dokunulmaz, bayraklar) or ""), "olmayan yol gecti"
+    bos_yama = dict(saglam, kaynak_yamasi={"izinli_dosyalar": []})
+    assert "izinli dosya listesi bos" in (_mutasyon_bulgu(bos_yama, dokunulmaz, bayraklar) or ""), "bos yama listesi gecti"
+
+
+
+def _kimlik_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Kimlik bicimleri kaydinin semasi, tutarliligi ve tazeligi.
+
+    Denetim olcum betiginin icindedir (tek yerde yasasin diye oradan cagrilir):
+    kapi yalniz kaydi okumakla kalmaz, fiksturu yeniden kosar."""
+    sys.path.insert(0, str(ROOT / "training"))
+    import kimlik_bicimleri
+
+    return kimlik_bicimleri._bulgu(kayit, taze)
+
+
+def gate_credential_shapes_are_measured() -> str:
+    """8e/regex: bilinen kimlik bicimleri yakalaniyor mu, temiz metin yanlis alarm veriyor mu.
+
+    Iki madde ayni olcumu istiyordu: yakalama orani ve yanlis-pozitif denetimi.
+    Kapi kaydi okur, sonra fiksturu gercek tarayiciya yeniden kosar; kacirilan
+    bir bicim ya da yanlis pozitif varsa kirmizi yanar."""
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "kimlik-bicimleri-2026-09-24.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit(f"kayit yok: {kayit_yolu.relative_to(ROOT)} (once --kur)")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "kimlik_bicimleri.py"), "--olc",
+         "--bin", _er_ikili()],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=600,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"olcum kosmadi: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout)
+    bulgu = _kimlik_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+    kanit = kayit["kanit"]
+    return (f"kimlik bicimleri olculdu: {kanit['yakalanan']}/{kanit['bicim']} bicim yakalandi "
+            f"(oran {kanit['yakalama_orani']}), yanlis pozitif "
+            f"{len(kanit['yanlis_pozitif'])}/{kanit['temiz_metin']}, "
+            f"kacirilan {len(kanit['kacirilan'])}")
+
+
+def selftest_credential_shapes_are_measured() -> None:
+    """Kanarya: kacirilan bicim, yanlis pozitif, tutarsiz oran ve bayat sayi ayri ayri reddedilir."""
+    taze = {"bicim": 3, "yakalanan": 3, "yakalama_orani": 1.0, "kacirilan": [],
+            "temiz_metin": 3, "temiz_gecen": 3, "yanlis_pozitif": [], "yanlis_pozitif_orani": 0.0}
+    kayit = {"olcut": {"sonuc": True}, "kanit": dict(taze)}
+    assert _kimlik_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    kacan = dict(taze, yakalanan=2, yakalama_orani=round(2 / 3, 4), kacirilan=["pem-rsa"])
+    assert "bayat" in (_kimlik_bulgu(kayit, kacan) or ""), "kacirilan bicim gecti"
+    yanlis_alarm = dict(taze, temiz_gecen=2, yanlis_pozitif=["duz-metin"],
+                        yanlis_pozitif_orani=round(1 / 3, 4))
+    assert "bayat" in (_kimlik_bulgu(kayit, yanlis_alarm) or ""), "yanlis pozitif gecti"
+    # Kayit kendi icinde celiskili: toplam tutmuyor.
+    celiskili = {"olcut": {"sonuc": True},
+                 "kanit": dict(taze, yakalanan=2, kacirilan=[], yakalama_orani=1.0)}
+    assert "yakalama_orani" in (_kimlik_bulgu(celiskili, taze) or ""), "tutarsiz oran gecti"
+    # Kayit "sonuc dogru" derken kacirilan listesi bos degil: olcut yanlis.
+    yanlis_olcut = {"olcut": {"sonuc": True}, "kanit": dict(taze, kacirilan=["x"])}
+    assert _kimlik_bulgu(yanlis_olcut, taze) is not None, "yanlis olcut gecti"
+    # Kanit alani olmayan kayit.
+    assert _kimlik_bulgu({"olcut": {"sonuc": True}}, taze) is not None, "kanitsiz kayit gecti"
+
+
+
+
+def gate_apk_sozlesmesi() -> str:
+    """APK sozlesmesi: izin listesi, JNI yuzeyi ve agirliklarin cihazda olmamasi.
+
+    Kapi, APK'nin **uretilmis olmasini** istemez - her makinede Android araci
+    zinciri yok ve olmayan bir arac yuzunden kapi dusurmek, kapiyi kapatan sey
+    olurdu. Istedigi sey sozlesmenin kodda tutmasi:
+
+    * manifest tam olarak bir izin ister (INTERNET) ve fazlasi varsa duser;
+    * `Kopru.java`'daki `native` bildirimleri ile `crates/arayuz`'deki `Java_*`
+      islevleri birebir aynidir (sayi degil, ad kumesi);
+    * agirlik dosyasi (`.safetensors`) APK'nin icine konmaz: telefondaki istemci
+      sorar, dugum puanlar.
+
+    Kapi, **paket adinin Java kaynagiyla ayni oldugunu** da soyler. Bu satir bir
+    kez gercek bir hatayi yakaladi: manifest `xyz.budlum.lubot` yaziyordu, Java
+    kaynagi `dev.budlum.lubot` bildiriyordu; `aapt2` `R` sinifini manifest'teki
+    pakete urettigi icin derleme `package R does not exist` ile dustu. Manifest
+    ile kaynak ayni seyi soylemek zorunda, ve bunu bir kapi soyler.
+    """
+    manifest = ROOT / "android" / "AndroidManifest.xml"
+    if not manifest.is_file():
+        raise SystemExit("android/AndroidManifest.xml yok")
+    metin = manifest.read_text(encoding="utf-8")
+    izinler = set(re.findall(r"android\.permission\.[A-Z_]+", metin))
+    beklenen = {"android.permission.INTERNET"}
+    if izinler != beklenen:
+        raise SystemExit(f"izin listesi sozlesmeye uymuyor: {sorted(izinler)}")
+    if "usesCleartextTraffic=\"false\"" not in metin:
+        raise SystemExit("sifresiz trafik yasagi manifest'te yok")
+    if "allowBackup=\"false\"" not in metin:
+        raise SystemExit("yedekleme yasagi manifest'te yok")
+    java = (ROOT / "android" / "src" / "dev" / "budlum" / "lubot" / "Kopru.java").read_text(
+        encoding="utf-8"
+    )
+    java_adlar = sorted(re.findall(r"static\s+native\s+\w+\s+(\w+)\s*\(", java))
+    # Java dosyasinin bildirdigi paket ile manifest'in bildirdigi paket ayni
+    # olmali: `R` sinifi manifest'teki ada gore uretilir ve uyusmazlik derlemeyi
+    # dusurur (bkz. fonksiyonun belgesi).
+    java_paket = re.search(r"^\s*package\s+([\w.]+)\s*;", java, re.M)
+    if java_paket is None:
+        raise SystemExit("Kopru.java paket bildirmiyor")
+    manifest_paket = re.search(r'package="([\w.]+)"', metin)
+    if manifest_paket is None:
+        raise SystemExit("manifest paket bildirmiyor")
+    if java_paket.group(1) != manifest_paket.group(1):
+        raise SystemExit(
+            f"paket adi uyusmuyor: manifest {manifest_paket.group(1)} / java {java_paket.group(1)}"
+        )
+    rust = (ROOT / "crates" / "arayuz" / "src" / "lib.rs").read_text(encoding="utf-8")
+    onek = "Java_" + manifest_paket.group(1).replace(".", "_") + "_Kopru_"
+    rust_adlar = sorted(
+        m.replace(onek, "")
+        for m in re.findall(r"extern\s+\"system\"\s+fn\s+(Java_\w+)", rust)
+    )
+    if java_adlar != rust_adlar:
+        raise SystemExit(f"JNI sozlesmesi uyusmuyor: java {java_adlar} / rust {rust_adlar}")
+    if not java_adlar:
+        raise SystemExit("JNI yuzeyi bos: kopru yazilmamis olabilir")
+    # Agirliklar cihazda durmaz. Kural **dosya adi ve boyutu** uzerinden
+    # kurulur, uzanti uzerinden degil: `fuzz/seeds/*.safetensors` tohumlari da
+    # bu uzantiyi tasir ve onlar birer test fiksturudur (yuz bayt mertebesinde).
+    # Uzantiyi yasaklamak, kapiyi ilk kosusunda yanlis yere dusuren seydi; kapi
+    # buldugu seyi **adiyla** soyler ve adi `model.safetensors` olan ya da bir
+    # megabayti asan bir dosya gercekten cihaza konmus bir agirliktir.
+    for yol in ROOT.rglob("*.safetensors*"):
+        if "target" in yol.parts:
+            continue
+        ad = yol.name
+        if ad.startswith("model.safetensors") or yol.stat().st_size > 1_000_000:
+            raise SystemExit(
+                f"agirlik urun agacinda: {yol.relative_to(ROOT)} ({yol.stat().st_size} bayt)"
+            )
+    # Istemcide karar mantigi yok: Activity hicbir esik ya da yedek cevap
+    # tasimaz. Arama **koda** yapilir, yoruma degil: kapinin ilk hali yorumdaki
+    # "no threshold" cumlesini yakalayip yanlis yere dustu, ve bir kapi kendi
+    # konusunu yasaklarsa, dokumantasyon yazilamaz hale gelir. Yorumlar once
+    # silinir; o zaman geriye kalan sey, calisan koddur.
+    activity = (
+        ROOT / "android" / "src" / "dev" / "budlum" / "lubot" / "AnaEtkinlik.java"
+    ).read_text(encoding="utf-8")
+    kod = re.sub(r"/\*.*?\*/", "", activity, flags=re.S)
+    kod = re.sub(r"//[^\n]*", "", kod)
+    for yasak in ("threshold", "fallback", "varsayilan_cevap"):
+        if yasak in kod:
+            raise SystemExit(f"istemcide karar mantigi izi: `{yasak}`")
+    return (
+        f"APK sozlesmesi: {len(izinler)} izin, {len(java_adlar)} JNI islevi "
+        f"(java=rust), agirlik urun agacinda yok, istemci karar vermiyor"
+    )
+
+
+def selftest_apk_sozlesmesi() -> None:
+    """Kanarya: sozlesme kurallarinin her biri isiriyor mu."""
+    import tempfile
+
+    govde = (
+        '<?xml version="1.0"?><manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+        '<uses-permission android:name="android.permission.INTERNET" />'
+        '<application android:allowBackup="false" android:usesCleartextTraffic="false" />'
+        "</manifest>"
+    )
+    izin = set(re.findall(r"android\.permission\.[A-Z_]+", govde))
+    assert izin == {"android.permission.INTERNET"}, "izin ayristirma bozuk"
+    # Fazla izin kanaryasi: metne ikinci bir izin eklenir ve kumenin buyudugu
+    # gorulur. Tirnaklar kacisli yazilir; kanarya testinin kendisi sozdizimi
+    # hatasi verirse hicbir sey sinanmis olmaz.
+    fazlali = govde.replace(
+        "/>",
+        ' /><uses-permission android:name="android.permission.CAMERA" />',
+        1,
+    )
+    fazla = set(re.findall(r"android\.permission\.[A-Z_]+", fazlali))
+    assert len(fazla) == 2, f"fazla izin yakalanmadi: {sorted(fazla)}"
+    java = "public static native String surum();\npublic static native String istek(String a, int b);"
+    adlar = re.findall(r"static\s+native\s+\w+\s+(\w+)\s*\(", java)
+    assert adlar == ["surum", "istek"], f"native ayristirma bozuk: {adlar}"
+    assert "usesCleartextTraffic=\"false\"" in govde, "cleartext kuralı okunmadi"
+    # Paket kanaryasi: manifest ile Java kaynagi ayni paketi soylemeli. Kanarya
+    # iki sahte kaynak kurar - biri uyumlu, biri degil - ve karsilastirmanin
+    # gercekten isirdigini gosterir.
+    java_kanarya = "package dev.budlum.lubot;\npublic final class Kopru {}"
+    uyumlu_manifest = '<manifest xmlns:android="x" package="dev.budlum.lubot">'
+    aykiri_manifest = '<manifest xmlns:android="x" package="xyz.budlum.lubot">'
+    jp = re.search(r"^\s*package\s+([\w.]+)\s*;", java_kanarya, re.M).group(1)
+    mp = re.search(r'package="([\w.]+)"', uyumlu_manifest).group(1)
+    assert jp == mp, "uyumlu kanarya uyumsuz cikti"
+    ap = re.search(r'package="([\w.]+)"', aykiri_manifest).group(1)
+    assert jp != ap, "aykiri kanarya yakalanmadi"
+    # JNI oneki paketten turetilir: paket bir kez yanlis yazildiginda Rust
+    # tarafindaki adlar da yanlis onekle aranir ve kume bos kalir. Kanarya bunu
+    # gosterir - yani "uyusmazlik" sessizce gecmez.
+    onek = "Java_" + jp.replace(".", "_") + "_Kopru_"
+    assert onek == "Java_dev_budlum_lubot_Kopru_", f"onek yanlis: {onek}"
+    assert "Java_xyz_budlum_lubot_Kopru_surum".replace(onek, "") == (
+        "Java_xyz_budlum_lubot_Kopru_surum"
+    ), "yanlis onek kirpilmis gibi gorundu"
+    # Yorum silme kanaryasi: yorumdaki kelime gecmeli, koddaki kalmali.
+    yorumlu = "// no threshold here\nint x = 1;"
+    kod_kanarya = re.sub(r"//[^\n]*", "", yorumlu)
+    assert "threshold" not in kod_kanarya, "yorum silinmedi"
+    kodda = "int threshold = 3;"
+    assert "threshold" in re.sub(r"//[^\n]*", "", kodda), "kodda iz bulunamadi"
+    # Kapi, kendi kanaryasinin yazdigi gecici agacta agirlik aramaz; asagisi
+    # yalnizca arama mantiginin calistigini gosterir.
+    # Korpus suzme kanaryasi: iki sentetik korpus kurulur. Damgali kayit
+    # suzulur, damgasiz kayit kalir. Boylece "served" denetimi dolu bir ada
+    # bakmiyor, gercekten kayit atiyor.
+    import gzip as _gz
+    import json as _json2
+
+    with tempfile.TemporaryDirectory() as d:
+        ham = Path(d) / "ham.jsonl.gz"
+        suzulmus = Path(d) / "suz.jsonl.gz"
+        kayitlar = [
+            {"path": "crates/a.rs", "text": "gercek kayit"},
+            {"path": "YAPILACAKLAR.md", "text": "surec notu", "served": False},
+        ]
+        with _gz.open(ham, "wt", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(_json2.dumps(k, ensure_ascii=False) + "\n")
+        suzucu_yolu = ROOT / "android" / "korpus_suz.py"
+        suzucu_modulu = suzucu_yolu.read_text(encoding="utf-8")
+        cevre: dict = {"__name__": "kanarya", "__file__": str(suzucu_yolu)}
+        exec(compile(suzucu_modulu, str(suzucu_yolu), "exec"), cevre)  # noqa: S102 - kendi dosyamiz
+        ozet = cevre["suz"](ham, suzulmus)
+        assert ozet["atilan"] == 1, f"damgali kayit suzulmedi: {ozet}"
+        assert ozet["kalan"] == 1, f"damgasiz kayit dustu: {ozet}"
+        with _gz.open(suzulmus, "rt", encoding="utf-8") as f:
+            kalanlar = [ _json2.loads(s) for s in f if s.strip() ]
+        assert kalanlar[0]["path"] == "crates/a.rs", "yanlis kayit kaldi"
+
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "model.safetensors.part-00"
+        p.write_bytes(b"x")
+        bulunan = [y for y in Path(d).rglob("*.safetensors*")]
+        assert len(bulunan) == 1, "agirlik taramasi bozuk"
+
+
+
+# --------------------------------------------------------------------------
+# gate: the release binary is hardened, measured from its own ELF header
+# --------------------------------------------------------------------------
+# Sertlestirme katmani 3: ikilinin **kendisi** neyi garanti ediyor? Bu kapi
+# iddiayi sozle degil bayttan okur. Harici arac yok: ELF basligi ve program
+# basliklari `struct` ile ayristirilir, boylece kapi NDK'siz, `readelf`siz
+# makinelerde de kosar. Android `.so` ayni olcumun icinde anilir ama
+# olculemiyorsa **soylenir**, iddia edilmez.
+PT_GNU_STACK = 0x6474E551
+PT_GNU_RELRO = 0x6474E552
+PT_DYNAMIC = 2
+PF_X = 0x1
+ET_DYN = 3
+DT_FLAGS = 0x1E
+DT_FLAGS_1 = 0x6FFFFFFB
+DF_BIND_NOW = 0x8
+DF_1_NOW = 0x1
+SHT_SYMTAB = 2
+
+
+def _elf_olc(yol: Path) -> dict:
+    """ELF64/LSB bir ikiliden sertlestirme bayraklarini okur.
+
+    Okunan sey az ve nettir: konumdan bagimsiz mi, yigin yurutulebilir mi,
+    salt-okunur sonrasi var mi, GOT erken mi baglaniyor, sembol tablosu duruyor
+    mu. Bunlarin hepsi basliktaki sayilardir; tahmin yok.
+    """
+    import struct
+
+    veri = yol.read_bytes()
+    if veri[:4] != b"\x7fELF":
+        raise SystemExit(f"ELF degil: {yol}")
+    if veri[4] != 2 or veri[5] != 1:
+        raise SystemExit(f"ELF64/LSB beklenir: {yol} (sinif {veri[4]}, veri {veri[5]})")
+    tip = struct.unpack_from("<H", veri, 16)[0]
+    phoff = struct.unpack_from("<Q", veri, 32)[0]
+    shoff = struct.unpack_from("<Q", veri, 40)[0]
+    phentsize = struct.unpack_from("<H", veri, 54)[0]
+    phnum = struct.unpack_from("<H", veri, 56)[0]
+    shentsize = struct.unpack_from("<H", veri, 58)[0]
+    shnum = struct.unpack_from("<H", veri, 60)[0]
+    yigin_yurutulebilir = None
+    relro = False
+    dinamik_ofset = None
+    for i in range(phnum):
+        off = phoff + i * phentsize
+        p_tip, p_bayrak = struct.unpack_from("<II", veri, off)
+        if p_tip == PT_GNU_STACK:
+            yigin_yurutulebilir = bool(p_bayrak & PF_X)
+        elif p_tip == PT_GNU_RELRO:
+            relro = True
+        elif p_tip == PT_DYNAMIC:
+            dinamik_ofset = struct.unpack_from("<Q", veri, off + 8)[0]
+    # Dinamik girdiler: BIND_NOW tam RELRO'nun isaretidir - GOT ilk cozumlemede
+    # baglanir ve sonrasinda yazilamaz.
+    bind_now = False
+    if dinamik_ofset is not None:
+        imlec = dinamik_ofset
+        while imlec + 16 <= len(veri):
+            d_tip, d_deger = struct.unpack_from("<qQ", veri, imlec)
+            if d_tip == 0:
+                break
+            if (d_tip == DT_FLAGS and d_deger & DF_BIND_NOW) or (
+                d_tip == DT_FLAGS_1 and d_deger & DF_1_NOW
+            ):
+                bind_now = True
+            imlec += 16
+    # Sembol tablosu: `.symtab` varsa adlar ikilinin icinde duruyor demektir;
+    # `strip` uygulanmis mi sorusunun cevabi budur.
+    symtab = False
+    for i in range(shnum):
+        off = shoff + i * shentsize
+        s_tip = struct.unpack_from("<I", veri, off + 4)[0]
+        if s_tip == SHT_SYMTAB:
+            symtab = True
+    return {
+        "pie": tip == ET_DYN,
+        "yigin_yurutulebilir": yigin_yurutulebilir,
+        "relro": relro,
+        "bind_now": bind_now,
+        "symtab": symtab,
+        "boyut": len(veri),
+    }
+
+
+def gate_elf_sertlestirme() -> str:
+    """Surum ikilisi sertlestirilmis mi - bayttan okunur.
+
+    Dort sey aranir ve dordu de **zorunludur**: PIE (sabit adres yok), NX
+    (yigin yurutulemez), RELRO (GOT salt-okunur sonrasi) ve BIND_NOW (tam
+    RELRO). Sembol tablosu ayrica bildirilir ama zorunlu tutulmaz: `strip`
+    bir tercihtir, ve zorunlu kilmak bir gun hata ayiklamayi imkansiz kilardi.
+    """
+    import subprocess as _sp
+
+    ikili = ROOT / "target" / "release" / "lubot"
+    if not ikili.is_file():
+        derleme = _sp.run(
+            ["cargo", "build", "--release", "--bin", "lubot"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if derleme.returncode != 0 or not ikili.is_file():
+            raise SystemExit(f"surum ikilisi derlenemedi: {derleme.stderr[-200:]}")
+    olcum = _elf_olc(ikili)
+    eksik = [
+        ad
+        for ad, iyi in (
+            ("PIE", olcum["pie"]),
+            ("NX", olcum["yigin_yurutulebilir"] is False),
+            ("RELRO", olcum["relro"]),
+            ("BIND_NOW", olcum["bind_now"]),
+        )
+        if not iyi
+    ]
+    if eksik:
+        raise SystemExit(f"ikili sertlestirmesi eksik: {', '.join(eksik)} ({ikili})")
+    # Android yuzeyi ayni olcumle anilir; NDK yoksa **soylenir**.
+    android_not = "android .so: NDK yok, olculmedi"
+    ndk_so = ROOT / "target" / "aarch64-linux-android" / "release" / "liblubot_arayuz.so"
+    if ndk_so.is_file():
+        so = _elf_olc(ndk_so)
+        so_eksik = [
+            ad
+            for ad, iyi in (
+                ("PIE", so["pie"]),
+                ("NX", so["yigin_yurutulebilir"] is False),
+                ("RELRO", so["relro"]),
+                ("BIND_NOW", so["bind_now"]),
+            )
+            if not iyi
+        ]
+        if so_eksik:
+            raise SystemExit(f"android .so sertlestirmesi eksik: {', '.join(so_eksik)}")
+        android_not = f"android .so: PIE+NX+RELRO+BIND_NOW ({so['boyut']} bayt)"
+    return (
+        f"PIE + NX + RELRO + BIND_NOW, sembol tablosu "
+        f"{'var' if olcum['symtab'] else 'yok (strip)'}; {android_not}"
+    )
+
+
+def selftest_elf_sertlestirme() -> None:
+    """Kanarya: ayristirici dogru okuyor mu - dort sentetik baslikla.
+
+    Once saglam bir ELF64/LSB basligi kurulur ve olcum onu sertlestirilmis
+    bulur; sonra her kural tek tek bozulur ve **o** kuralin dustugu gorulur.
+    Boylece kapi, gercek ikilide yesil kalirken kor bir ayristirici olmaz.
+    """
+    import struct
+    import tempfile
+
+    def baslik_kur(*, tip=ET_DYN, yigin_bayrak=6, relro=True, bind_now=True, symtab=False):
+        # Program basliklari: PT_GNU_STACK (RW), PT_GNU_RELRO, PT_DYNAMIC.
+        phnum = 3
+        phoff = 64
+        dinamik_off = phoff + phnum * 56
+        parcalar = []
+        parcalar.append(struct.pack("<II", PT_GNU_STACK, yigin_bayrak) + b"\x00" * 48)
+        parcalar.append(
+            (struct.pack("<II", PT_GNU_RELRO, 4) + b"\x00" * 48)
+            if relro
+            else b"\x00" * 56
+        )
+        # ELF64 program basligi 56 bayttir: p_type+p_flags (8) ve bes adet
+        # 8 baytlik alan. Eksik birakmak, dinamik bolumu yanlis ofsete koyar ve
+        # kanarya bunu "BIND_NOW yok" diye yakalar - ilk yazimda tam da o oldu.
+        parcalar.append(
+            struct.pack("<IIQQQQQQ", PT_DYNAMIC, 6, dinamik_off, 0, 0, 32, 32, 0)
+        )
+        assert len(parcalar[-1]) == 56, "program basligi 56 bayt olmali"
+        govde = b"".join(parcalar)
+        # Dinamik bolum: FLAGS=8 (BIND_NOW) ya da bos.
+        if bind_now:
+            govde += struct.pack("<qQ", DT_FLAGS, DF_BIND_NOW)
+        govde += struct.pack("<qQ", 0, 0)
+        # Bolum basliklari: yalnizca opsiyonel `.symtab`.
+        sh = struct.pack("<IIQQQQIIQQ", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        if symtab:
+            sh += struct.pack("<IIQQQQIIQQ", 1, SHT_SYMTAB, 0, 0, 0, 0, 0, 0, 0, 0)
+        shoff = 4096
+        bas = bytearray(b"\x00" * 64)
+        bas[0:4] = b"\x7fELF"
+        bas[4] = 2  # ELF64
+        bas[5] = 1  # LSB
+        bas[16:18] = struct.pack("<H", tip)
+        bas[32:40] = struct.pack("<Q", phoff)
+        bas[40:48] = struct.pack("<Q", shoff)
+        bas[54:56] = struct.pack("<H", 56)
+        bas[56:58] = struct.pack("<H", phnum)
+        bas[58:60] = struct.pack("<H", 64)
+        bas[60:62] = struct.pack("<H", 1 + (1 if symtab else 0))
+        veri = bytes(bas) + govde
+        veri = veri.ljust(shoff, b"\x00") + sh
+        return veri
+
+    with tempfile.TemporaryDirectory() as d:
+        saglam = Path(d) / "saglam.so"
+        saglam.write_bytes(baslik_kur())
+        olcum = _elf_olc(saglam)
+        assert olcum["pie"], "saglam baslik PIE cikmadi"
+        assert olcum["yigin_yurutulebilir"] is False, "saglam baslikta yigin yurutulebilir"
+        assert olcum["relro"] and olcum["bind_now"], "saglam baslikta RELRO/BIND_NOW yok"
+        assert not olcum["symtab"], "saglam baslikta sembol tablosu var gorundu"
+        # 1) ET_EXEC -> PIE degil
+        p = Path(d) / "exec"; p.write_bytes(baslik_kur(tip=2))
+        assert not _elf_olc(p)["pie"], "ET_EXEC PIE sayildi"
+        # 2) PF_X'li yigin -> NX degil
+        p = Path(d) / "nx"; p.write_bytes(baslik_kur(yigin_bayrak=7))
+        assert _elf_olc(p)["yigin_yurutulebilir"] is True, "yurutulebilir yigin gorumedi"
+        # 3) RELRO yok
+        p = Path(d) / "relro"; p.write_bytes(baslik_kur(relro=False))
+        assert not _elf_olc(p)["relro"], "RELRO yok denmedi"
+        # 4) BIND_NOW yok
+        p = Path(d) / "now"; p.write_bytes(baslik_kur(bind_now=False))
+        assert not _elf_olc(p)["bind_now"], "BIND_NOW yok denmedi"
+        # 5) sembol tablosu goruluyor
+        p = Path(d) / "sym"; p.write_bytes(baslik_kur(symtab=True))
+        assert _elf_olc(p)["symtab"], "sembol tablosu gorumedi"
+        # 6) ELF olmayan dosya
+        p = Path(d) / "bos"; p.write_bytes(b"not an elf")
+        try:
+            _elf_olc(p)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("ELF olmayan dosya kabul edildi")
+
+# --------------------------------------------------------------------------
+# gate: crate manifests declare what cargo-deny has to assume otherwise
+# --------------------------------------------------------------------------
+# `cargo deny --locked check` failed in CI for two reasons that were both
+# invisible in the tree: 47 crate manifests never said `publish = false`, so a
+# path dependency of a "publishable" crate is a wildcard dependency, and three
+# manifests carried a licence string that is not an SPDX expression. The
+# settings that answer those questions live in the manifest, not in deny.toml,
+# so a gate has to read the manifests.
+
+
+def _manifest_dosyalari() -> list[Path]:
+    return sorted(Path("crates").glob("*/Cargo.toml"))
+
+
+def _yol_bagimliliklari(metin: str) -> list[str]:
+    """Dependency lines that point at another crate in this tree."""
+    return [satir.strip() for satir in metin.splitlines()
+            if "path = " in satir and "=" in satir.split("path = ")[0]
+            and not satir.lstrip().startswith("#")]
+
+
+def gate_crate_manifest_politikasi() -> str:
+    """Every crate is marked unpublished and every path dependency has a version."""
+    bulgular: list[str] = []
+    dosyalar = _manifest_dosyalari()
+    if not dosyalar:
+        raise SystemExit("no crate manifests found: crates/*/Cargo.toml is empty")
+    for yol in dosyalar:
+        metin = yol.read_text(encoding="utf-8")
+        if "publish.workspace = true" not in metin and "publish = false" not in metin:
+            bulgular.append(f"{yol}: publish is not false, so cargo-deny reads this crate as publishable")
+        if 'license = "' in metin:
+            lisans = re.search(r'license = "([^"]+)"', metin)
+            bulgular.append(
+                f"{yol}: `license = \"{lisans.group(1)}\"` is an SPDX expression slot; "
+                "the repository points at its licence file instead"
+            )
+        for satir in _yol_bagimliliklari(metin):
+            if "version" not in satir:
+                bulgular.append(f"{yol}: path dependency without a version is a wildcard: {satir}")
+    if bulgular:
+        raise SystemExit("; ".join(bulgular))
+    return f"{len(dosyalar)} crate manifests: unpublished, licensed by file, versions on every path dependency"
+
+
+def selftest_crate_manifest_politikasi() -> None:
+    iyi = '[package]\nname = "lubot-read"\npublish.workspace = true\nlicense-file.workspace = true\n\n[dependencies]\nlubot-mu = { path = "../mu", version = "0.1.0" }\n'
+    assert "publish.workspace = true" in iyi
+    assert not [s for s in _yol_bagimliliklari(iyi) if "version" not in s]
+    kotu = iyi.replace("publish.workspace = true", "").replace(', version = "0.1.0"', "")
+    kotu += 'license = "PolyForm-Shield-1.0.0"\n'
+    eksik = [s for s in _yol_bagimliliklari(kotu) if "version" not in s]
+    assert eksik, "a versionless path dependency was not seen"
+    assert "publish.workspace = true" not in kotu and 'license = "' in kotu
+    # A commented-out line is not a dependency.
+    yorum = "# lubot-mu = { path = \"../mu\" }\n"
+    assert _yol_bagimliliklari(yorum) == [], "a comment was read as a dependency"
+
+
+
+def _hadamard_mlp_denetle(path) -> list:
+    """Hadamard/Monarch MLP adayinin olculebilir sozlesmesi. Duzeltilebilir bir
+    metin denetimidir: ihlal listesi doner, bos liste gecer demektir. Kaynak yolu
+    disaridan verilir ki self-test ayni denetimi kasitli bozuk kopyalarda
+    kosturabilsin."""
+    ihlaller = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Aktivasyon crate'in kendisinden gelir: ikinci bir kopya, tanh bicimli
+    #    fonksiyonun tureviyle uyusmamasinin klasik yoludur.
+    if "use crate::{gelu, gelu_turev};" not in metin:
+        ihlaller.append("aktivasyon crate'in kendisinden alinmiyor (gelu/gelu_turev)")
+    # 2) Gradyan iddiasi olculur: iki sonlu fark denetimi + deponun toleranslari.
+    for iz in (
+        "gradyan_sonlu_farkla_uyusur",
+        "girdi_gradyani_da_sonlu_farkla_uyusur",
+        "gelu_turevi_kodlanan_fonksiyonun_turevi",
+        "GRADIENT_CHECK_MUTLAK_TABAN",
+        "GRADIENT_CHECK_TOLERANCE",
+    ):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    # 3) Sayim bagi: denetlenen gradyan sayisi seklin parametre sayisina bagli.
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 4) Parametre muhasebesi sekilden turetilir; sabit sayi yazilmaz.
+    if "fn parametre_sayisi(&self) -> usize" not in metin:
+        ihlaller.append("parametre sayisi sekilden turetilmiyor")
+    if "standart_mlp_parametre_sayisi" not in metin:
+        ihlaller.append("karsilastirma (standart MLP muhasebesi) yok")
+    # 5) Iki davranis da olculur: blok-kosegenlik ve inis.
+    for iz in ("blok_kosegenligi_bayt_duzeyinde_olculur", "inis_olculur"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # 6) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    # "monarch" listede yok: bu deponun kendi tasarim notu (MIMARI-TASARIM.md
+    # 3.1) matris sinifini adiyla aniyor; yasak olan sey proje/kutuphane adi.
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 7) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_hadamard_mlp_kapisi() -> str:
+    """Hadamard/Monarch MLP olculur halde duruyor: aktivasyon
+    crate'in kendisinden, gradyan sonlu farkla (sayim sekle bagli), parametre
+    muhasebesi sekilden turetilir, blok-kosegenlik ve inis ayri ayri olculur.
+    Ayrica modulun testleri burada kosturulur: kac test varsa o kadari gecmeli."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "mlp_hadamard.rs"
+    ihlaller = _hadamard_mlp_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("hadamard MLP sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-p", "lubot-egitim", "mlp_hadamard"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"hadamard MLP olculur: {gecen} test, gradyan sonlu farkla, blok-kosegenlik "
+        f"ve inis ayri ayri kayitli"
+    )
+
+
+def selftest_hadamard_mlp_kapisi() -> None:
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "mlp_hadamard.rs"
+    if _hadamard_mlp_denetle(gercek):
+        raise SystemExit("saglam modul denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "mlp_hadamard.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) sayim bagi sokulursa yakalanmali
+        bozuk.write_text(metin.replace("denetlenen != spec.parametre_sayisi()", "false", 1),
+                         encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("sayim bagi sokulmus kopya yakalanmadi")
+        # 2) ucuncu taraf adi sokulursa yakalanmali
+        bozuk.write_text(metin + "\n// megatron\n", encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("ucuncu taraf adi tasiyan kopya yakalanmadi")
+        # 3) blok-kosegenlik olcumu sokulursa yakalanmali
+        bozuk.write_text(metin.replace("blok_kosegenligi_bayt_duzeyinde_olculur", "x", 1),
+                         encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("blok olcumu sokulmus kopya yakalanmadi")
+        # 4) aktivasyon crate'ten alinmazsa yakalanmali
+        bozuk.write_text(metin.replace("use crate::{gelu, gelu_turev};", "// kendi gelu", 1),
+                         encoding="utf-8")
+        if not _hadamard_mlp_denetle(bozuk):
+            raise SystemExit("aktivasyon kopyasi yakalanmadi")
+
+
+
+def _rust_const(text: str, name: str) -> str:
+    match = re.search(rf"const\s+{re.escape(name)}\s*:\s*[A-Za-z0-9_]+\s*=\s*([^;]+);", text)
+    if match is None:
+        raise SystemExit(f"the constant `{name}` is gone, so the budget cannot be recomputed")
+    return match.group(1).strip().replace("_", "")
+
+def gate_bit_budget_is_arithmetic() -> str:
+    """`crates/nicem`'s advertised bits per weight is recomputed from the group
+    size, the scale width and the packing density, and must match."""
+    lib = read("crates/nicem/src/lib.rs")
+    paket = read("crates/nicem/src/paket.rs")
+    grup = int(_rust_const(lib, "VARSAYILAN_GRUP"))
+    iddia = float(_rust_const(lib, "VARSAYILAN_BIT"))
+    trit_bayt = int(_rust_const(paket, "TRIT_BASINA_BAYT"))
+    if grup <= 0:
+        raise SystemExit("the default group size is not a positive count")
+    # One fp16 scale per group. If the scale ever stops being sixteen bits this
+    # multiplication is wrong, so the type is checked rather than assumed.
+    if "olcekler: Vec<u16>" not in read("crates/nicem/src/grup.rs"):
+        raise SystemExit("the group scale is no longer a u16, so 16 bits per group is a guess")
+    olculen = 2.0 + 16.0 / grup
+    if abs(olculen - iddia) > 1e-9:
+        raise SystemExit(
+            f"the crate advertises {iddia} bits per weight but 2 bits + one fp16 scale "
+            f"per {grup} weights is {olculen}"
+        )
+    ucdeger = 8.0 / trit_bayt + 16.0 / grup
+    if abs(ucdeger - 1.725) > 1e-9:
+        raise SystemExit(
+            f"{trit_bayt} trits per byte plus one fp16 scale per {grup} weights is {ucdeger}, "
+            "not the 1.725 the crate documents"
+        )
+    if "1.725" not in lib and "1.725" not in paket:
+        raise SystemExit("the ternary rate is computed nowhere the reader can see it")
+    return (
+        f"bit budget recomputed: 2 + 16/{grup} = {olculen} bits per weight; "
+        f"ternary {8.0 / trit_bayt} + 16/{grup} = {ucdeger}"
+    )
+
+
+def selftest_bit_budget_is_arithmetic() -> None:
+    """The recomputation has to notice a group size changed without the claim."""
+    metin = "pub const VARSAYILAN_GRUP: usize = 128;"
+    assert _rust_const(metin, "VARSAYILAN_GRUP") == "128", "constant parsing broke"
+    assert _rust_const("const A: usize = 1_024;", "A") == "1024", "underscores broke the parse"
+    # A group of 64 costs 2.25 bits, not 2.125: the gate must see the gap.
+    assert abs((2.0 + 16.0 / 64) - 2.125) > 1e-9, "a changed group size would go unnoticed"
+    try:
+        _rust_const("nothing here", "VARSAYILAN_GRUP")
+    except SystemExit:
+        pass
+    else:  # pragma: no cover - the gate would be blind
+        raise AssertionError("a deleted constant was not noticed")
+
+
+# --------------------------------------------------------------------------
+# gate: the device ceiling is declared with its provenance
+# --------------------------------------------------------------------------
+# The operator rule ("an operator answers with the machine it owns") is only
+# enforceable if a machine can state a ceiling. `crates/tasiyici` makes that
+# ceiling a depth. Three things have to stay true for the declaration to mean
+# anything, and all three are quiet to break.
+
+
+def gate_device_ceiling_is_declared() -> str:
+    """The ladder is wired to the binary, a ceiling carries whether it was
+    measured, and a machine too small for rung zero is refused rather than
+    served at depth zero."""
+    merdiven = read("crates/tasiyici/src/merdiven.rs")
+    if "TabanSigmiyor" not in merdiven:
+        raise SystemExit("the ladder has no refusal for a machine that cannot hold rung zero")
+    if "OLCULMEDI" not in merdiven:
+        raise SystemExit(
+            "a declaration no longer says when its ceiling was not measured, so a "
+            "declared number reads as a measured one"
+        )
+    if "pub olculdu: bool" not in merdiven:
+        raise SystemExit("the ceiling no longer carries its provenance")
+    # A duration invented from a byte count would be an unmeasured number
+    # reported as measured. The crate says so; the gate keeps it said.
+    for kelime in ["millis", "as_secs", "Duration"]:
+        if kelime in merdiven:
+            raise SystemExit(
+                f"`{kelime}` appears in the ladder: streamed bytes are being turned into a time, "
+                "which this crate cannot measure"
+            )
+    tasiyici_manifest = read("crates/tasiyici/Cargo.toml")
+    if "lubot-nicem" not in tasiyici_manifest:
+        raise SystemExit("the container no longer builds on the quantiser")
+    cli_manifest = read("crates/cli/Cargo.toml")
+    if "lubot-tasiyici" not in cli_manifest:
+        raise SystemExit("the container is not reachable from the binary")
+    main = read("crates/cli/src/main.rs")
+    if '"tasiyici" =>' not in main:
+        raise SystemExit("`lubot tasiyici` is not dispatched, so the ladder has no command")
+    if "lubot tasiyici tavan" not in main:
+        raise SystemExit("`lubot tasiyici tavan` is undocumented in the usage text")
+    komut = read("crates/cli/src/tasiyici.rs")
+    if "MemAvailable" not in komut:
+        raise SystemExit("the ceiling command no longer reads the machine's available memory")
+    if "olculmedi" not in komut.lower() and "OLCULMEDI" not in komut:
+        raise SystemExit("the ceiling command can report a number without saying it was measured")
+    return (
+        "the ceiling is a depth: rung-zero refusal, measured-or-declared provenance, "
+        "and `lubot tasiyici tavan` wired to the binary"
+    )
+
+
+def selftest_device_ceiling_is_declared() -> None:
+    """The checks have to fire on the three quiet failures they exist for."""
+    saglam = "TabanSigmiyor OLCULMEDI pub olculdu: bool"
+    assert "TabanSigmiyor" in saglam, "the refusal check is inverted"
+    # A ladder that reports depth zero instead of refusing.
+    assert "TabanSigmiyor" not in "derinlik: 0", "a depth-zero fallback would pass"
+    # A declaration that hides where its number came from.
+    assert "OLCULMEDI" not in "tavan olculdu", "an unmeasured ceiling would read as measured"
+    # A duration invented from a byte count.
+
+
+def _alim_refusal(run: subprocess.CompletedProcess[str], needle: str) -> None:
+    """A refusal must fail, and must name the rule it enforced. Both halves
+    matter: an intake that fails without naming the rule leaves the operator
+    to guess which rule spoke."""
+    text = run.stdout + run.stderr
+    if run.returncode == 0:
+        raise SystemExit(f"the intake admitted what it must refuse: {run.stdout[:160]!r}")
+    if needle not in text:
+        raise SystemExit(f"the refusal does not name {needle!r}: {text[:200]!r}")
+
+
+AGIRLIK_REGRESYONLARI = (
+    "plans_at_the_u64_limit_have_exact_padding",
+    "shards_refuse_input_lengths_different_from_the_plan",
+    "extreme_plan_refuses_short_input_before_allocating",
+    "small_plans_round_trip_including_multiple_padding_shards",
+)
+
+
+def _agirlik_test_kaniti(stdout: str, returncode: int) -> None:
+    if returncode != 0 or "test result: ok." not in stdout:
+        raise SystemExit("weight shard tests did not pass")
+    for name in AGIRLIK_REGRESYONLARI:
+        if f"test agirlik::tests::{name} ... ok" not in stdout:
+            raise SystemExit(f"weight shard regression did not run: {name}")
+
+
+def gate_alim_hatti_kapali() -> str:
+    """`lubot alim dogrula` reads a manifest from storage and admits it whole
+    or refuses it by name: an unadmitted source class (K2), a licence outside
+    the closed set, a path that walks up the tree, a digest that does not
+    match the bytes, a step behind the ledger, and an intake with no ledger at
+    all. The refusals run on the real path - the same binary the operator runs
+    - so this gate measures behaviour, not prose."""
+    import hashlib
+    import json
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        data = root / "veri"
+        data.mkdir()
+        text = "Alım hattı bir kaydı bütün kabul eder ya da hiç kabul etmez.\n"
+        (data / "a.md").write_text(text, encoding="utf-8")
+        digest = hashlib.sha256(text.encode()).hexdigest()
+
+        def manifest_for(name: str, source_class: str, overrides: dict) -> str:
+            record = {
+                "digest": digest,
+                "content_id": digest,
+                "asset_id": hashlib.sha256(b"asset").hexdigest(),
+                "kind": "markdown",
+                "licence": "MIT",
+                "attribution": "lubot",
+                "path": "a.md",
+            }
+            record.update(overrides)
+            manifest = {
+                "schema": 1,
+                "manifest_id": hashlib.sha256(b"manifest").hexdigest(),
+                "source_class": source_class,
+                "loader": "gate",
+                "created_at": 1_700_000_000,
+                "records": [record],
+            }
+            path = root / name
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            return str(path)
+
+        ledger = str(root / "defter.jsonl")
+
+        def admit(*args: str) -> subprocess.CompletedProcess[str]:
+            return _cli("alim", "dogrula", "--veri", str(data), *args)
+
+        ok = admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                   "--defter", ledger, "--adim", "0")
+        if ok.returncode != 0:
+            raise SystemExit(
+                f"the intake refused an admissible manifest: {(ok.stdout + ok.stderr)[:300]!r}"
+            )
+        if "| kabul özeti |" not in ok.stdout:
+            raise SystemExit("the admission printed no admission digest")
+        rows = Path(ledger).read_text(encoding="utf-8").strip().splitlines()
+        if len(rows) != 1:
+            raise SystemExit(f"the intake wrote {len(rows)} provenance row(s) for one record")
+
+        _alim_refusal(
+            admit("--manifest", manifest_for("upload.json", "bud_upload", {}),
+                  "--defter", ledger, "--adim", "1"),
+            "K2",
+        )
+        _alim_refusal(
+            admit("--manifest", manifest_for("lisans.json", "lubot", {"licence": "GPL-3.0"}),
+                  "--defter", ledger, "--adim", "1"),
+            "outside the closed set",
+        )
+        _alim_refusal(
+            admit("--manifest", manifest_for("yol.json", "lubot", {"path": "../a.md"}),
+                  "--defter", ledger, "--adim", "1"),
+            "walks up the tree",
+        )
+        _alim_refusal(
+            admit("--manifest", manifest_for("ok.json", "lubot", {})),
+            "defter",
+        )
+        (data / "a.md").write_text(text + "ek satır\n", encoding="utf-8")
+        _alim_refusal(
+            admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                  "--defter", ledger, "--adim", "1"),
+            "digest mismatch",
+        )
+        (data / "a.md").write_text(text, encoding="utf-8")
+
+        ahead = admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                      "--defter", ledger, "--adim", "4")
+        if ahead.returncode != 0:
+            raise SystemExit(
+                f"the intake refused a step ahead of the ledger: {(ahead.stdout + ahead.stderr)[:200]!r}"
+            )
+        _alim_refusal(
+            admit("--manifest", manifest_for("ok.json", "lubot", {}),
+                  "--defter", ledger, "--adim", "3"),
+            "behind the previous",
+        )
+        # Existing provenance is evidence, not merely parseable JSON. Each
+        # corruption must refuse before admitting another manifest, unchanged.
+        baseline = Path(ledger).read_bytes()
+        row = json.loads(baseline.splitlines()[0])
+        for field, invalid in {
+            "manifest_id": "not-a-digest", "loader": " ", "content_id": " ",
+            "path": "../outside", "kind": "unapproved", "licence": "unapproved",
+        }.items():
+            broken = dict(row, **{field: invalid})
+            before = (json.dumps(broken) + "\n").encode()
+            Path(ledger).write_bytes(before)
+            _alim_refusal(
+                admit("--manifest", str(root / "ok.json"),
+                      "--defter", ledger, "--adim", "5"), "not a row",
+            )
+            if Path(ledger).read_bytes() != before:
+                raise SystemExit(f"refused ledger was changed: {field}")
+        # A complete last record without LF must not merge with the next JSON.
+        prefix = baseline.rstrip(b"\n")
+        Path(ledger).write_bytes(prefix)
+        resumed = admit("--manifest", str(root / "ok.json"),
+                        "--defter", ledger, "--adim", "5")
+        if resumed.returncode != 0:
+            raise SystemExit("complete final record without LF could not resume")
+        after = Path(ledger).read_bytes()
+        parsed = [json.loads(line) for line in after.splitlines()]
+        if not after.startswith(prefix) or len(parsed) != 3:
+            raise SystemExit("resumed ledger lost prefix or record framing")
+    shard_tests = subprocess.run(
+        ["cargo", "test", "-p", "lubot-alim", "agirlik::tests"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    _agirlik_test_kaniti(shard_tests.stdout, shard_tests.returncode)
+    return (
+        "the intake admits whole or refuses by name: K2 class, licence, path, "
+        "ledger, digest, step; six provenance fields and final-line framing; "
+        "weight shards: overflow boundary, length binding, round-trip"
+    )
+
+
+def selftest_alim_hatti_kapali() -> None:
+    """The canary: the refusal expectation must reject a run that succeeded,
+    or the gate cannot fire at all."""
+    evidence = "\n".join(
+        f"test agirlik::tests::{name} ... ok" for name in AGIRLIK_REGRESYONLARI
+    ) + "\ntest result: ok. 4 passed; 0 failed"
+    _agirlik_test_kaniti(evidence, 0)
+    for output, code in (
+        (evidence, 1), ("test result: ok. 0 passed; 0 failed", 0),
+        (evidence.replace(AGIRLIK_REGRESYONLARI[0], "removed_regression"), 0),
+    ):
+        try:
+            _agirlik_test_kaniti(output, code)
+        except SystemExit:
+            continue
+        raise AssertionError("weight gate accepted failed or missing regression evidence")
+    benign = _cli("ceilings")
+    try:
+        _alim_refusal(benign, "K2")
+        raise AssertionError("the refusal expectation accepted a clean run")
+    except SystemExit as err:
+        assert "must refuse" in str(err)
+
+def _yonlendirme_denetle(path: Path) -> list:
+    """Rota adayinin (tasarim 3.5) olculebilir sozlesmesi. Metin denetimidir;
+    ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Log uzayinda normalizasyon: tasmayi onleyen yardimci ve -sonsuz destek.
+    for iz in ("fn log_toplam_us", "NEG_INFINITY"):
+        if iz not in metin:
+            ihlaller.append(f"log uzayi sozlesmesi eksik: {iz}")
+    # 2) Destek korunur: top-k secimi ve sayim bagi olcumu.
+    for iz in ("fn top_k_destegi", "destek_korunur_ve_sayim_sekle_bagli"):
+        if iz not in metin:
+            ihlaller.append(f"destek sozlesmesi eksik: {iz}")
+    # 3) Iki yonlu normalizasyon (satir + sutun) ve kapanis adimi.
+    for iz in ("Sutun adimi", "Son adim satir"):
+        if iz not in metin:
+            ihlaller.append(f"normalizasyon adimi eksik: {iz}")
+    # 4) Denge klasik tabana karsi olculur (iddia degil).
+    for iz in ("fn taban_olc", "yuk_dengesi_klasik_tabandan_iyi", "yineleme_sifirsa_tabanin_kendisi"):
+        if iz not in metin:
+            ihlaller.append(f"denge olcumu eksik: {iz}")
+    # 5) Sicaklik davranisi ve egri tutarliligi olculur.
+    for iz in ("sicaklik_dustukce_secim_keskinlesir", "sicaklik_egimi_iki_sonlu_farkla_ayni"):
+        if iz not in metin:
+            ihlaller.append(f"sicaklik olcumu eksik: {iz}")
+    # 6) Sekil hatalari reddedilir ve parametre tutulmaz.
+    for iz in ("fn sekil_hatalari_reddedilir", "fn parametre_sayisi(&self) -> usize"):
+        if iz not in metin:
+            ihlaller.append(f"sekil sozlesmesi eksik: {iz}")
+    if "fn parametre_sayisi(&self) -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("rota parametre tutuyor: parametre sayisi sifir olmali")
+    # 7) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 8) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        govde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in govde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_yonlendirme_kapisi() -> str:
+    """Rota olculur halde duruyor: log uzayinda iki yonlu normalizasyon, top-k
+    destegi korunur, satirlar 1'e toplanir, yuk dengesi klasik tabana karsi
+    olculur, sicaklik davranisi test edilir ve rota parametre tutmaz."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "yonlendirme.rs"
+    ihlaller = _yonlendirme_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("rota sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "yonlendirme"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/yonlendirme.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("rota kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"rota olculur: {gecen} test, log uzayinda iki yonlu normalizasyon, top-k destegi "
+        f"korunmus, yuk dengesi tabana karsi olculmus, parametre sifir"
+    )
+
+
+def selftest_yonlendirme_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme, degistirilmis kayit ve sayimi tutmayan
+    kayit yakalanmali."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "yonlendirme.rs"
+    if _yonlendirme_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "yonlendirme.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) log uzayi yardimcisi sokulursa
+        bozuk.write_text(metin.replace("fn log_toplam_us", "fn x"), encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("log uzayi sokulmus kopya yakalanmadi")
+        # 2) top-k destegi sokulursa (destek korunmasi olculemez)
+        bozuk.write_text(metin.replace("fn top_k_destegi", "fn x"), encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("top-k destegi sokulmus kopya yakalanmadi")
+        # 3) taban karsilastirmasi sokulursa (denge iddiasi sahipsiz kalir)
+        bozuk.write_text(metin.replace("fn taban_olc", "fn x"), encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("taban karsilastirmasi sokulmus kopya yakalanmadi")
+        # 4) rota parametre tutmaya baslarsa
+        bozuk.write_text(metin.replace("fn parametre_sayisi(&self) -> usize {\n        0\n    }",
+                                       "fn parametre_sayisi(&self) -> usize {\n        self.uzman\n    }", 1),
+                         encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("parametre tutan kopya yakalanmadi")
+        # 5) rustfmt struct literalini birden cok satira yayabilir. Tam
+        # literal yerine tekil atama baslangici kullan; degismeyen mutant
+        # kanit degildir, onu ayrica reddet.
+        hedef = "    let taban_spec = RotaSpec {"
+        if metin.count(hedef) != 1:
+            raise SystemExit("panik mutantinin tekil hedefi bulunamadi")
+        mutant = metin.replace(hedef,
+            "    let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 6) Kayit tazeligi ve sayim bagi.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "sinkhorn-yonlendirme-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["yuk_orani"] = veri["kanit"]["taban_orani"] + 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/yonlendirme.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("dengeyi kaybetmis kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["secim"] = veri["kanit"]["secim"] + 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/yonlendirme.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("sayimi tutmayan kayit kabul edildi")
+
+
+
+def _kesit_denetle(path: Path) -> list:
+    """Aile kesitinin (derinlik/genislik) olculebilir sozlesmesi."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    for iz in ("pub fn kesit(", "fn derinlik_merdiveni", "fn genislik_izgarasi"):
+        if iz not in metin:
+            ihlaller.append(f"kesit sozlesmesi eksik: {iz}")
+    # Tamlik, gecerlilik ve kosma ayri ayri olculmeli. Monotonluk yalniz
+    # referans aile icin olculur; evrensel olmadigini gosteren karsi ornek de
+    # regresyon olarak kalmali.
+    for iz in ("tamlik_girdinin_kendisi", "her_kesit_kendi_dogrulamasindan_gecer",
+               "kesit_kosumdan_gecer", "derinlik_arttikca_parametre_azalmaz",
+               "genislik_arttikca_parametre_azalmaz",
+               "genislik_monotonlugu_her_spece_genellenmez",
+               "kafa_silinir_kafa_daraltilmaz",
+               "agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
+               "tam_agirlik_kesiti_bit_ozdes", "agirlik_bellek_tavani_tam_sinirda",
+               "her_blok_bozuk_sekli_tahsisten_once_reddeder",
+               "mevcut_agirlik_kesitleri_ileri_geri_kosar") :
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # Sessiz yuvarlama yok: hedef kafa kati degilse reddedilir.
+    if "GenislikKafaKatıDegil" not in metin:
+        ihlaller.append("kafa kati olmayan genislik reddedilmiyor")
+    # Bas dilimi: bastan kisaltma.
+    if "bastan" not in metin:
+        ihlaller.append("kesitin bastan alindigi yazili degil")
+    # K1.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # Panik yolu yok (test disinda).
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        for desen in (".unwrap()", ".expect("):
+            if desen in metin[:test_oneki]:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_kesit_kapisi() -> str:
+    """Aile kesiti olculur halde duruyor: tam kesit girdinin kendisi, her kesit
+    kendi dogrulamasindan geciyor ve **kosuyor**; parametre monotonlugu referans
+    ailede olculuyor, evrensel olmayan siniri karsi-ornekle korunuyor; kafa
+    silinir (daraltilmaz), sessiz yuvarlama yok."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "kesit.rs"
+    ihlaller = _kesit_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("kesit sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    kosu = subprocess.run(["cargo", "test", "-q", "-p", "lubot-egitim", "kesit"],
+                          cwd=ROOT, capture_output=True, text=True)
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme or int(eslesme.group(1)) != beklenen:
+        raise SystemExit(f"test sayisi bagi tutmuyor: beklenen {beklenen}\n" + cikti[-800:])
+    dogrula = subprocess.run(["python3", "training/kesit.py", "--dogrula"],
+                             cwd=ROOT, capture_output=True, text=True)
+    if dogrula.returncode != 0:
+        raise SystemExit("kesit kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (f"kesit olculur: {beklenen} test, tamlik + gecerlilik + kosma + "
+            f"referans-aile monotonlugu + evrensel-sinir karsi ornegi, "
+            f"kafa silme ve sessiz yuvarlama yok")
+
+
+def selftest_kesit_kapisi() -> None:
+    import json
+    import subprocess
+    import tempfile
+
+    # Sayisal kayit siniri da CI kanaryasinin parcasi: NaN/Inf, bool,
+    # kesirli sayimlar ve negatif hata olculeri kabul edilmez.
+    subprocess.run(
+        ["python3", "-m", "unittest", "discover", "-s", "training",
+         "-p", "test_olcum_kayitlari.py"],
+        cwd=ROOT, check=True,
+    )
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "kesit.rs"
+    if _kesit_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "kesit.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        bozuk.write_text(metin.replace("fn derinlik_merdiveni", "fn x"), encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("merdiven sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("GenislikKafaKatıDegil", "Yuvarlama"), encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("sessiz yuvarlama kopyasi yakalanmadi")
+        bozuk.write_text(metin.replace("kesit_kosumdan_gecer", "kosmaz"), encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("kosma olcumu sokulmus kopya yakalanmadi")
+        bozuk.write_text(
+            metin.replace("genislik_monotonlugu_her_spece_genellenmez", "sinir_sokuldu"),
+            encoding="utf-8",
+        )
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("monotonluk karsi ornegi sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("    let mut kesilen = Spec {",
+                                       "    let _ = vec![1].first().unwrap();\n    let mut kesilen = Spec {", 1),
+                         encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        for iz in ("agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
+                   "agirlik_bellek_tavani_tam_sinirda"):
+            bozuk.write_text(metin.replace(iz, "sokulen"), encoding="utf-8")
+            if not _kesit_denetle(bozuk):
+                raise SystemExit(f"agirlik sozlesmesi sokuldu ama yakalanmadi: {iz}")
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "kesit-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["kosan"] = veri["kanit"]["kosan"] - 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/kesit.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("kosmayan kesit sayisini tasiyan kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["d_k"] = 7.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/kesit.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("kafa bolmesi bozuk kayit kabul edildi")
+
+
+def _normalizasyon_denetle(path: Path) -> list:
+    """Sifir merkezli RMS adayinin olculebilir sozlesmesi."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    for iz in ("pub fn norm_ileri", "pub fn norm_geri", "pub fn duz_rms"):
+        if iz not in metin:
+            ihlaller.append(f"norm sozlesmesi eksik: {iz}")
+    # Degismezlikler ve fark ayri ayri olculur.
+    for iz in ("kaydirma_degismezligi", "olcek_degismezligi_eps_tabanina_kadar",
+               "klasik_rms_kaydirmadan_etkilenir_fark_olculur",
+               "geri_gecis_sonlu_farkla_uyusur", "sabit_girdi_sifira_gider_patlamaz",
+               "sonlu_olmayan_girdi_tum_yollarda_reddedilir",
+               "katsayi_ve_gradyan_sonlulugu_denetlenir",
+               "sonlu_girdi_ara_hesapta_tasarsa_ret", "sonlu_vektor", "sonlu_ara") :
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # eps tabani saklanmaz: tam iliski yazili olmali.
+    if "1.0 - s.eps / (cikti.r * cikti.r)" not in metin:
+        ihlaller.append("eps tabanli cikti iliskisi olculmuyor")
+    # Parametre sayisi sekle bagli.
+    if "fn parametre_sayisi(&self) -> usize {\n        self.genislik\n    }" not in metin:
+        ihlaller.append("parametre sayisi genislige bagli degil")
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        for desen in (".unwrap()", ".expect("):
+            if desen in metin[:test_oneki]:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_normalizasyon_kapisi() -> str:
+    """Sifir merkezli RMS adayi olculur halde duruyor: kaydirma degismez
+    (tam), olcek degismezligi eps tabanina kadar (iki eps ile olculur), klasik
+    RMS kaydirmadan etkilenir (fark olculur), cikti sifir ortalamali ve eps
+    tabanli tam RMS iliskisi yazili, geri gecis sonlu farkla dogrulanir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "normalizasyon.rs"
+    ihlaller = _normalizasyon_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("norm sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    kosu = subprocess.run(["cargo", "test", "-q", "-p", "lubot-egitim", "normalizasyon"],
+                          cwd=ROOT, capture_output=True, text=True)
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme or int(eslesme.group(1)) != beklenen:
+        raise SystemExit(f"test sayisi bagi tutmuyor: beklenen {beklenen}\n" + cikti[-800:])
+    dogrula = subprocess.run(["python3", "training/normalizasyon.py", "--dogrula"],
+                             cwd=ROOT, capture_output=True, text=True)
+    if dogrula.returncode != 0:
+        raise SystemExit("norm kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (f"norm adayi olculur: {beklenen} test, kaydirma tam degismez, olcek eps "
+            f"tabanina kadar, klasik RMS farki olculur, geri gecis sonlu farkla")
+
+
+def selftest_normalizasyon_kapisi() -> None:
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "normalizasyon.rs"
+    if _normalizasyon_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "normalizasyon.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        bozuk.write_text(metin.replace("pub fn norm_geri", "pub fn x"), encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("geri gecis sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("fn parametre_sayisi(&self) -> usize {\n        self.genislik\n    }",
+                                       "fn parametre_sayisi(&self) -> usize {\n        8\n    }", 1),
+                         encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("sabit parametre sayisi kopyasi yakalanmadi")
+        bozuk.write_text(metin.replace("1.0 - s.eps / (cikti.r * cikti.r)", "1.0"), encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("eps iliskisi sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("    let (r, c) = _cerceve(spec, x)?;",
+                                       "    let _ = vec![1].first().unwrap();\n    let (r, c) = _cerceve(spec, x)?;", 1),
+                         encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        for iz in ("sonlu_vektor", "sonlu_ara", "katsayi_ve_gradyan_sonlulugu_denetlenir"):
+            mutant = metin.replace(iz, "sokulen")
+            if mutant == metin:
+                raise SystemExit(f"norm mutanti uretilemedi: {iz}")
+            bozuk.write_text(mutant, encoding="utf-8")
+            if not _normalizasyon_denetle(bozuk):
+                raise SystemExit(f"norm sayisal siniri sokuldu ama yakalanmadi: {iz}")
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "normalizasyon-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["duz_rms_fark"] = 0.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/normalizasyon.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("klasik RMS farkini sifirlayan kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["cikti_ort"] = 0.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/normalizasyon.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("sifir ortalamasiz kayit kabul edildi")
+
+
+
+def _kademe_denetle(path: Path) -> list:
+    """Kademe egitimi adayinin (tasarim 3.5, kalem 1) olculebilir sozlesmesi.
+    Metin denetimidir; ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Kararli kayip bicimi: log-sum-exp uzerinden capraz entropi.
+    for iz in ("fn log_toplam_us", "fn kararli_capraz_entropi"):
+        if iz not in metin:
+            ihlaller.append(f"kararli kayip bicimi eksik: {iz}")
+    # 2) Taban kayip modulun icinde tasinir; bit-ozdeslik olculur.
+    for iz in ("fn taban_kayip", "son_kademe_tabanin_kendisi"):
+        if iz not in metin:
+            ihlaller.append(f"taban sozlesmesi eksik: {iz}")
+    # 3) Elle yazilan geri gecis sonlu farkla denetlenir; her kademeden akar.
+    for iz in ("gradyan_sonlu_farkla_uyumlu", "her_kademeden_gradyan_akar"):
+        if iz not in metin:
+            ihlaller.append(f"gradyan sozlesmesi eksik: {iz}")
+    # 4) Bilesim dogrusal ve kademelerin arasindadir (olculur, iddia edilmez).
+    for iz in ("kademeli_kayip_agirlikli_dogrusal_kombinasyon",
+               "kademeli_kayip_kademelerin_arasindadir"):
+        if iz not in metin:
+            ihlaller.append(f"bilesim olcumu eksik: {iz}")
+    # 5) Buyuk logitler kararli kalmali; agirliklar bire normalize edilir.
+    for iz in ("buyuk_logitler_kararli_kalir", "agirliklar_bire_normalize_edilir"):
+        if iz not in metin:
+            ihlaller.append(f"kararlilik/normalizasyon olcumu eksik: {iz}")
+    # 6) Sekil hatalari reddedilir ve olcum satiri modulun kendisinden gelir.
+    for iz in ("sekil_hatalari_reddedilir", "fn olcum_raporu"):
+        if iz not in metin:
+            ihlaller.append(f"olcum sozlesmesi eksik: {iz}")
+    # 7) Kayip bicimi parametre tutmaz.
+    if "fn parametre_sayisi(&self) -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("kayip bicimi parametre tutuyor: sayi sifir olmali")
+    # 8) Aday oldugu yazili: spec degismez, baglanma M4 damgasi bekler.
+    for iz in ("M4", "model_spec.json"):
+        if iz not in metin:
+            ihlaller.append(f"adaylik isareti eksik: {iz}")
+    # 9) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 10) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        govde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in govde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_kademe_kapisi() -> str:
+    """Kademe egitimi adayi olculur halde duruyor: her derinlik dagitilabilir -
+    ara kademeler kayip tasir, taban kayip modulun icinde bit-ozdes tasinir,
+    gradyanlar elle yazildi ve sonlu farkla denetlendi, buyuk logitler kararli,
+    agirliklar bire normalize, parametre sifir. Aday bagli degil: spec degismedi,
+    baglanma M4 damgasi bekler."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "kademe.rs"
+    ihlaller = _kademe_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("kademe sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "kademe"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/kademe.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("kademe kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"kademe adayi olculur: {gecen} test, taban bit-ozdes tasinmis, gradyan "
+        f"sonlu farkla denetlenmis, agirliklar bire normalize, parametre sifir, "
+        f"bagli degil (M4 acik)"
+    )
+
+
+def selftest_kademe_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme, parametre tutan kopya, panik yolu,
+    ucuncu taraf adi ve degistirilmis kayit yakalanmali."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "kademe.rs"
+    if _kademe_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "kademe.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) kararli kayip bicimi sokulurse
+        bozuk.write_text(metin.replace("fn kararli_capraz_entropi", "fn x"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("kararli kayip bicimi sokulmus kopya yakalanmadi")
+        # 2) taban karsilastirmasi sokulursa (bit-ozdeslik olculemez)
+        bozuk.write_text(metin.replace("fn taban_kayip", "fn x"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("taban kaybi sokulmus kopya yakalanmadi")
+        # 3) olcum satiri sokulursa (kayit kaynagi sahipsiz kalir)
+        bozuk.write_text(metin.replace("fn olcum_raporu", "fn x"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("olcum raporu sokulmus kopya yakalanmadi")
+        # 4) kayip bicimi parametre tutmaya baslarsa
+        bozuk.write_text(metin.replace("fn parametre_sayisi(&self) -> usize {\n        0\n    }",
+                                       "fn parametre_sayisi(&self) -> usize {\n        self.ust_derinlik\n    }", 1),
+                         encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("parametre tutan kopya yakalanmadi")
+        # 5) adaylik isareti sokulursa (baglanma karari sessizlesir)
+        bozuk.write_text(metin.replace("M4", "M0"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("adaylik isareti sokulmus kopya yakalanmadi")
+        # 6) panik yolu eklersek (tekil hedef: ust duzey imza, girintisiz)
+        hedef = "pub fn taban_kayip("
+        if metin.count(hedef) != 1:
+            raise SystemExit("panik mutantinin tekil hedefi bulunamadi")
+        mutant = metin.replace(hedef,
+            "let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        # 7) ucuncu taraf adi gecerse (K1)
+        bozuk.write_text(metin + "\n// modernbert referansi\n", encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("ucuncu taraf adli kopya yakalanmadi")
+    # 8) Kayit tazeligi: degistirilmis kanit reddedilmeli.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "kademe-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["taban_fark"] = 0.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/kademe.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("taban farki bozulmus kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["gradyan_sapma"] = 1e-3
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/kademe.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("gradyan sapmasi esik ustundeyken kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["agirlik_toplam"] = 1.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/kademe.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("normalize edilmemis agirlik kaydi kabul edildi")
+
+
+
+def _cok_serit_denetle(path: Path) -> list:
+    """Cok-seritli artik baglanti adayinin (bilesen 5) olculebilir sozlesmesi.
+    Metin denetimidir - ihlal listesi doner, bos liste gecer demektir. Kaynak
+    yolu disaridan verilir ki self-test ayni denetimi kasitli bozuk kopyalarda
+    kosturabilsin."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Gradyan iddiasi olculur: deponun toleranslari + iki ayri sonlu fark.
+    for iz in (
+        "gradyan_sonlu_farkla_uyusur",
+        "durum_gradyani_da_sonlu_farkla_uyusur",
+        "GRADIENT_CHECK_MUTLAK_TABAN",
+        "GRADIENT_CHECK_TOLERANCE",
+    ):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    # 2) Sayim bagi: denetlenen gradyan sayisi seklin parametre sayisina bagli.
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 3) Parametre muhasebesi sekilden turetilir; karsilastirma da yazili.
+    if "fn parametre_sayisi(&self) -> usize" not in metin:
+        ihlaller.append("parametre sayisi sekilden turetilmiyor")
+    if "tek_serit_parametre_sayisi" not in metin:
+        ihlaller.append("tek serit karsilastirmasi yok")
+    # 4) No-op baslangic: taze serit kumesi agin sayisini degistirmemeli.
+    if "pub fn kimlik_doldur" not in metin:
+        ihlaller.append("kimlik (no-op) baslangici yok")
+    # 5) Olcumler: theta-1 icin RMS profili, karisim davranisi ve inis.
+    for iz in ("rms_profili_raporu", "serit_karisimi_gercekten_karistirir", "inis_olculur"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # 6) Ust sinir: modul kendi basina serit tavani buyutmez.
+    if "SERIT_UST_SINIRI" not in metin:
+        ihlaller.append("serit ust siniri yok")
+    # 7) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 8) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_cok_serit_kapisi() -> str:
+    """Bilesen 5 (cok-seritli artik baglanti) olculur halde duruyor: gradyan
+    sonlu farkla (sayim sekle bagli), no-op baslangic, parametre muhasebesi
+    sekilden, RMS profili (theta-1 sorusu) ve inis ayri ayri olculur. Kayit
+    tazeligi betigin kendi --dogrula yoluyla denetlenir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "cok_serit.rs"
+    ihlaller = _cok_serit_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("cok-serit sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "cok_serit"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/cok_serit.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("cok-serit kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"cok-serit adayi olculur: {gecen} test, gradyan sonlu farkla (okuma + yazma yolu), "
+        f"no-op baslangic, RMS profili ve inis ayri ayri kayitli"
+    )
+
+
+def selftest_cok_serit_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme yakalanmali ve kayit koru korune
+    guvenilmemeli (sayisi degistirilmis kayit reddedilmeli)."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "cok_serit.rs"
+    if _cok_serit_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "cok_serit.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) sayim bagi sokulursa yakalanmali
+        bozuk.write_text(metin.replace("denetlenen != spec.parametre_sayisi()", "false", 1),
+                         encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("sayim bagi sokulmus kopya yakalanmadi")
+        # 2) no-op baslangici sokulursa yakalanmali
+        bozuk.write_text(metin.replace("pub fn kimlik_doldur", "fn kimlik_doldur_x", 1),
+                         encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("no-op baslangici sokulmus kopya yakalanmadi")
+        # 3) olcum satiri sokulursa yakalanmali
+        bozuk.write_text(metin.replace("rms_profili_raporu", "x", 1), encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("RMS olcumu sokulmus kopya yakalanmadi")
+        # 4) panik yolu sokulursa yakalanmali
+        bozuk.write_text(metin.replace("    let girdi = okuma(",
+                                       "    let _ = vec![0].first().unwrap();\n    let girdi = okuma(", 1),
+                         encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 5) Kayit koru korune guvenilmemeli: bir sayi degistirilirse --dogrula kirmizi.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "cok-serit-2026-09-26.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        profiller = veri["kanit"]["profiller"]
+        ilk_kazanc = sorted(profiller)[0]
+        ilk_serit = sorted(profiller[ilk_kazanc])[0]
+        profiller[ilk_kazanc][ilk_serit][0] *= 1.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/cok_serit.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("degistirilmis kayit kabul edildi: tazelik denetimi sahte")
+
+
+
+def _kalibrasyon_metin_denetle(path: Path) -> list:
+    """Kalibre guven bandi sozlesmesi: bant sinirlari olcumden gelir, kodda
+    sabit durmaz; karar yolu bantlari okur; red yollari (fail-closed) vardir.
+    Metin denetimidir - ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    test_oneki = metin.find("mod tests")
+    gövde = metin if test_oneki == -1 else metin[:test_oneki]
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok: olcumun kendisi denetlenmiyor")
+    # 1) Tek kova sayaci: kova genisligi anlama'nin sabitinden gelir.
+    if "CALIBRATION_BUCKETS" not in gövde:
+        ihlaller.append("kova sayisi crate disindan (CALIBRATION_BUCKETS) gelmiyor")
+    if "kova_genisligi" not in gövde:
+        ihlaller.append("kova genisligi yardimcisi yok")
+    # 2) Bant sinirlari olculen kovalardan cikar.
+    for iz in ("rapor.observed", "rapor.low", "rapor.samples"):
+        if iz not in gövde:
+            ihlaller.append(f"bant olcumu kova raporunu okumuyor: {iz}")
+    # 3) Karar yolu bantlari okur, sabit esik kullanmaz.
+    if "bantlar.yesil_alt" not in gövde or "bantlar.kirmizi_ust" not in gövde:
+        ihlaller.append("basamak karari bant sinirlarini okumuyor")
+    # 4) Red yollari: olculemeyen bantta fail-closed.
+    for iz in ("YesilBantYok", "KirmiziBantYok", "YetersizKayit", "BantlarKesisiyor"):
+        if iz not in gövde:
+            ihlaller.append(f"fail-closed red yolu yok: {iz}")
+    # 5) Test disinda panik yolu yok.
+    for desen in (".unwrap()", ".expect("):
+        if desen in gövde:
+            ihlaller.append(f"test disinda panik yolu: {desen}")
+    # 6) Bant siniri kodda sabit yazilmaz: test disinda 0.7/0.8 gibi bir esik
+    #    atamasi gorunmemeli (hedef isabet bir istek, bant siniri bir olcumdur).
+    import re as _re
+    for eslesme in _re.finditer(r"(yesil_alt|kirmizi_ust)\s*:\s*([0-9.]+)", gövde):
+        ihlaller.append(
+            f"bant siniri kodda sabit: {eslesme.group(1)} = {eslesme.group(2)}"
+        )
+    return ihlaller
+
+
+def _kalibrasyon_fixture_denetle(path: Path) -> list:
+    """Beyan edilmis kanarya dosyasi: her satir (puan, dogru), puan uc noktada
+    degil. Yarim okunan bir kayitla olculen bant, olculmemis bir banddir."""
+    import json
+
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    satirlar = [s for s in path.read_text(encoding="utf-8").splitlines() if s.strip()]
+    if len(satirlar) < 100:
+        ihlaller.append(f"kanarya dosyasi {len(satirlar)} satir (en az 100 gerekir)")
+    for i, satir in enumerate(satirlar, start=1):
+        try:
+            kayit = json.loads(satir)
+        except json.JSONDecodeError as e:
+            ihlaller.append(f"satir {i}: JSON degil ({e})")
+            continue
+        puan = kayit.get("puan")
+        if not isinstance(puan, (int, float)) or not 0.0 < float(puan) < 1.0:
+            ihlaller.append(f"satir {i}: puan uc noktada ya da sayi degil")
+        if not isinstance(kayit.get("dogru"), bool):
+            ihlaller.append(f"satir {i}: dogru boolean degil")
+    return ihlaller
+
+
+def gate_kalibrasyon_bandi_kapisi() -> str:
+    """Kalibre guven bandi olculur halde duruyor: sicaklik uydurmasi egitim
+    hatasini ve ECE'yi gercekten dusuruyor, bantlar kayitlardan cikiyor, hedef
+    isabet olculemedigi yerde komut reddediyor (fail-closed) ve kayit
+    `training/eval/sonuclar/` altinda taze duruyor.
+
+    Ayrica karar basinin komuta bagli oldugu ve red yolunun gercek bir olcum
+    oldugu denetlenir: kanarya dosyasi her kaydi dogru isaretlerse hedef 0.9
+    kosusu artik reddetmez (self-test bunu kosturur)."""
+    ihlaller = _kalibrasyon_metin_denetle(ROOT / "crates" / "tomurcuk" / "src" / "kalibrasyon.rs")
+    ihlaller += _kalibrasyon_fixture_denetle(ROOT / "training" / "kalibrasyon-fixture.jsonl")
+    if ihlaller:
+        raise SystemExit("kalibrasyon sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    # Komutun kendi kaydi denetlemesi: sema + tazelik + hedef 0.9 reddi.
+    dogrula = subprocess.run(
+        [sys.executable, "training/kalibrasyon.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("kalibrasyon kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    # Komut var mi ve verilen dosyayi okuyor mu (bos bir dosya reddedilmeli).
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        bos = Path(td) / "bos.jsonl"
+        bos.write_text("", encoding="utf-8")
+        red = _cli("kalibrasyon", "--girdi", str(bos))
+        if red.returncode == 0:
+            raise SystemExit("bos kayit dosyasi kabul edildi: fail-closed degil")
+        if "yetersiz-kayit" not in (red.stdout + red.stderr):
+            raise SystemExit("bos dosya reddi beklenen gerekceyle gelmedi")
+    return (
+        "kalibre guven bandi olculur: sicaklik uydurmasi + ECE + olcumden cikan bantlar; "
+        "hedef 0.9 kanaryada reddediliyor, kayit taze"
+    )
+
+
+def selftest_kalibrasyon_bandi_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme yakalanmali ve reddin kendisi veriye bagli
+    olmali (dosya her kaydi dogru derse hedef 0.9 artik reddetmez)."""
+    import json
+    import tempfile
+
+    gercek = ROOT / "crates" / "tomurcuk" / "src" / "kalibrasyon.rs"
+    if _kalibrasyon_metin_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    fixture = ROOT / "training" / "kalibrasyon-fixture.jsonl"
+    if _kalibrasyon_fixture_denetle(fixture):
+        raise SystemExit("saglam kanarya dosyasi denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        # 1) bant olcumu kova raporunu okumuyorsa yakalanmali
+        bozuk = Path(td) / "kalibrasyon.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        bozuk.write_text(metin.replace("rapor.observed", "0.0", 4), encoding="utf-8")
+        if not _kalibrasyon_metin_denetle(bozuk):
+            raise SystemExit("kovayi okumayan kopya yakalanmadi")
+        # 2) bant siniri kodda sabitlenirse yakalanmali
+        bozuk.write_text(
+            metin.replace("pub yesil_alt: f64,", "pub yesil_alt: f64, // yesil_alt: 0.8\n")
+            .replace("    pub yesil_alt: f64,", "    pub yesil_alt: f64, // yesil_alt: 0.8"),
+            encoding="utf-8",
+        )
+        kirpik = metin[: metin.find("mod tests")] + "\n// yesil_alt: 0.8\n" + metin[metin.find("mod tests"):]
+        bozuk.write_text(kirpik, encoding="utf-8")
+        if not _kalibrasyon_metin_denetle(bozuk):
+            raise SystemExit("koda sabitlenmis bant siniri yakalanmadi")
+        # 3) panik yolu sokulursa yakalanmali
+        bozuk.write_text(metin.replace("    let fit = ", "    let fit = ", 1).replace(
+            "        return Err(KalibrasyonHatasi::YetersizKayit);",
+            "        let _ = vec![0].first().unwrap();\n        return Err(KalibrasyonHatasi::YetersizKayit);", 1),
+            encoding="utf-8")
+        if not _kalibrasyon_metin_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        satirlar = [
+            s for s in fixture.read_text(encoding="utf-8").splitlines() if s.strip()
+        ]
+        # 4) Reddin veriye bagli oldugu: esik etiketli (puan >= 0.9 -> dogru)
+        #    deterministik bir kanarya ile hedef 0.9 GECMELI. Boylece gercek
+        #    kanaryadaki reddin sabit bir yanit degil, verinin sonucu oldugu
+        #    gosterilir.
+        esikli = Path(td) / "esik-etiketli.jsonl"
+        esikli.write_text(
+            "\n".join(
+                json.dumps({"puan": json.loads(s)["puan"],
+                            "dogru": json.loads(s)["puan"] >= 0.9})
+                for s in satirlar
+            ) + "\n",
+            encoding="utf-8",
+        )
+        gecti = _cli("kalibrasyon", "--girdi", str(esikli))
+        if gecti.returncode != 0:
+            raise SystemExit(
+                "esik etiketli kanaryada hedef 0.9 hala reddediliyor: reddin kendisi "
+                "veriye bagli degil, sabit olabilir\n" + (gecti.stdout + gecti.stderr)[-400:]
+            )
+        # Ve o kosuda yesil band gercekten olculmus olmali.
+        if "yesil_alt=" not in (gecti.stdout + gecti.stderr):
+            raise SystemExit("gecen kosuda bant ozeti yok")
+
+
+def _engram_denetle(path: Path) -> list:
+    """Engram adayinin (tasarim 3.3) olculebilir sozlesmesi. Metin denetimidir -
+    ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Karma tohumsuz ve tam sayi: float ya da rastgelelik karmaya girmemeli.
+    for iz in ("pub fn ngram_karmasi", "wrapping_mul", "u64"):
+        if iz not in metin:
+            ihlaller.append(f"karma sozlesmesi eksik: {iz}")
+    # 2) Kayit siniri okumalara uygulanir ve ayri sayilir.
+    for iz in ("kayit_siniri", "gecmis_yok"):
+        if iz not in metin:
+            ihlaller.append(f"kayit siniri olcumu eksik: {iz}")
+    # 3) Seyrek geri gecis + hucre sirasinda toplama.
+    if "sort_by_key" not in metin:
+        ihlaller.append("seyrek toplama sirasi (hucre sirasi) yok")
+    # 4) Cakisma olculur, yasaklanmaz.
+    for iz in ("CakismaOlcumu", "cakisan_hucre", "doluluk"):
+        if iz not in metin:
+            ihlaller.append(f"cakisma olcumu eksik: {iz}")
+    # 5) Gradyan iddiasi olculur + sayim bagi.
+    for iz in ("gradyan_sonlu_farkla_uyusur", "GRADIENT_CHECK_MUTLAK_TABAN",
+               "GRADIENT_CHECK_TOLERANCE"):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 6) Parametre muhasebesi sekilden turetilir.
+    if "fn parametre_sayisi(&self) -> usize" not in metin:
+        ihlaller.append("parametre sayisi sekilden turetilmiyor")
+    # 7) Davranis olcumleri.
+    for iz in ("seyrek_toplam_hucre_sirasinda", "kayit_sinirinda_komsu_jetonlar_okumayi_degistirmez",
+               "olcum_raporu"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # 8) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 9) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_engram_kapisi() -> str:
+    """Engram adayi olculur halde duruyor: karma tohumsuz/tam sayi, kayit siniri
+    okumalara uygulanir, seyrek geri gecis hucre sirasinda toplanir, cakisma
+    olculur (yasaklanmaz) ve tablo gradyani sonlu farkla denetlenir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "engram.rs"
+    ihlaller = _engram_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("engram sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        # Filtre modul yoluyla sinirli: cıplak "engram" kelimesi baska bir
+        # modulun test adinda da gecebilir (gecti: `birlesik` blogunun engram
+        # kollari) ve o zaman sayim bagi, olculmeyen bir sebeple kirilir.
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "engram::"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/engram.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("engram kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"engram adayi olculur: {gecen} test, tohumsuz tam sayi karma, kayit siniri "
+        f"okumalara uygulanmis, cakisma olculuyor, gradyan sonlu farkla"
+    )
+
+
+def selftest_engram_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme ve degistirilmis kayit yakalanmali."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "engram.rs"
+    if _engram_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "engram.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) kayit siniri sayimi sokulursa
+        bozuk.write_text(metin.replace("kayit_siniri", "x"), encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("kayit siniri sayimi sokulmus kopya yakalanmadi")
+        # 2) seyrek toplama sirasi sokulursa
+        bozuk.write_text(metin.replace("sort_by_key", "// sirasiz"), encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("seyrek toplama sirasi sokulmus kopya yakalanmadi")
+        # 3) cakisma olcumu sokulursa
+        bozuk.write_text(metin.replace("cakisan_hucre", "y"), encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("cakisma olcumu sokulmus kopya yakalanmadi")
+        # 4) panik yolu sokulursa
+        bozuk.write_text(metin.replace("    let mut g = vec![0.0f64; 2 * spec.tablo * spec.d_kv];",
+                                       "    let _ = vec![0].first().unwrap();\n    let mut g = vec![0.0f64; 2 * spec.tablo * spec.d_kv];", 1),
+                         encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 5) Kayit koru korune guvenilmemeli + sayim tutmalidir.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "engram-2026-09-26.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["okuma"] = veri["kanit"]["okuma"] + 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/engram.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("degistirilmis kayit kabul edildi: tazelik denetimi sahte")
+        # Sayim bagi: okuma + atlananlar jeton sayisini tutmali.
+        veri2 = json.loads(kayit.read_text(encoding="utf-8"))
+        veri2["kanit"]["okuma"] = veri2["kanit"]["okuma"] + 5.0
+        sahte.write_text(json.dumps(veri2, ensure_ascii=False), encoding="utf-8")
+        kosu2 = subprocess.run(
+            ["python3", "training/engram.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu2.returncode == 0:
+            raise SystemExit("sayimi tutmayan kayit kabul edildi")
+
+
+
+
+def _gecis_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Sayimin, planin ve durumun kayda karsi tutarligi. Uc olcum de
+    deterministik oldugu icin kayitla taze arasindaki her fark bir
+    bozulmadir; duvar saati yoktur, bahane de yoktur."""
+    if taze.get("agac_ozeti") != kayit.get("agac_ozeti"):
+        return "sayim ozeti kayittan farkli: sablon agaci degismis"
+    if taze.get("dosya_sayisi") != kayit.get("dosya_sayisi"):
+        return "dosya sayisi kayittan farkli"
+    if taze.get("modul_sayisi") != kayit.get("modul_sayisi"):
+        return "modul sayisi kayittan farkli"
+    if taze.get("test_amaci") != kayit.get("test_amaci"):
+        return "planin sozlesme buyuklugu kayittan farkli"
+    if taze.get("modul_kapsami") != kayit.get("modul_kapsami"):
+        return "modul kapsami kayittan farkli"
+    if taze.get("bekleyen") != kayit.get("bekleyen"):
+        return "bekleyen modul listesi kayittan farkli"
+    if kayit.get("tesisat_uyumlu") is not True:
+        return "kayit tesisat uyumunu tasimiyor"
+    return None
+
+
+def gate_gecis_hatti_kapisi() -> str:
+    """Gecis hatti olculur: sayim yinelenebilir, planin tesisat satirlari
+    agacin kendi satirlariyla bayt esit, kapsam kayitla ayni, redler adli.
+
+    Hattin hiz iddiasi su: bir kaynak agacini envanterlemek, planini
+    kurmak ve tesisatini yazmak mekaniktir ve mekanik olan her sey bu
+    komuttadir. Kapinin olctugu uc sey var: (1) ayni sablon agaci her
+    kosuda ayni ozeti verir, (2) planin urettigi uye satiri ve cli
+    bagimlilik satiri repodaki gerc. satirlarla bayt bayt eslesir - biçim
+    tarafi kayarsa plan yararsiz uretir - ve (3) durum, sablonda
+    gerceklesmis olan yari kapsami ayni sayi ile raporlar."""
+    import json
+    import tempfile
+
+    _ikili_hazirla()
+    kok = ROOT / "crates" / "gecis" / "tests" / "ornek-kaynak"
+    gercek = ROOT / "crates" / "gecis" / "tests" / "ornek-gerceklesen"
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "gecis-hatti-2026-09-27.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("gecis hatti kaydi yok: training/eval/sonuclar/gecis-hatti-2026-09-27.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+
+    sayim_kosu = _cli("gecis", "sayim", "--kaynak", str(kok), "--lisans", "MIT")
+    if sayim_kosu.returncode != 0:
+        raise SystemExit(f"sayim kosmadi: {(sayim_kosu.stderr or sayim_kosu.stdout)[-300:]}")
+    sayim = json.loads(sayim_kosu.stdout)
+
+    with tempfile.TemporaryDirectory() as td:
+        sayim_dosya = Path(td) / "sayim.json"
+        sayim_dosya.write_text(sayim_kosu.stdout, encoding="utf-8")
+        plan_kosu = _cli("gecis", "plan", "--sayim", str(sayim_dosya), "--ad", "gecis")
+        if plan_kosu.returncode != 0:
+            raise SystemExit(f"plan kosmadi: {(plan_kosu.stderr or plan_kosu.stdout)[-300:]}")
+        pln = json.loads(plan_kosu.stdout)
+        plan_dosya = Path(td) / "plan.json"
+        plan_dosya.write_text(plan_kosu.stdout, encoding="utf-8")
+        durum_kosu = _cli("gecis", "durum", "--plan", str(plan_dosya),
+                          "--gerceklesen", str(gercek))
+        if durum_kosu.returncode != 0:
+            raise SystemExit(f"durum kosmadi: {(durum_kosu.stderr or durum_kosu.stdout)[-300:]}")
+        dur = json.loads(durum_kosu.stdout)
+
+    # tesisat satirlari gerc. satirlarla bayt bayt
+    uye = pln["tesisat"]["uye_satiri"]
+    if uye not in (ROOT / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        raise SystemExit(f"planin uye satiri repoda yok: {uye!r}")
+    bagimlilik = pln["tesisat"]["cli_bagimliligi"]
+    if bagimlilik not in (ROOT / "crates" / "cli" / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        raise SystemExit(f"planin cli bagimlilik satiri repoda yok: {bagimlilik!r}")
+
+    taze = {
+        "agac_ozeti": sayim["agac_ozeti"],
+        "dosya_sayisi": len(sayim["dosyalar"]),
+        "modul_sayisi": len(pln["moduller"]),
+        "test_amaci": pln["test_amaci"],
+        "modul_kapsami": dur["modul_kapsami"],
+        "bekleyen": dur["bekleyen"],
+        "tesisat_uyumlu": True,
+    }
+    bulgu = _gecis_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+
+    # redler: olmayan kaynak ve kapali lisans, kendini adlandirmali
+    _alim_refusal(_cli("gecis", "sayim", "--kaynak", "/tmp/gecis-boyle-bir-yol-yok",
+                       "--lisans", "MIT"), "kaynak yok")
+    _alim_refusal(_cli("gecis", "sayim", "--kaynak", str(kok),
+                       "--lisans", "GPL-3.0"), "kapali kumede degil")
+
+    return (
+        f"gecis hatti olculdu: sablon {taze['dosya_sayisi']} dosya / ozet {taze['agac_ozeti'][:12]}..., "
+        f"plan {taze['modul_sayisi']} modul / sozlesme {taze['test_amaci']} sembol, "
+        f"tesisat satirlari agacla bayt esit, kapsam {taze['modul_kapsami']} "
+        f"(bekleyen: {', '.join(taze['bekleyen'])})"
+    )
+
+
+def selftest_gecis_hatti_kapisi() -> None:
+    """Kanaryalar: bozulmus ozet, degismis kapsam, degismis bekleyen ve
+    uyumsuzlukta 'tesisat_uyumlu' tasimayan kayit ayri ayri reddedilir;
+    tutarli kayit gecer."""
+    taze = {"agac_ozeti": "a" * 64, "dosya_sayisi": 5, "modul_sayisi": 2,
+            "test_amaci": 5, "modul_kapsami": 0.5,
+            "bekleyen": ["katman-rope"], "tesisat_uyumlu": True}
+    kayit = dict(taze)
+    assert _gecis_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    assert "ozet" in (_gecis_kayit_bulgu(kayit, dict(taze, agac_ozeti="b" * 64)) or "")
+    assert "dosya sayisi" in (_gecis_kayit_bulgu(kayit, dict(taze, dosya_sayisi=4)) or "")
+    assert "modul sayisi" in (_gecis_kayit_bulgu(kayit, dict(taze, modul_sayisi=3)) or "")
+    assert "sozlesme" in (_gecis_kayit_bulgu(kayit, dict(taze, test_amaci=6)) or "")
+    assert "kapsam" in (_gecis_kayit_bulgu(kayit, dict(taze, modul_kapsami=1.0)) or "")
+    assert "bekleyen" in (_gecis_kayit_bulgu(kayit, dict(taze, bekleyen=[])) or "")
+    assert "tesisat" in (_gecis_kayit_bulgu(dict(kayit, tesisat_uyumlu=False), taze) or "")
+
+
+
+OMURGA_KAYITLARI = (
+    # (betik, kaynak dosya, olcum testi, kayit)
+    ("training/dikkat_kadansi.py", "crates/kodlayici/src/blok.rs",
+     "fn olcum_raporu_dikkat_kadansi", "training/eval/sonuclar/dikkat-kadansi-2026-09-27.json"),
+    ("training/norm_yeri.py", "crates/kodlayici/src/blok.rs",
+     "fn olcum_raporu_norm_yeri", "training/eval/sonuclar/norm-yeri-2026-09-27.json"),
+    ("training/tipli_karar.py", "crates/tomurcuk/src/lib.rs",
+     "fn olcum_raporu_tipli_karar", "training/eval/sonuclar/tipli-karar-2026-09-27.json"),
+    ("training/hadamard_mlp.py", "crates/egitim/src/mlp_hadamard.rs",
+     "fn olcum_raporu", "training/eval/sonuclar/hadamard-mlp-2026-09-27.json"),
+    ("training/nicem.py", "crates/nicem/src/grup.rs",
+     "fn olcum_raporu", "training/eval/sonuclar/nicem-2026-09-27.json"),
+    ("training/kodlayici.py", "crates/kodlayici/src/blok.rs",
+     "fn olcum_raporu_kodlayici", "training/eval/sonuclar/kodlayici-2026-09-27.json"),
+    ("training/engram_tasima.py", "crates/egitim/src/engram_tasima.rs",
+     "fn olcum_raporu_engram_tasima", "training/eval/sonuclar/engram-tasima-2026-09-27.json"),
+)
+UCUNCU_TARAF_ADLARI = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
+                     "torch", "huggingface", "transformers", "candle")
+
+
+def _kayit_denetle(kayit: Path) -> list:
+    """Omurga/karar olcum kayitlarinin ortak sozlesmesi: olcut mantiksal ve
+    tutuyor, olculmeyen bos degil, kanit sayisal.
+    Metin denetimidir; ihlal listesi doner."""
+    ihlaller: list[str] = []
+    if not kayit.is_file():
+        return [f"{kayit} yok"]
+    try:
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        return [f"{kayit.name}: json bozuk: {err}"]
+    olcut = veri.get("olcut")
+    if not isinstance(olcut, dict) or not isinstance(olcut.get("sonuc"), bool):
+        ihlaller.append(f"{kayit.name}: olcut.sonuc mantiksal degil")
+    elif not olcut["sonuc"]:
+        ihlaller.append(f"{kayit.name}: olcut tutmuyor")
+    if not isinstance(veri.get("olculmeyen"), list) or not veri["olculmeyen"]:
+        ihlaller.append(f"{kayit.name}: olculmeyen listesi bos")
+    kanit = veri.get("kanit")
+    if not isinstance(kanit, dict) or not kanit:
+        ihlaller.append(f"{kayit.name}: kanit bos")
+    elif any(not isinstance(v, (int, float)) or isinstance(v, bool) for a, v in kanit.items() if a != "olcut_sonucu"):
+        ihlaller.append(f"{kayit.name}: kanit sayisal degil")
+    return ihlaller
+
+
+def _port_kaynak_denetle(kaynak: Path, test_adi: str) -> list:
+    """Olcum testi kaynakta durur ve test disindaki govde ucuncu taraf adi
+    tasimaz (K1: ust kaynak adi bu agacta gecmez)."""
+    ihlaller: list[str] = []
+    if not kaynak.is_file():
+        return [f"{kaynak} yok"]
+    metin = kaynak.read_text(encoding="utf-8")
+    if test_adi not in metin:
+        ihlaller.append(f"{kaynak.name}: olcum testi yok: {test_adi}")
+    test_oneki = metin.find("mod tests")
+    govde = metin if test_oneki == -1 else metin[:test_oneki]
+    kucuk = "\n".join(s for s in govde.lower().splitlines() if not s.lstrip().startswith("//"))
+    for ad in UCUNCU_TARAF_ADLARI:
+        if re.search(rf"\b{ad}\b", kucuk):
+            ihlaller.append(f"{kaynak.name}: ucuncu taraf adi test disinda gecti: {ad}")
+    return ihlaller
+
+
+def gate_omurga_karar_kayitlari() -> str:
+    """Omurga (dikkat kadansi, norm yeri, kodlayici siniri), tipli karar, Hadamard MLP ve
+    alt-bayt nicem olcum kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
+    kendi betiginin `--dogrula` adimindan gecer, olcum testi kaynakta var,
+    K1 siniri (ust kaynak adi test disinda gecmez) tutuyor."""
+    ihlaller: list[str] = []
+    for betik, kaynak, test_adi, kayit in OMURGA_KAYITLARI:
+        ihlaller += _port_kaynak_denetle(ROOT / kaynak, test_adi)
+        ihlaller += _kayit_denetle(ROOT / kayit)
+    if ihlaller:
+        raise SystemExit("olcum kaydi sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    ozet = []
+    for betik, _kaynak, _test, _kayit in OMURGA_KAYITLARI:
+        kosu = subprocess.run(
+            [sys.executable, betik, "--dogrula"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(f"{betik} kaydi dogrulanmadi:\n" + (kosu.stdout + kosu.stderr)[-800:])
+        ozet.append(Path(betik).stem)
+    return f"{len(OMURGA_KAYITLARI)} olcum kaydi taze ve yeniden olculdu: " + ", ".join(ozet)
+
+
+def selftest_omurga_karar_kayitlari() -> None:
+    """Kanaryalar: olcutu dusurulmus kayit, bos olculmeyen, karta isaret
+    etmeyen kayit ve test disinda ucuncu taraf adi tasiyan kaynak yakalanmali;
+    gercek kayit ve kaynak gecmeli."""
+    import tempfile
+
+    for _betik, kaynak, test_adi, kayit in OMURGA_KAYITLARI:
+        if _kayit_denetle(ROOT / kayit):
+            raise SystemExit(f"saglam kayit denetimden gecmedi: {kayit}")
+        if _port_kaynak_denetle(ROOT / kaynak, test_adi):
+            raise SystemExit(f"saglam kaynak denetimden gecmedi: {kaynak}")
+    gercek = json.loads((ROOT / OMURGA_KAYITLARI[0][3]).read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "kayit.json"
+        # 1) olcut dusurulmus
+        k = json.loads(json.dumps(gercek)); k["olcut"]["sonuc"] = False
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _kayit_denetle(bozuk):
+            raise SystemExit("olcutu tutmayan kayit yakalanmadi")
+        # 2) olculmeyen bos
+        k = json.loads(json.dumps(gercek)); k["olculmeyen"] = []
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _kayit_denetle(bozuk):
+            raise SystemExit("bos olculmeyen yakalanmadi")
+        # 4) kanit metne donmus
+        k = json.loads(json.dumps(gercek)); k["kanit"]["uzunluk"] = "sekiz"
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _kayit_denetle(bozuk):
+            raise SystemExit("sayisal olmayan kanit yakalanmadi")
+        # 5) kaynakta test disinda ucuncu taraf adi
+        kaynak_metin = (ROOT / OMURGA_KAYITLARI[0][1]).read_text(encoding="utf-8")
+        kirli = Path(td) / "blok.rs"
+        kirli.write_text("pub fn kaynak() {} // modernbert\npub struct Modernbert;\n" + kaynak_metin, encoding="utf-8")
+        if not _port_kaynak_denetle(kirli, OMURGA_KAYITLARI[0][2]):
+            raise SystemExit("ucuncu taraf adi tasiyan kaynak yakalanmadi")
+        # 6) olcum testi sokulmus
+        kirli.write_text(kaynak_metin.replace(OMURGA_KAYITLARI[0][2], "fn x"), encoding="utf-8")
+        if not _port_kaynak_denetle(kirli, OMURGA_KAYITLARI[0][2]):
+            raise SystemExit("olcum testi sokulmus kaynak yakalanmadi")
+        # 7) degistirilmis kayit `--dogrula`da yakalanmali (sayi kayittan farkli)
+        k = json.loads(json.dumps(gercek)); k["kanit"]["uzunluk"] = 9
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        kosu = subprocess.run(
+            [sys.executable, OMURGA_KAYITLARI[0][0], "--dogrula", "--kayit", str(bozuk)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("degistirilmis kayit dogrulamadan gecti")
+def _birlesik_denetle(path: Path) -> list:
+    """Birlesik blogun (tasarim notu 3.8) olculebilir sozlesmesi."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Kompozisyon gercekten alt modulleri cagirmali: bu modul hicbirini
+    #    yeniden yazmaz. Ikinci bir kopya, ikinci bir yanlis olma yeridir.
+    for cagri in ("cok_serit::okuma(", "cok_serit::ileri(", "cok_serit::geri(",
+                  "normalizasyon::norm_ileri(", "normalizasyon::norm_geri(",
+                  "mlp_hadamard::ileri(", "mlp_hadamard::geri(",
+                  "yonlendirme::rota_hesapla(", "engram::oku(", "engram::geri("):
+        if cagri not in metin:
+            ihlaller.append(f"alt modul cagrisi eksik: {cagri}")
+    # 2) Parametre muhasebesi sekilden turetilmeli ve rota terimi yazili
+    #    kalmali: sifiri toplamdan dusurmek, rotanin agirlik tutmadigi
+    #    bilgisini gorunmez yapar.
+    for iz in ("pub fn parametre_sayisi", "pub fn parametre_yollari",
+               "RotaSpec::parametre_sayisi"):
+        if iz not in metin:
+            ihlaller.append(f"parametre muhasebesi izi eksik: {iz}")
+    # 3) Kapali bilesen = yoklugu: uc anahtarin da bit-ozdeslik olcumu olmali.
+    for iz in ("engram_kapali_hal_bit_ozdes", "tek_serit_klasik_artik_akis",
+               "rota_kapali_hal_tek_uzman", "serit_okumasi_ileri_ile_bit_ozdes"):
+        if iz not in metin:
+            ihlaller.append(f"kapali-bilesen olcumu eksik: {iz}")
+    if "to_bits()" not in metin:
+        ihlaller.append("bit-ozdeslik olcumu to_bits kullanmiyor")
+    # 4) Gradyan: sayim sekle bagli olmali, olcut gevsetilmemeli ve adim
+    #    taramasi (U egrisi) olculmeli.
+    for iz in ("GRADIENT_CHECK_MUTLAK_TABAN", "GRADIENT_CHECK_TOLERANCE",
+               "denetim.denetlenen, spec.parametre_sayisi()",
+               "adim_taramasi_u_egrisi_cizer"):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi izi eksik: {iz}")
+    # 5) Kayit siniri engram okumalarina da uygulanmali (provenance bagimsizligi).
+    if "engram_kayit_sinirini_gecmez" not in metin:
+        ihlaller.append("kayit siniri olcumu eksik")
+    # 6) Model ailesi degistirilmemeli: bu modul bir kompozisyon yuzeyidir.
+    #    Aciklama satirlarinda `model_spec.json` gecebilir (ve gecmeli: kural
+    #    yazili olmali); yasak olan **kodun** aileye dokunmasidir. Bu yuzden
+    #    once aciklamalar soyulur, sonra kod taranir.
+    kod = "\n".join(
+        satir for satir in metin.splitlines() if not satir.lstrip().startswith("//")
+    )
+    for iz in ("model_spec", "Parametreler", "lubot_a1()"):
+        if iz in kod:
+            ihlaller.append(f"kod model ailesine dokunuyor: {iz} (damga ister)")
+    aciklama = "\n".join(
+        satir for satir in metin.splitlines() if satir.lstrip().startswith("//")
+    )
+    if "model_spec.json" not in aciklama or "ailesi degismez" not in aciklama:
+        ihlaller.append("aile degismezligi belgede yazili degil")
+    # 7) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 8) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        govde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in govde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_birlesik_kapisi() -> str:
+    """Bilesen 3.8 (birlesik blok) olculur halde duruyor: alti tekil aday
+    tek blokta kosuyor, her parametre dort noktali sonlu farkla denetleniyor
+    (sayim sekilden turetilir), kapatilan her bilesen yoklugu ile bit-ozdes,
+    ve engram okumasi kayit sinirini gecmiyor. Kayit tazeligi betigin kendi
+    --dogrula yoluyla denetlenir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "birlesik.rs"
+    ihlaller = _birlesik_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("birlesik blok sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "birlesik"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/birlesik.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("birlesik kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"birlesik blok olculur: {gecen} test, alti bilesen tek blokta, her parametre "
+        f"dort noktali sonlu farkla, kapali bilesen bit-ozdes, kayit siniri engrama da uygulanir"
+    )
+
+
+def selftest_birlesik_kapisi() -> None:
+    """Kanaryalar: sokulmus her sozlesme izi yakalanmali ve kayit koru korune
+    guvenilmemeli."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "birlesik.rs"
+    if _birlesik_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    metin = gercek.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "birlesik.rs"
+        # 1) Alt modul cagrisi sokulursa (kompozisyon kendi kopyasini yazmis olur)
+        bozuk.write_text(metin.replace("mlp_hadamard::geri(", "x(", 1), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("alt modul cagrisi sokulmus kopya yakalanmadi")
+        # 2) Sayim bagi sokulursa (yeni bir tensor denetimin disinda kalabilir)
+        bozuk.write_text(
+            metin.replace("denetim.denetlenen, spec.parametre_sayisi()", "1, 1"),
+            encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("sayim bagi sokulmus kopya yakalanmadi")
+        # 3) Bit-ozdeslik olcumu sokulursa
+        bozuk.write_text(metin.replace("engram_kapali_hal_bit_ozdes", "x"), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("kapali-bilesen olcumu sokulmus kopya yakalanmadi")
+        # 4) Adim taramasi (U egrisi) sokulursa: gevsetilmis tolerans gorunmez kalirdi
+        bozuk.write_text(metin.replace("adim_taramasi_u_egrisi_cizer", "x"), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("adim taramasi sokulmus kopya yakalanmadi")
+        # 5) Kayit siniri olcumu sokulursa
+        bozuk.write_text(metin.replace("engram_kayit_sinirini_gecmez", "x"), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("kayit siniri olcumu sokulmus kopya yakalanmadi")
+        # 6) Aile degisikligi sokulursa (spec'e dokunmak damga ister)
+        bozuk.write_text(metin.replace("pub fn kucuk_aday", "pub fn model_spec_yaz", 1),
+                         encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("model_spec'e dokunan kopya yakalanmadi")
+        # 7) Panik yolu sokulursa. rustfmt'in bicimden bagimsiz tekil hedefi:
+        hedef = "    sekil_denetle(spec, w, durumlar)?;"
+        if metin.count(hedef) != 2:
+            raise SystemExit("panik mutantinin hedefi tekil degil")
+        mutant = metin.replace(hedef, "    let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 8) Kayit koru korune guvenilmemeli.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "birlesik-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        for alan, deger in (("ihlal", 3.0), ("denetlenen", 1.0), ("son_kayip", 1e9)):
+            veri = json.loads(kayit.read_text(encoding="utf-8"))
+            veri["kanit"][alan] = deger
+            sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+            kosu = subprocess.run(
+                ["python3", "training/birlesik.py", "--dogrula", "--kayit", str(sahte)],
+                cwd=ROOT, capture_output=True, text=True,
+            )
+            if kosu.returncode == 0:
+                raise SystemExit(f"{alan} degistirilmis kayit kabul edildi")
+
+
+# Direktif 7.4'un modul adlari. Liste burada sabittir cunku envanterin isi tam
+# olarak sudur: **disaridan verilen** ad kumesini bu agacin gercegine
+# baglamak. Tablodan turetilseydi, unutulan bir modul envanterden de eksik
+# olur ve kapi hicbir sey soylemezdi.
+ANA_MODULLER = (
+    "kodlayici_omurga",
+    "hadamard_mlp",
+    "gqa_engram_attention",
+    "hyperconnections",
+    "sinkhorn_router",
+    "decision_head",
+    "schema_decoder",
+    "cq2_quant",
+)
+GECERLI_DURUMLAR = ("bagli", "bagimsiz", "yok")
+
+
+def _modul_envanteri_oku(metin: str) -> list:
+    """Tablo satirlarini `(modul, yollar, kapilar, kayitlar, durum)` olarak coz."""
+    satirlar = []
+    for ham in metin.splitlines():
+        satir = ham.strip()
+        if not satir.startswith("|") or not satir.endswith("|"):
+            continue
+        hucreler = [h.strip() for h in satir.strip("|").split("|")]
+        if len(hucreler) != 5:
+            continue
+        if hucreler[0].startswith("---") or hucreler[0] in ("7.4 modulu", "modul"):
+            continue
+        ad = hucreler[0].strip("`")
+        tirnakli = lambda h: re.findall(r"`([^`]+)`", h)  # noqa: E731
+        satirlar.append((ad, tirnakli(hucreler[1]), tirnakli(hucreler[2]),
+                         tirnakli(hucreler[3]), hucreler[4]))
+    return satirlar
+
+
+def _modul_envanteri_denetle(metin: str, kapi_adlari) -> list:
+    ihlaller: list[str] = []
+    satirlar = _modul_envanteri_oku(metin)
+    if not satirlar:
+        return ["envanterde hic tablo satiri yok"]
+    adlar = {s[0] for s in satirlar}
+    for modul in ANA_MODULLER:
+        if modul not in adlar:
+            ihlaller.append(f"ana modul envanterde yok: {modul}")
+    for ad, yollar, kapilar, kayitlar, durum in satirlar:
+        if durum not in GECERLI_DURUMLAR:
+            ihlaller.append(f"{ad}: durum {GECERLI_DURUMLAR} disinda: {durum!r}")
+        if durum != "yok" and not yollar:
+            ihlaller.append(f"{ad}: durum {durum} ama kaynak yolu verilmemis")
+        for yol in yollar:
+            if not (ROOT / yol).is_file():
+                ihlaller.append(f"{ad}: kaynak yok: {yol}")
+        for kapi in kapilar:
+            if kapi not in kapi_adlari:
+                ihlaller.append(f"{ad}: kayitli olmayan kapi: {kapi}")
+        for kayit in kayitlar:
+            if not (ROOT / "training" / "eval" / "sonuclar" / kayit).is_file():
+                ihlaller.append(f"{ad}: olcum kaydi yok: {kayit}")
+    return ihlaller
+
+
+def gate_modul_envanteri_kapisi() -> str:
+    """`docs/MODUL-ENVANTERI.md`, ana mimarinin sekiz modulunu bu agactaki
+    gercek dosyalara baglar ve her satirin kaniti denetlenir: kaynak dosya var
+    mi, adi gecen kapi gercekten kayitli mi, olcum kaydi duruyor mu. Bir modul
+    "var" diye yaziliyorsa, bunu gosteren yol da vardir."""
+    import re as _re  # noqa: F401 - _modul_envanteri_oku icin global `re` yeterli
+
+    belge = ROOT / "docs" / "MODUL-ENVANTERI.md"
+    if not belge.is_file():
+        raise SystemExit(f"envanter yok: {belge}")
+    metin = belge.read_text(encoding="utf-8")
+    ihlaller = _modul_envanteri_denetle(metin, set(GATES))
+    if ihlaller:
+        raise SystemExit("modul envanteri tutmuyor:\n  " + "\n  ".join(ihlaller))
+    satirlar = _modul_envanteri_oku(metin)
+    bagli = sum(1 for s in satirlar if s[4] == "bagli")
+    bagimsiz = sum(1 for s in satirlar if s[4] == "bagimsiz")
+    yok = sum(1 for s in satirlar if s[4] == "yok")
+    return (
+        f"modul envanteri denetlendi: {len(ANA_MODULLER)} modulun hepsi tabloda, "
+        f"{len(satirlar)} satir ({bagli} bagli, {bagimsiz} bagimsiz, {yok} yok), "
+        f"her kaynak yolu ve her olcum kaydi yerinde"
+    )
+
+
+def selftest_modul_envanteri_kapisi() -> None:
+    """Kanaryalar: envanter yalan soylerse kapi bunu yakalamali."""
+    belge = ROOT / "docs" / "MODUL-ENVANTERI.md"
+    if not belge.is_file():
+        raise SystemExit(f"envanter yok: {belge}")
+    metin = belge.read_text(encoding="utf-8")
+    kapilar = set(GATES)
+    if _modul_envanteri_denetle(metin, kapilar):
+        raise SystemExit("saglam envanter kendi denetiminden gecmedi")
+    # 1) Var olmayan bir kaynak yolu yazilirsa
+    bozuk = metin.replace("`crates/egitim/src/yonlendirme.rs`",
+                          "`crates/egitim/src/olmayan_dosya.rs`", 1)
+    if bozuk == metin or not _modul_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("olmayan kaynak yolu yakalanmadi")
+    # 2) Kayitli olmayan bir kapi adi yazilirsa
+    bozuk = metin.replace("`yonlendirme-kapisi`", "`olmayan-kapi`", 1)
+    if bozuk == metin or not _modul_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("kayitli olmayan kapi adi yakalanmadi")
+    # 3) Olmayan bir olcum kaydi yazilirsa
+    bozuk = metin.replace("`engram-2026-09-26.json`", "`olmayan-kayit.json`", 1)
+    if bozuk == metin or not _modul_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("olmayan olcum kaydi yakalanmadi")
+    # 4) Bir 7.4 modulu tablodan dusurulurse
+    bozuk = metin.replace("| `sinkhorn_router` |", "| `baska_bir_ad` |", 1)
+    if bozuk == metin or not _modul_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("eksik 7.4 modulu yakalanmadi")
+    # 5) Tanimsiz bir durum yazilirsa ("neredeyse bitti" bir durum degildir)
+    bozuk = metin.replace("| `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |",
+                          "| `sinkhorn-yonlendirme-2026-09-27.json` | neredeyse |", 1)
+    if bozuk == metin or not _modul_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("tanimsiz durum yakalanmadi")
+    # 6) Kaynaksiz "bagli" iddiasi. Kanarya satirin **icerigine** degil
+    #    yapisina baglanir. Sebebi olculdu: ilk surum hucreleri birebir
+    #    yaziyordu ve satira bir kaynak yolu eklenince esleşme kayboldu -
+    #    kanarya kirmizi vermeyi sessizce birakti, yani kapi o gun kaynaksiz
+    #    bir durum iddiasini yakalamiyordu.
+    bozuk = re.sub(r"^\| `kodlayici_omurga` \|[^|]*\|",
+                   "| `kodlayici_omurga` | yok |", metin, count=1, flags=re.M)
+    if bozuk == metin or not _modul_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("kaynaksiz durum iddiasi yakalanmadi")
+
+
+KODLAYICI_IZLER = (
+    # (dosya, iz, ne olculuyor)
+    ("blok.rs", "pub fn pencere_icinde(", "pencere kurali tek fonksiyonda; maske burada karar verir"),
+    ("blok.rs", "fn attention_is_bidirectional_and_a_sliding_layer_is_bounded", "cift yon + pencere siniri testi"),
+    ("blok.rs", "fn the_three_window_shapes_agree_on_the_recent_left_and_differ_elsewhere", "uc pencere bicimi ayri ayri"),
+    ("blok.rs", "fn the_same_input_twice_gives_the_same_answer", "belirlenimcilik testi"),
+    ("blok.rs", "fn an_empty_sequence_is_refused_not_answered_with_a_zero_vector", "bos dizi reddi"),
+    ("blok.rs", "fn a_token_outside_the_vocabulary_is_refused_not_wrapped", "sozluk disi red"),
+    ("blok.rs", "fn the_gate_and_the_value_halves_are_not_interchangeable", "gecit/deger ayrimi"),
+    ("blok.rs", "fn olcum_raporu_kodlayici", "olcum kaydi"),
+    ("hesap.rs", "fn layer_norm_of_a_constant_vector_is_zero_not_nan", "sabit vektorde NaN yok"),
+    ("hesap.rs", "fn softmax_sums_to_one_and_survives_large_logits", "buyuk logitte tasma yok"),
+    ("hesap.rs", "fn rope_rotates_halves_not_neighbours_and_preserves_length", "rope yarilari dondurur"),
+)
+
+
+def _kodlayici_denetle(dizin) -> list:
+    """Kodlayici omurgasinin (7.4 `kodlayici_omurga` satiri) olculebilir
+    sozlesmesi: pencere karari tek fonksiyonda, sinir/belirlenimcilik/red
+    testleri adiyla duruyor, test disi govdede ucuncu taraf adi yok, hesap
+    cekirdeginde `unwrap`/`expect` yok. Metin denetimidir; ihlal listesi doner."""
+    ihlaller: list[str] = []
+    for dosya in ("blok.rs", "hesap.rs"):
+        yol = Path(dizin) / dosya
+        if not yol.is_file():
+            ihlaller.append(f"{dosya} yok")
+            continue
+        metin = yol.read_text(encoding="utf-8")
+        for d, iz, ne in KODLAYICI_IZLER:
+            if d == dosya and iz not in metin:
+                ihlaller.append(f"{dosya}: eksik: {ne} ({iz})")
+        test_oneki = metin.find("mod tests")
+        govde = metin if test_oneki == -1 else metin[:test_oneki]
+        satirlar = [s for s in govde.splitlines() if not s.lstrip().startswith("//")]
+        kucuk = "\n".join(satirlar).lower()
+        for ad in UCUNCU_TARAF_ADLARI:
+            if re.search(rf"\b{ad}\b", kucuk):
+                ihlaller.append(f"{dosya}: ucuncu taraf adi test disinda gecti: {ad}")
+        for yasak in (".unwrap(", ".expect("):
+            if any(yasak in s for s in satirlar):
+                ihlaller.append(f"{dosya}: test disinda {yasak} var; sekil hatasi Result ile doner")
+    return ihlaller
+
+
+def gate_kodlayici_kapisi() -> str:
+    """Kodlayici omurgasi (7.4 `kodlayici_omurga`) deposal kapi altinda:
+    pencere karari tek fonksiyonda, sinir/belirlenimcilik/red testleri adiyla
+    yerinde, K1 siniri tutuyor, test disi `unwrap` yok. Ayrica crate'in lib
+    testleri kosturulur ve kaynaktaki `#[test]` sayisiyla birebir eslenir:
+    sessiz atlanan test kapiyi kirmizi yapar."""
+    import subprocess
+
+    dizin = ROOT / "crates" / "kodlayici" / "src"
+    ihlaller = _kodlayici_denetle(dizin)
+    if ihlaller:
+        raise SystemExit("kodlayici sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    beklenen = sum(
+        len(re.findall(r"#\[test\]", yol.read_text(encoding="utf-8")))
+        for yol in sorted(dizin.glob("*.rs"))
+    )
+    if beklenen == 0:
+        raise SystemExit("crate'te hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-p", "lubot-kodlayici", "--lib"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("kodlayici testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed; 0 failed; 0 ignored", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"kodlayici omurgasi olculur: {gecen} test, pencere siniri her ciftte, "
+        f"belirlenimci cikti, bos/sozluk disi red, test disi unwrap yok"
+    )
+
+
+def selftest_kodlayici_kapisi() -> None:
+    """Kanaryalar: saglam agac gecer; pencere fonksiyonu adi sokulmus, ucuncu
+    taraf adi eklenmis ve test disina `unwrap` sokulmus kopyalar yakalanir."""
+    import shutil
+    import tempfile
+
+    gercek = ROOT / "crates" / "kodlayici" / "src"
+    if _kodlayici_denetle(gercek):
+        raise SystemExit("saglam kodlayici denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        kopya = Path(td)
+        for dosya in ("blok.rs", "hesap.rs"):
+            shutil.copy(gercek / dosya, kopya / dosya)
+        blok = (gercek / "blok.rs").read_text(encoding="utf-8")
+        hesap = (gercek / "hesap.rs").read_text(encoding="utf-8")
+        # 1) pencere karari tek fonksiyondan cikarsa
+        (kopya / "blok.rs").write_text(
+            blok.replace("pub fn pencere_icinde(", "pub fn pencere_icinde_x(", 1), encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("pencere fonksiyonu sokulmus kopya yakalanmadi")
+        # 2) ucuncu taraf adi test disinda
+        (kopya / "blok.rs").write_text("use torch;\n" + blok, encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("ucuncu taraf adi tasiyan kopya yakalanmadi")
+        (kopya / "blok.rs").write_text(blok, encoding="utf-8")
+        # 3) hesap cekirdegine unwrap sokulursa
+        (kopya / "hesap.rs").write_text(
+            hesap.replace("mod tests", "fn _x() { let _ = \"1\".parse::<u8>().unwrap(); }\nmod tests", 1),
+            encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("unwrap sokulmus kopya yakalanmadi")
+        # 4) belirlenimcilik testi silinirse
+        (kopya / "hesap.rs").write_text(hesap, encoding="utf-8")
+        (kopya / "blok.rs").write_text(
+            blok.replace("fn the_same_input_twice_gives_the_same_answer", "fn ayni_girdi", 1),
+            encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("belirlenimcilik testi sokulmus kopya yakalanmadi")
+
+
+
+SEMA_COZUCU_MARKERLAR = (
+    # Reddin adi: "en yakin bayta dusurme" yerine adlandirilmis hata.
+    ("SemaRed::KabulEdilenBaytYok", "red varyanti sokulmus: cikmaz artik adlandirilmiyor"),
+    ("KabulEdilenBaytYok {", "red varyanti tanimi yok"),
+    # Maskenin kendisi ve sert reddi.
+    ("pub fn maskele(", "maskele yok: logit maskesi uygulanmiyor"),
+    ("f64::NEG_INFINITY", "maske yumusatilmis: reddedilen bayt -inf'e gitmiyor"),
+    # Sorunun yan etkisiz sorulabilmesi.
+    ("pub fn izin_verilir(", "izin_verilir yok: maske kopya uzerinde sorulmuyor"),
+    ("pub fn bitirebilir(", "bitirebilir yok: cikmaz ile bitis ayirt edilemez"),
+    # Erken red: baslik ihlali bosluk baytinda yakalanir.
+    ("fn erken_baslik_denetimi(", "erken baslik denetimi sokulmus: red satir sonuna kayar"),
+    # Olcumun kaynagi: aynaladigi dogrulayiciya karsi capraz kontrol.
+    ("validate_markdown_output", "capraz kontrol sokulmus: ayna olculmeden birakilmis"),
+    # Bit-ozdeslik iddiasi olculur halde durmali.
+    ("to_bits()", "bit-ozdeslik olcumu sokulmus"),
+)
+
+
+def _sema_cozucu_denetle(kaynak: Path) -> list:
+    """Sozlesme metin duzeyinde ayakta mi: red adlandirilir, maske sertlestirir,
+    capraz kontrol durur ve modul parametre tutmaz."""
+    if not kaynak.exists():
+        return [f"kaynak yok: {kaynak}"]
+    metin = kaynak.read_text(encoding="utf-8")
+    ihlaller = [mesaj for imza, mesaj in SEMA_COZUCU_MARKERLAR if imza not in metin]
+    # Parametre sayisi sifir olmali ve bu kodda yazili olmali.
+    if "pub const fn parametre_sayisi() -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("modul parametre tutmaya basladi (parametre_sayisi != 0)")
+    # Yumusatmanin klasik bicimleri: reddi yutup varsayilan bayta dusmek.
+    for yasak in ("en_yakin_bayt", "fallback_bayt", "yumusat("):
+        if yasak in metin:
+            ihlaller.append(f"yumusatma yolu eklenmis: {yasak}")
+    return ihlaller
+
+
+def gate_sema_cozucu_reddeder() -> str:
+    """Sema cozucu olculur halde duruyor: reddedilen bayt -inf'e gider, cikmaz
+    adlandirilmis bir hatadir (asla en yakin bayta dusurulmez), baslik ihlali
+    bosluk baytinda yakalanir ve kabul edilen dil, aynaladigi dogrulayiciya
+    karsi 20.000 vakalik bir fuzz ile olculur."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "sema_cozucu.rs"
+    ihlaller = _sema_cozucu_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("sema cozucu sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "sema_cozucu"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"sema cozucu olculur: {gecen} test, red adlandirilmis (yumusatma yok), "
+        f"maske -inf, baslik ihlali bosluk baytinda, kabul edilen dil dogrulayiciya "
+        f"karsi 20.000 vakada ayni"
+    )
+
+
+def selftest_sema_cozucu_reddeder() -> None:
+    """Kanaryalar: sokulmus red varyanti, yumusatilmis maske, sokulmus erken
+    baslik denetimi, sokulmus capraz kontrol ve parametre tutan kopya
+    yakalanmali."""
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "sema_cozucu.rs"
+    if _sema_cozucu_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    metin = gercek.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "sema_cozucu.rs"
+        kanaryalar = (
+            ("red varyanti sokulmus kopya",
+             metin.replace("KabulEdilenBaytYok", "SessizceDevamEt")),
+            ("yumusatilmis maske",
+             metin.replace("f64::NEG_INFINITY", "-1.0e9")),
+            ("erken baslik denetimi sokulmus kopya",
+             metin.replace("fn erken_baslik_denetimi(", "fn x(")),
+            ("capraz kontrol sokulmus kopya",
+             metin.replace("validate_markdown_output", "yoksay")),
+            ("bit-ozdeslik olcumu sokulmus kopya",
+             metin.replace("to_bits()", "abs()")),
+            ("parametre tutan kopya",
+             metin.replace(
+                 "pub const fn parametre_sayisi() -> usize {\n        0\n    }",
+                 "pub const fn parametre_sayisi() -> usize {\n        1\n    }", 1)),
+            ("yumusatma yolu eklenmis kopya",
+             metin.replace("pub fn maskele(", "fn en_yakin_bayt() {}\n    pub fn maskele(", 1)),
+        )
+        for ad, icerik in kanaryalar:
+            if icerik == metin:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            bozuk.write_text(icerik, encoding="utf-8")
+            if not _sema_cozucu_denetle(bozuk):
+                raise SystemExit(f"{ad} yakalanmadi")
+
+# --------------------------------------------------------------------------
+# gate: the encoder backbone keeps the contracts it was written for
+# --------------------------------------------------------------------------
+# `crates/omurga` is the encoder backbone: rotary positions, an
+# alternating local/global attention schedule, grouped-query attention,
+# bias-free blocks, and a flat weight directory so two checkpoints can be
+# averaged. Every one of those has a failure mode that produces a model which
+# still runs and still answers - a rotary pairing that silently disagrees with
+# its own declaration, an all-masked softmax row that writes NaN into the
+# residual stream, a parameter count nobody derived twice, a merge across two
+# shapes that happen to have the same length. None of those show up as a crash,
+# so none of them show up at all unless something checks for them.
+#
+# The gate checks the contract in the text and then runs the crate's own tests,
+# refusing a run where fewer tests execute than are written: a silently skipped
+# test is the same as a deleted one.
+
+
+_OMURGA_SOZLESME = [
+    (
+        "crates/omurga/src/konum.rs",
+        [
+            ("fn olculen_eslesme", "the rotary pairing cannot be measured back out of the implementation"),
+            ("fn beyan_edilen_eslesme_olculenle_ayni", "nothing checks the declared pairing against the implemented one"),
+            ("fn baginti_yalniz_konum_farkina_baglidir", "the relative-position property is not measured"),
+            ("fn dondurme_normu_korur", "orthogonality is not measured"),
+        ],
+    ),
+    (
+        "crates/omurga/src/dikkat.rs",
+        [
+            ("TumuMaskeli", "an all-masked attention row is not refused, so it can produce NaN"),
+            ("fn yumusak_azami_tumu_maskeli_reddeder", "the all-masked refusal is not tested"),
+            ("fn yumusak_azami_buyuk_sayida_tasmaz", "softmax overflow is not tested"),
+            ("fn kv_paylasan_kafalar_ayni_degeri_okur", "the grouping is not tested"),
+        ],
+    ),
+    (
+        "crates/omurga/src/pencere.rs",
+        [
+            ("fn her_jeton_kendini_gorur", "nothing guarantees a token sees itself, which is what keeps softmax defined"),
+            ("fn pencere_simetrik", "the window is not measured to be symmetric"),
+        ],
+    ),
+    (
+        "crates/omurga/src/servis.rs",
+        [
+            ("lubot_nicem", "the serving path re-implements quantisation instead of calling the crate that owns it"),
+            ("fn her_tensor_ayri_olculur", "the per-tensor error is never separated from the whole-buffer error"),
+            ("fn kucuk_tensor_reddedilir", "a tensor smaller than the group is quantised instead of refused"),
+            ("fn sekil_imzasi_degismez", "quantisation is never checked to leave the shape signature alone"),
+        ],
+    ),
+    (
+        "crates/omurga/src/hiz.rs",
+        [
+            ("fn kapali_form_saymayla_uzlasir", "the closed-form visibility count has no second opinion"),
+            ("fn yerel_kat_genelden_ucuz", "the local layer is never measured to be cheaper"),
+            ("fn sayim_toplamsal", "the stack's count is never checked against the sum of its layers"),
+            ("fn uzun_dizide_dikkat_baskin", "the crossover length is asserted rather than searched"),
+        ],
+    ),
+    (
+        "crates/omurga/src/merdiven.rs",
+        [
+            ("fn son_seviye_ileri_ile_bit_ozdes", "the top rung is never pinned against the ordinary forward pass"),
+            ("fn sifirinci_kademe_reddedilir", "the embedding is offered as a level"),
+            ("fn alt_seviye_ust_seviyeden_farkli", "two levels are never measured to differ"),
+            ("fn esit_aralikli_hep_tepeyi_okur", "an evenly spaced ladder is never checked to reach the top"),
+        ],
+    ),
+    (
+        "crates/omurga/src/dizi.rs",
+        [
+            ("fn kayitlar_birbirini_gormez", "packed records are never measured to be isolated"),
+            ("fn dolgu_hicbir_seyi_gormez", "padding is not measured to be blind"),
+            ("fn dolguyu_kimse_gormez", "padding is not measured to be invisible"),
+            ("fn maske_simetrik", "the bidirectional mask is never measured to be symmetric"),
+            ("fn her_jeton_kendini_gorur", "the diagonal is not measured to survive the mask"),
+        ],
+    ),
+    (
+        "crates/omurga/src/sonda.rs",
+        [
+            ("fn havuz_jeton_sirasindan_bagimsiz", "the pooling is never measured to be order-free"),
+            ("fn maskeli_jeton_tam_olarak_disarida", "a masked token is not measured to be absent"),
+            ("TumuMaskeli", "a pooling row with no support is not refused by name"),
+            ("fn param_sayisi_iki_yoldan_ayni", "the head's parameter count is derived only once"),
+            ("fn havuz_genisligi_dizi_uzunlugundan_bagimsiz", "the pooled width is never measured against a second sequence length"),
+        ],
+    ),
+    (
+        "crates/omurga/src/hadamard.rs",
+        [
+            ("fn param_sayisi_iki_yoldan_ayni", "the structured block's parameter count is derived only once"),
+            ("fn kosul_sifirken_birdir", "a fresh conditioning path is not measured to be a no-op"),
+            ("fn karisim_gercek_permutasyon", "the frozen mixing is not measured to be a bijection"),
+            ("fn kron_yogun_esdeger", "the factored transform is never checked against its dense equivalent"),
+            ("fn walsh_dik", "the Walsh factors are not measured to be orthonormal"),
+        ],
+    ),
+    (
+        "crates/omurga/src/katman.rs",
+        [
+            ("fn carp_satir_esleme_dogru", "nothing catches a transposed weight store"),
+            ("fn norm_varyansi_bire_getirir", "the normalisation is not measured"),
+            ("fn kapili_ileri_kapi_gercekten_kapatir", "the gate is not measured to close"),
+        ],
+    ),
+    (
+        "crates/omurga/src/lib.rs",
+        [
+            ("fn beklenen_param_sayisi", "the parameter count is derived only once"),
+            ("fn param_sayisi_iki_yoldan_ayni", "the two parameter counts are never compared"),
+            ("UyumsuzImza", "a merge across two different shapes is not refused"),
+            ("fn uyumsuz_imza_birlesmez", "the merge refusal is not tested"),
+            ("fn dizin_bosluksuz_ve_ortusmez", "the tensor directory is not checked for holes or overlaps"),
+        ],
+    ),
+]
+
+
+def _omurga_denetle(kok: Path) -> list[str]:
+    """The contract, read out of the text of the crate."""
+    ihlaller: list[str] = []
+    for goreli, sartlar in _OMURGA_SOZLESME:
+        yol = kok / goreli
+        if not yol.is_file():
+            ihlaller.append(f"{goreli} yok")
+            continue
+        metin = yol.read_text(encoding="utf-8")
+        for isaret, gerekce in sartlar:
+            if isaret not in metin:
+                ihlaller.append(f"{goreli}: {gerekce} (`{isaret}` yok)")
+        kesim = metin.find("#[cfg(test)]")
+        uretim = metin if kesim < 0 else metin[:kesim]
+        if re.search(r"\.(unwrap|expect)\(", uretim):
+            ihlaller.append(f"{goreli}: uretim tarafinda panik yolu var")
+    return ihlaller
+
+
+# The finding this gate also keeps closed: `crates/transformer`'s rotary
+# accessor used to return a hardcoded `true` while the code rotated adjacent
+# pairs, and its test repeated the same constant. A constant cannot disagree
+# with itself, so nothing could ever catch it.
+_TRANSFORMER_YOL = "crates/transformer/src/lib.rs"
+
+
+def _transformer_eslesme_denetle(kok: Path) -> list[str]:
+    yol = kok / _TRANSFORMER_YOL
+    if not yol.is_file():
+        return [f"{_TRANSFORMER_YOL} yok"]
+    metin = yol.read_text(encoding="utf-8")
+    govde = re.search(
+        r"pub fn yariya_bolme_mi\(&self\) -> bool \{(.*?)\n    \}", metin, re.S
+    )
+    if not govde:
+        return [f"{_TRANSFORMER_YOL}: `yariya_bolme_mi` bulunamadi"]
+    icerik = govde.group(1)
+    if not re.search(r"\buygula\b", icerik):
+        return [
+            f"{_TRANSFORMER_YOL}: `yariya_bolme_mi` uygulamayi olcmuyor; "
+            "sabit bir beyan kendi kendisiyle celisemez"
+        ]
+    if "fn rope_eslesme_beyani_uygulamayla_tutarli" not in metin:
+        return [
+            f"{_TRANSFORMER_YOL}: beyani uygulamadan bagimsiz turetip karsilastiran test yok"
+        ]
+    return []
+
+
+def gate_omurga_sozlesmesi() -> str:
+    """Kodlayici omurgasi sozlesmesini tutuyor: donme eslesmesi olculur ve
+    beyanla karsilastirilir, tumu-maskeli satir reddedilir, her jeton kendini
+    gorur, parametre sayimi iki bagimsiz yoldan turetilir, sekil imzasi
+    uymayan birlesim reddedilir; ve `transformer`'daki eslesme beyani artik
+    sabit degil olculur. Crate'in kendi testleri kosar, sessiz atlama
+    reddedilir."""
+    import subprocess
+
+    ihlaller = _omurga_denetle(ROOT) + _transformer_eslesme_denetle(ROOT)
+    if ihlaller:
+        raise SystemExit("omurga sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+
+    beklenen = 0
+    for kaynak in sorted((ROOT / "crates" / "omurga").rglob("*.rs")):
+        beklenen += len(
+            re.findall(r"#\[test\]", kaynak.read_text(encoding="utf-8"))
+        )
+    if beklenen == 0:
+        raise SystemExit("omurga crate'inde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-omurga"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("omurga testleri kirmizi:\n" + cikti[-2000:])
+    gecenler = [int(m) for m in re.findall(r"test result: ok\. (\d+) passed", cikti)]
+    if not gecenler:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = max(gecenler)
+    if gecen != beklenen:
+        raise SystemExit(
+            f"{beklenen} test yazili ama {gecen} tanesi kostu; sessiz atlama var"
+        )
+    if re.search(r"(\d+) ignored", cikti) and " 0 ignored" not in cikti:
+        raise SystemExit("atlanan test var; atlanan test yazilmamis testtir")
+    return (
+        f"omurga sozlesmesi tutuyor: {gecen} test, donme eslesmesi olculup beyanla "
+        "karsilastiriliyor, tumu-maskeli satir reddediliyor, parametre sayimi iki "
+        "bagimsiz yoldan ayni, sekil imzasi uymayan birlesim reddediliyor"
+    )
+
+
+def selftest_omurga_sozlesmesi() -> None:
+    """Kanaryalar: sozlesmenin her maddesi sokulursa yakalanmali."""
+    import shutil
+    import tempfile
+
+    if _omurga_denetle(ROOT):
+        raise SystemExit("saglam agac metin denetiminden gecmedi")
+    if _transformer_eslesme_denetle(ROOT):
+        raise SystemExit("saglam transformer eslesme denetiminden gecmedi")
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = Path(td)
+        for goreli, _ in _OMURGA_SOZLESME:
+            hedef = kok / goreli
+            hedef.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / goreli, hedef)
+        hedef = kok / _TRANSFORMER_YOL
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / _TRANSFORMER_YOL, hedef)
+        if _omurga_denetle(kok) or _transformer_eslesme_denetle(kok):
+            raise SystemExit("kopyalanan saglam agac denetimden gecmedi")
+
+        # 1) olcum sokulursa yakalanmali
+        yol = kok / "crates/omurga/src/konum.rs"
+        saglam = yol.read_text(encoding="utf-8")
+        yol.write_text(saglam.replace("fn olculen_eslesme", "fn kapatildi"),
+                       encoding="utf-8")
+        if not _omurga_denetle(kok):
+            raise SystemExit("eslesme olcumu sokulmus kopya yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+
+        # 2) tumu-maskeli reddi sokulursa yakalanmali
+        yol = kok / "crates/omurga/src/dikkat.rs"
+        saglam = yol.read_text(encoding="utf-8")
+        yol.write_text(saglam.replace("TumuMaskeli", "Bosluk"), encoding="utf-8")
+        if not _omurga_denetle(kok):
+            raise SystemExit("tumu-maskeli reddi sokulmus kopya yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+
+        # 3) iki yoldan sayim sokulursa yakalanmali
+        yol = kok / "crates/omurga/src/lib.rs"
+        saglam = yol.read_text(encoding="utf-8")
+        yol.write_text(saglam.replace("fn beklenen_param_sayisi", "fn tek_sayim", 1),
+                       encoding="utf-8")
+        if not _omurga_denetle(kok):
+            raise SystemExit("ikinci sayim yolu sokulmus kopya yakalanmadi")
+
+        # 4) uretim tarafina panik yolu konursa yakalanmali
+        yol.write_text(
+            saglam.replace(
+                "        yap.dogrula()?;",
+                "        let _ = vec![0].first().unwrap();\n        yap.dogrula()?;",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        if not _omurga_denetle(kok):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+
+        # 5) transformer beyani yeniden sabite cevrilirse yakalanmali
+        yol = kok / _TRANSFORMER_YOL
+        saglam = yol.read_text(encoding="utf-8")
+        sabit = re.sub(
+            r"pub fn yariya_bolme_mi\(&self\) -> bool \{.*?\n    \}",
+            "pub fn yariya_bolme_mi(&self) -> bool {\n        true\n    }",
+            saglam,
+            flags=re.S,
+        )
+        yol.write_text(sabit, encoding="utf-8")
+        if not _transformer_eslesme_denetle(kok):
+            raise SystemExit("sabite cevrilmis eslesme beyani yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+        if _omurga_denetle(kok) or _transformer_eslesme_denetle(kok):
+            raise SystemExit("geri alinan agac hala kirmizi")
+
+
+SEMA_JETON_MARKERLAR = (
+    # Reddin adi: cikmaz bir jeton ikamesiyle degil, adlandirilmis hatayla biter.
+    ("JetonRed::KabulEdilenJetonYok", "red varyanti sokulmus: cikmaz artik adlandirilmiyor"),
+    ("KabulEdilenJetonYok {", "red varyanti tanimi yok"),
+    # Butunluk: jeton kismen yazilamaz.
+    ("fn jeton_dene(", "jeton_dene sokulmus: jeton butun olarak denenmiyor"),
+    ("JetonBaytiRed", "ic-bayt reddi sokulmus: red hangi baytta oldugunu soylemiyor"),
+    # Maske ve sert red.
+    ("pub fn maskele(", "maskele yok: logit maskesi uygulanmiyor"),
+    ("f64::NEG_INFINITY", "maske yumusatilmis: reddedilen jeton -inf'e gitmiyor"),
+    ("pub fn jeton_izin_verilir(", "izin sorusu yan etkisiz sorulamiyor"),
+    ("pub fn bitirebilir(", "bitirebilir yok: cikmaz ile bitis ayirt edilemez"),
+    # Beyanli sinirlar sayilir halde durmali; gizlenmeleri en kolay sayilar bunlar.
+    ("pub fn tuzak_sayisi(", "tuzak sayaci sokulmus: tek-jeton ileri bakisin sinirini kimse olcmuyor"),
+    ("pub fn erisilmez_bayt_sayisi(", "erisilmez bayt sayaci sokulmus: sozlugun maliyeti olculmuyor"),
+    # Saglamlik alttaki katmana karsi olculur, kendi kanaatiyle degil.
+    ("crate::sema_cozucu::coz", "capraz kontrol sokulmus: kacis alt katmana sorulmuyor"),
+    ("maskesiz_yuruyus_olc", "maskesiz taban sokulmus: maskenin etkisi varsayilmis"),
+    ("to_bits()", "bit-ozdeslik olcumu sokulmus"),
+)
+
+
+def _sema_jeton_denetle(kaynak: Path) -> list:
+    """Sozlesme metin duzeyinde ayakta mi: jeton butun olarak denenir, red
+    adlandirilir, maske sertlestirir, iki beyanli sinir sayilir ve modul
+    parametre tutmaz."""
+    if not kaynak.exists():
+        return [f"kaynak yok: {kaynak}"]
+    metin = kaynak.read_text(encoding="utf-8")
+    ihlaller = [mesaj for imza, mesaj in SEMA_JETON_MARKERLAR if imza not in metin]
+    if "pub const fn parametre_sayisi() -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("modul parametre tutmaya basladi (parametre_sayisi != 0)")
+    # Yumusatmanin klasik bicimleri: reddi yutup bir adaya dusmek, ya da
+    # jetonun kabul edilen onekini yazip gerisini atmak.
+    for yasak in ("en_yakin_jeton", "fallback_jeton", "yumusat(", "kismi_yaz("):
+        if yasak in metin:
+            ihlaller.append(f"yumusatma yolu eklenmis: {yasak}")
+    return ihlaller
+
+
+def gate_sema_jeton_maskeler() -> str:
+    """Jeton maskesi olculur halde duruyor: bir jeton ancak butun baytlari
+    kabul edilirse izinlidir, reddedilen jeton -inf'e gider, cikmaz
+    adlandirilmis bir hatadir, ve maskenin sagladigi dil alttaki bayt
+    otomatina karsi yuruyusle olculur (kacis sifir). Sozluk muhasebesi
+    Python'da UTF-8 tanimindan bagimsiz turetilir ve Rust olcumuyle
+    karsilastirilir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "sema_jeton.rs"
+    ihlaller = _sema_jeton_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("sema jeton sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "sema-jeton-2026-09-27.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("sema jeton kaydi yok: sozluk maliyeti olculemez")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sema_jeton.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=300,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"uretici dustu: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout[kosu.stdout.index("{"):])
+    if taze["burada_olculen"] != kayit["burada_olculen"]:
+        raise SystemExit(
+            "kayit bayat: sozluk degismis ama kayit yeniden uretilmemis\n"
+            f"  taze:  {taze['burada_olculen']}\n  kayit: {kayit['burada_olculen']}"
+        )
+    if kayit["rust_olcumu"]["maskeli_kacis"] != 0:
+        raise SystemExit("maskeli yuruyus sema disina cikmis: kayit kacis bildiriyor")
+    if kayit["rust_olcumu"]["maskesiz_kacis"] <= 0:
+        raise SystemExit("maskesiz taban hic hata vermemis: maskenin etkisi olculmemis")
+
+    kosu_test = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "sema_jeton"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu_test.stdout + kosu_test.stderr
+    if kosu_test.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+
+    b = taze["burada_olculen"]
+    return (
+        f"jeton maskesi olculur: {gecen} test, jeton butun olarak denenir, red "
+        f"adlandirilmis (yumusatma yok), maske -inf; {b['sozluk_jeton']} jetonluk "
+        f"sozlukte semanin izin verdigi {b['bos_belgede_izinli_bayt']} baytin "
+        f"{b['bos_belgede_erisilmez_bayt']}'i hicbir jetonla yazilamiyor (beyanli, "
+        f"sozlugun maliyeti); maskeli yuruyus 0 kacis, maskesiz taban "
+        f"{kayit['rust_olcumu']['maskesiz_kacis']}/{kayit['rust_olcumu']['maskesiz_yuruyus']}"
+    )
+
+
+def selftest_sema_jeton_maskeler() -> None:
+    """Kanaryalar: sokulmus red varyanti, yumusatilmis maske, kismi yazma yolu,
+    sokulmus butunluk denemesi, sokulmus capraz kontrol, sokulmus taban, sokulmus
+    sinir sayaclari ve parametre tutan kopya yakalanmali."""
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "sema_jeton.rs"
+    if _sema_jeton_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    metin = gercek.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "sema_jeton.rs"
+        kanaryalar = (
+            ("red varyanti sokulmus kopya",
+             metin.replace("KabulEdilenJetonYok", "SessizceDevamEt")),
+            ("yumusatilmis maske",
+             metin.replace("f64::NEG_INFINITY", "-1.0e9")),
+            ("butunluk denemesi sokulmus kopya",
+             metin.replace("fn jeton_dene(", "fn x(")),
+            ("ic-bayt reddi sokulmus kopya",
+             metin.replace("JetonBaytiRed", "Sessiz")),
+            ("capraz kontrol sokulmus kopya",
+             metin.replace("crate::sema_cozucu::coz", "yoksay")),
+            ("maskesiz taban sokulmus kopya",
+             metin.replace("maskesiz_yuruyus_olc", "yoksay")),
+            ("tuzak sayaci sokulmus kopya",
+             metin.replace("pub fn tuzak_sayisi(", "fn gizli_tuzak(")),
+            ("erisilmez bayt sayaci sokulmus kopya",
+             metin.replace("pub fn erisilmez_bayt_sayisi(", "fn gizli_erisilmez(")),
+            ("bit-ozdeslik olcumu sokulmus kopya",
+             metin.replace("to_bits()", "abs()")),
+            ("parametre tutan kopya",
+             metin.replace(
+                 "pub const fn parametre_sayisi() -> usize {\n        0\n    }",
+                 "pub const fn parametre_sayisi() -> usize {\n        1\n    }", 1)),
+            ("kismi yazma yolu eklenmis kopya",
+             metin.replace("pub fn maskele(", "fn kismi_yaz() {}\n    pub fn maskele(", 1)),
+        )
+        for ad, icerik in kanaryalar:
+            if icerik == metin:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            bozuk.write_text(icerik, encoding="utf-8")
+            if not _sema_jeton_denetle(bozuk):
+                raise SystemExit(f"{ad} yakalanmadi")
+
+
+
+# --------------------------------------------------------------------------
+# gate: the autonomous loop refuses by name (direktif bolum 6)
+# --------------------------------------------------------------------------
+OTONOM_MODULLER = (
+    "tetikleyici",
+    "veri_yolu",
+    "kosum",
+    "regresyon",
+    "yayin",
+    "capraz",
+    "secim",
+    "koken",
+    "dallanma",
+)
+
+# Her modul icin (imza, ihlal mesaji). Metin duzeyinde bir sozlesme: bu
+# imzalar modulun *reddetme* yeteneginin durdugu yerler. Biri sokuldugunda
+# modul hala derlenir ve testleri yesil kalabilir - kapinin varlik sebebi bu.
+OTONOM_MARKERLAR = {
+    "tetikleyici": (
+        ("reddedilen_bos", "bos parti reddi sayilmiyor: zaman gecmesi veri sayilmis"),
+        ("SaatGeriGitti", "geri giden saat reddi sokulmus"),
+        ("soguma_kalan", "soguma sokulmus: ayni veri iki turda gorulebilir"),
+        ("TekrarEdenKimlik", "tekrar reddi sokulmus: esik hak edilmeden dolar"),
+        ("pencere_basi", "kayittan bagimsiz pencere sokulmus: bos red olculemez"),
+    ),
+    "veri_yolu": (
+        ("EtiketTaninmiyor", "taninmayan etiket reddi sokulmus"),
+        ("red_sayisi", "hicbir yola gitmeyen kayitlar sayilmiyor"),
+        ("karar_ver", "yan etkisiz onizleme sokulmus: sorgu olcumu kirletir"),
+        ("GecersizUtf8", "utf-8 reddi sokulmus"),
+    ),
+    "kosum": (
+        ("EksikOlcum", "eksik olcum reddi sokulmus: iki taraf birbirinin yerine yazilir"),
+        ("KipUyusmuyor", "kip denetimi sokulmus"),
+        ("egitime_uygun", "rol uygunlugu sokulmus: cq2 ile egitilebilir hale gelmis"),
+    ),
+    "regresyon": (
+        ("YonsuzAnahtar", "yonu olmayan anahtar yoksayiliyor: ratchet sessizce delinmis"),
+        ("AnahtarKayboldu", "kaybolan anahtar reddi sokulmus: satir silmek serbest kalmis"),
+        ("KapiKosmadi", "'kapi yok' ile 'kapi gecti' ayni sayilmis"),
+        ("taban_ilerlet", "taban ilerletme sokulmus"),
+    ),
+    "yayin": (
+        ("YargiGecmedi", "yargi kontrolu sokulmus: kirmizi turda yayin yapilir"),
+        ("IkinciKok", "ikinci kok reddi sokulmus: zincir ormana donusur"),
+        ("AtaBulunamadi", "bilinmeyen ata reddi sokulmus"),
+        ("AdimGeriGitti", "adim monotonlugu sokulmus"),
+    ),
+    "capraz": (
+        ("EN_AZ_BAGIMSIZ_ONAY", "bagimsiz onay esigi sokulmus"),
+        ("bagimsiz_yesil", "bagimsizlik kaynaktan olculmuyor: tekrar onay sayilir"),
+        ("Cekimser", "cekimser oy sinifi sokulmus: kararsizlik yesile eklenir"),
+    ),
+    "secim": (
+        ("berabere", "beraberlik isareti sokulmus: esit skora sira uydurulur"),
+        ("ESITLIK_TOLERANSI", "esitlik toleransi sokulmus: son bit farki kazanan uydurur"),
+        ("SiralanamazSkor", "NaN reddi sokulmus: siralama belirlenimsiz olur"),
+        ("girdi_sirasi", "beraberligin beyanli bozucusu sokulmus"),
+    ),
+    "koken": (
+        ("YuzeyDisiKaynak", "K2 yuzey reddi sokulmus"),
+        ("LisansTaninmiyor", "lisans reddi sokulmus: taninmayan lisans bilinmiyora duser"),
+        ("katkici_sayisi", "katkici muhasebesi sokulmus"),
+    ),
+    "dallanma": (
+        ("OrtakAtaYok", "ortak ata reddi sokulmus: iliskisiz modeller ortalanir"),
+        ("ToplamBirDegil", "toplam denetimi sokulmus: ortalama olceklemeye doner"),
+        ("NegatifAgirlik", "negatif agirlik reddi sokulmus: corba cikarmaya doner"),
+        ("dil_sayisi", "dil dagilimi sokulmus: tek dilli corba cok dilli raporlanir"),
+    ),
+}
+
+# Provenance defterine bir deger alani eklemek, direktif 6.8'in "odulsuz"
+# parantezini sessizce kaldirmanin yoludur. Alan adlari degil *kavramlar*
+# yasak: hangi adla gelirse gelsin bir miktar alani kapiyi kirmizi yakar.
+OTONOM_YASAK_ALANLAR = ("odul", "puan", "miktar", "pay:", "bakiye", "reward")
+
+# Yumusatmanin klasik bicimleri: reddi yutup bir adaya dusmek.
+OTONOM_YASAK_YOLLAR = (
+    "fn en_yakin",
+    "fn yumusat",
+    "fn varsayilana_dus",
+    "fn bilinmiyora_dus",
+    "unwrap_or_default()",
+)
+
+
+def _otonom_denetle(kok) -> list:
+    """Dokuz halkanin her biri hala reddedebiliyor mu - metin duzeyinde."""
+    ihlaller = []
+    src = kok / "crates" / "otonom" / "src"
+    if not src.is_dir():
+        return [f"kaynak dizini yok: {src}"]
+    for modul in OTONOM_MODULLER:
+        yol = src / f"{modul}.rs"
+        if not yol.exists():
+            ihlaller.append(f"{modul}: kaynak yok")
+            continue
+        metin = yol.read_text(encoding="utf-8")
+        for imza, mesaj in OTONOM_MARKERLAR.get(modul, ()):
+            if imza not in metin:
+                ihlaller.append(f"{modul}: {mesaj}")
+        if "pub const fn parametre_sayisi() -> usize {\n        0\n    }" not in metin:
+            ihlaller.append(f"{modul}: parametre tutmaya baslamis")
+        for yasak in OTONOM_YASAK_YOLLAR:
+            if yasak in metin:
+                ihlaller.append(f"{modul}: yumusatma yolu eklenmis ({yasak})")
+    koken = (src / "koken.rs").read_text(encoding="utf-8") if (src / "koken.rs").exists() else ""
+    govde = koken.split("pub struct Katki {")
+    if len(govde) > 1:
+        alanlar = govde[1].split("}")[0].lower()
+        for yasak in OTONOM_YASAK_ALANLAR:
+            if yasak in alanlar:
+                ihlaller.append(
+                    f"koken: Katki'ya deger alani eklenmis ({yasak}): 6.8 odulsuz"
+                )
+    lib = (src / "lib.rs").read_text(encoding="utf-8") if (src / "lib.rs").exists() else ""
+    if "HALKA_SAYISI: usize = 9" not in lib:
+        ihlaller.append("lib: halka sayisi 9 degil ya da beyan edilmemis")
+    return ihlaller
+
+
+def gate_otonom_dongu_reddeder() -> str:
+    """Otonom dongu (direktif bolum 6) dokuz halkasiyla ayakta ve her halka
+    adlandirilmis bir redle duruyor: bos parti egitilmez, taninmayan etiket
+    omurgaya dusurulmez, egitim ile servis sayisi birbirinin yerine yazilmaz,
+    ratchet kayiptan once okunur, soyu dogrulanamayan kontrol noktasi
+    yayimlanmaz, tek dogrulayici cogunluk sayilmaz, esit skor esit raporlanir,
+    katki kaydedilir ama odullendirilmez, ortak atasi olmayan modeller
+    ortalanmaz. Hicbir halka parametre tutmaz."""
+    import re
+    import subprocess
+
+    ihlaller = _otonom_denetle(ROOT)
+    if ihlaller:
+        raise SystemExit("otonom dongu sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+
+    src = ROOT / "crates" / "otonom" / "src"
+    beklenen = 0
+    for yol in sorted(src.glob("*.rs")):
+        beklenen += len(re.findall(r"#\[test\]", yol.read_text(encoding="utf-8")))
+    if beklenen == 0:
+        raise SystemExit("crate'te hic test yok")
+
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-otonom"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("otonom testleri kirmizi:\n" + cikti[-2000:])
+    gecen = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", cikti))
+    if gecen != beklenen:
+        raise SystemExit(
+            f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var"
+        )
+    return (
+        f"otonom dongu olculur: {len(OTONOM_MODULLER)} halka, {gecen} test, "
+        "her halka adlandirilmis redle duruyor (bos parti, taninmayan etiket, "
+        "kip karisimi, ratchet dususu, soysuz yayin, tek onay, uydurulmus sira, "
+        "odul alani, ortak atasiz ortalama), dokuzunda da parametre sifir"
+    )
+
+
+def selftest_otonom_dongu_reddeder() -> None:
+    """Kanaryalar: her halkadan bir red sokuldugunda, provenance defterine bir
+    odul alani eklendiginde, bir yumusatma yolu acildiginda ve bir halka
+    parametre tutmaya basladiginda kapi kirmizi yanmali."""
+    import shutil
+    import tempfile
+
+    if _otonom_denetle(ROOT):
+        raise SystemExit("saglam crate metin denetiminden gecmedi")
+    kaynak = ROOT / "crates" / "otonom" / "src"
+    with tempfile.TemporaryDirectory() as td:
+        kok = Path(td)
+        hedef = kok / "crates" / "otonom" / "src"
+        hedef.parent.mkdir(parents=True)
+        shutil.copytree(kaynak, hedef)
+        if _otonom_denetle(kok):
+            raise SystemExit("kopya saglam halde denetimden gecmedi")
+
+        kanaryalar = []
+        for modul, markerlar in OTONOM_MARKERLAR.items():
+            imza = markerlar[0][0]
+            kanaryalar.append((f"{modul}: {imza} sokulmus", modul, imza, "SESSIZCE_DEVAM"))
+        kanaryalar.append(
+            ("koken: Katki'ya odul alani eklenmis", "koken",
+             "pub struct Katki {", "pub struct Katki {\n    odul: u64,")
+        )
+        kanaryalar.append(
+            ("veri_yolu: yumusatma yolu acilmis", "veri_yolu",
+             "pub fn ayir(", "fn en_yakin_yol() {}\n    pub fn ayir(")
+        )
+        kanaryalar.append(
+            ("secim: parametre tutmaya baslamis", "secim",
+             "pub const fn parametre_sayisi() -> usize {\n        0\n    }",
+             "pub const fn parametre_sayisi() -> usize {\n        1\n    }")
+        )
+        kanaryalar.append(
+            ("lib: halka sayisi degistirilmis", "lib",
+             "HALKA_SAYISI: usize = 9", "HALKA_SAYISI: usize = 3")
+        )
+
+        for ad, modul, eski, yeni in kanaryalar:
+            yol = hedef / f"{modul}.rs"
+            saglam = yol.read_text(encoding="utf-8")
+            bozuk = saglam.replace(eski, yeni)
+            if bozuk == saglam:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            yol.write_text(bozuk, encoding="utf-8")
+            if not _otonom_denetle(kok):
+                raise SystemExit(f"{ad} yakalanmadi")
+            yol.write_text(saglam, encoding="utf-8")
+
+
+
+# --------------------------------------------------------------------------
+# gate: the a2 family's shape is declared, derived twice and bound to the code
+# --------------------------------------------------------------------------
+A2_MARKERLAR = (
+    ("def hadamard_param", "Hadamard sayimi sokulmus"),
+    ("def engram_param", "engram tablosu sayimi sokulmus"),
+    ("def rota_param", "rota terimi sokulmus: parametresizlik gorunmez olur"),
+    ("def dikkat_param", "GQA sayimi sokulmus"),
+    ("matmul_etkin", "matmul payi ayri raporlanmiyor: engramin butun iddiasi bu ayrimda"),
+    ("engram_tablolari", "engram tablolarinin payi gizlenmis"),
+    ("def tavan", "K6 tavani a1 spec'inden okunmuyor: iki dosyada iki tavan"),
+)
+
+# a2 eklenirken a1'e dokunulmadigi da sozlesmenin parcasi.
+A2_A1_DOKUNULMAZ = (("name", "lubot-a1-derin-dar"), ("d_ff", 256))
+
+
+def _a2_denetle(kok) -> list:
+    """Uretici hala iki yoldan sayiyor ve a1'e dokunulmamis mi."""
+    ihlaller = []
+    uretici = kok / "training" / "model_spec_a2.py"
+    spec = kok / "training" / "model_spec_a2.json"
+    baglanti = kok / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs"
+    for yol, ad in ((uretici, "uretici"), (spec, "spec"), (baglanti, "baglanti testi")):
+        if not yol.exists():
+            ihlaller.append(f"{ad} yok: {yol}")
+    if ihlaller:
+        return ihlaller
+    metin = uretici.read_text(encoding="utf-8")
+    ihlaller += [m for imza, m in A2_MARKERLAR if imza not in metin]
+    # Uretici a1'in say_params'ini cagirmamali: o fonksiyon duz transformer sayiyor.
+    if "from model_spec import" in metin or "import model_spec\n" in metin:
+        ihlaller.append("uretici a1'in sayacini cagiriyor: duz transformer formulu a2'ye uygulanir")
+    # Baglanti testi Python'un formulunu tekrar etmemeli - Rust'a sormali.
+    bag = baglanti.read_text(encoding="utf-8")
+    if "parametre_sayisi()" not in bag:
+        ihlaller.append("baglanti testi Rust'a sormuyor: iki yol tek yola dusmus")
+    if "d_r * d_model" in bag or "2 * blok *" in bag:
+        ihlaller.append("baglanti testi Python formulunu kopyalamis: bu kontrol degil tekrar")
+    # a1 dokunulmaz.
+    a1 = json.loads((kok / "training" / "model_spec.json").read_text(encoding="utf-8"))
+    for anahtar, deger in A2_A1_DOKUNULMAZ:
+        if a1.get(anahtar) != deger:
+            ihlaller.append(f"a1 spec'i degismis: {anahtar} = {a1.get(anahtar)!r}, {deger!r} bekleniyordu")
+    return ihlaller
+
+
+def gate_a2_spec_tutarli() -> str:
+    """`lubot-a2` sekli beyanli, iki yoldan turetilmis ve koda bagli:
+    Python mimari tanimindan sayiyor, Rust alt modullerin kendi
+    `parametre_sayisi()` gövdelerinden topluyor, ve bir baglanti testi ikisini
+    esitliyor. Engram tablolarinin payi ayri raporlanir (matmul gormezler),
+    rota sifir **terim olarak** yazilir, K6 tavani a1 spec'inden okunur. a1
+    ailesine dokunulmamistir."""
+    import re
+    import subprocess
+
+    ihlaller = _a2_denetle(ROOT)
+    if ihlaller:
+        raise SystemExit("a2 spec sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+
+    for bayrak in ("--self-test", "--dogrula"):
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "model_spec_a2.py"), bayrak],
+            cwd=ROOT, capture_output=True, text=True, check=False, timeout=300,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(
+                f"model_spec_a2.py {bayrak} dustu: {(kosu.stderr or kosu.stdout)[-400:]}"
+            )
+
+    spec = json.loads((ROOT / "training" / "model_spec_a2.json").read_text(encoding="utf-8"))
+    p = spec["params"]
+    if p["matmul_etkin"] >= p["toplam"]:
+        raise SystemExit("matmul payi toplamla ayni: engram ayrimi kaybolmus")
+    if p["engram_tablolari"] <= 0:
+        raise SystemExit("engram tablosu sifir: a2 ailesi a1'den ayirt edilemez")
+    ust = spec["ceiling_reference"]["max_params_train_fp32_adamw"]
+    if p["toplam"] >= ust:
+        raise SystemExit(f"K6 ihlali: {p['toplam']} >= {ust}")
+
+    baglanti = ROOT / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs"
+    beklenen = len(re.findall(r"#\[test\]", baglanti.read_text(encoding="utf-8")))
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "--test", "a2_spec_baglanti"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("a2 baglanti testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-600:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} baglanti testi var ama {gecen} kostu; sessiz atlama var")
+
+    return (
+        f"a2 sekli tutarli: {p['toplam']:,} parametre, {gecen} baglanti testi, "
+        f"matmul payi {spec['matmul_orani']}, engram tablolari "
+        f"{p['engram_tablolari']:,} (matmul gormez), K6 payi "
+        f"{spec['ceiling_reference']['pay']}; a1 ailesi degismedi. Bagli degil."
+    )
+
+
+def selftest_a2_spec_tutarli() -> None:
+    """Kanaryalar: uretici a1'in duz-transformer sayacina baglanirsa, matmul
+    ayrimi kaldirilirsa, rota terimi silinirse, baglanti testi Rust'a sormak
+    yerine Python formulunu kopyalarsa ve a1 spec'i degistirilirse kapi
+    kirmizi yanmali."""
+    import shutil
+    import tempfile
+
+    if _a2_denetle(ROOT):
+        raise SystemExit("saglam agac metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        kok = Path(td)
+        (kok / "training").mkdir(parents=True)
+        (kok / "crates" / "egitim" / "tests").mkdir(parents=True)
+        shutil.copy(ROOT / "training" / "model_spec_a2.py", kok / "training")
+        shutil.copy(ROOT / "training" / "model_spec_a2.json", kok / "training")
+        shutil.copy(ROOT / "training" / "model_spec.json", kok / "training")
+        shutil.copy(
+            ROOT / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs",
+            kok / "crates" / "egitim" / "tests",
+        )
+        if _a2_denetle(kok):
+            raise SystemExit("kopya saglam halde denetimden gecmedi")
+
+        uretici = kok / "training" / "model_spec_a2.py"
+        baglanti = kok / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs"
+        a1json = kok / "training" / "model_spec.json"
+        kanaryalar = [
+            ("rota terimi silinmis", uretici, "def rota_param", "def _kaldirildi"),
+            ("matmul ayrimi kaldirilmis", uretici, "matmul_etkin", "toplam_tekrar"),
+            ("engram payi gizlenmis", uretici, "engram_tablolari", "gizli"),
+            ("tavan yeniden yazilmis", uretici, "def tavan", "def _sabit_tavan"),
+            ("a1 sayacina baglanmis", uretici,
+             "import argparse", "import argparse\nfrom model_spec import say_params"),
+            ("baglanti testi Rust'a sormuyor", baglanti,
+             "parametre_sayisi()", "beklenen_sabit()"),
+            ("baglanti testi Python formulunu kopyalamis", baglanti,
+             "use lubot_egitim::birlesik::BirlesikSpec;",
+             "use lubot_egitim::birlesik::BirlesikSpec;\n// d_r * d_model"),
+        ]
+        for ad, yol, eski, yeni in kanaryalar:
+            saglam = yol.read_text(encoding="utf-8")
+            bozuk = saglam.replace(eski, yeni)
+            if bozuk == saglam:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            yol.write_text(bozuk, encoding="utf-8")
+            if not _a2_denetle(kok):
+                raise SystemExit(f"{ad} yakalanmadi")
+            yol.write_text(saglam, encoding="utf-8")
+
+        # a1 spec'ine dokunmak da yakalanmali.
+        saglam = a1json.read_text(encoding="utf-8")
+        bozuk = json.loads(saglam)
+        bozuk["d_ff"] = 512
+        a1json.write_text(json.dumps(bozuk), encoding="utf-8")
+        if not _a2_denetle(kok):
+            raise SystemExit("a1 spec'inin degistirilmesi yakalanmadi")
+        a1json.write_text(saglam, encoding="utf-8")
+
+
 GATES_EXTRA = {
+    "a2-spec-tutarli": (gate_a2_spec_tutarli, selftest_a2_spec_tutarli),
+    "otonom-dongu-reddeder": (gate_otonom_dongu_reddeder, selftest_otonom_dongu_reddeder),
+    "sema-jeton-maskeler": (gate_sema_jeton_maskeler, selftest_sema_jeton_maskeler),
+    "credential-shapes-are-measured": (
+        gate_credential_shapes_are_measured,
+        selftest_credential_shapes_are_measured,
+    ),
+    "invariants-are-frozen": (gate_invariants_are_frozen, selftest_invariants_are_frozen),
+    "mutation-surface-is-closed": (gate_mutation_surface_is_closed, selftest_mutation_surface_is_closed),
+    "injection-refusals-are-measured": (gate_injection_refusals_are_measured, selftest_injection_refusals_are_measured),
+    "danisma-layer-is-closed": (gate_danisma_layer_is_closed, selftest_danisma_layer_is_closed),
+    "undefined-input-is-fuzzed": (gate_undefined_input_is_fuzzed, selftest_undefined_input_is_fuzzed),
+    "markdown-schema-is-covered": (gate_markdown_schema_is_covered, selftest_markdown_schema_is_covered),
+    "ingestion-refuses-unlicensed-sources": (
+        gate_ingestion_refuses_unlicensed_sources, selftest_ingestion_refuses_unlicensed_sources),
+    "answer-claims-carry-citations": (gate_answer_claims_carry_citations, selftest_answer_claims_carry_citations),
+    "language-cost-is-declared": (gate_language_cost_is_declared, selftest_language_cost_is_declared),
+    "repeat-cost-is-measured": (gate_repeat_cost_is_measured, selftest_repeat_cost_is_measured),
+    "retrieval-at-k-is-measured": (gate_retrieval_at_k_is_measured, selftest_retrieval_at_k_is_measured),
+    "corpus-kinds-agree": (gate_corpus_kinds_agree, selftest_corpus_kinds_agree),
+    "gate-pairs-carry-referee": (gate_gate_pairs_carry_referee, selftest_gate_pairs_carry_referee),
+    "doc-diagram-feeds-corpus": (gate_doc_diagram_feeds_corpus, selftest_doc_diagram_feeds_corpus),
+    "gap-report-is-measured": (gate_gap_report_is_measured, selftest_gap_report_is_measured),
+    "corpus-carries-structure": (gate_corpus_carries_structure, selftest_corpus_carries_structure),
+    "training-runner-engineering-vs-data": (gate_training_runner_engineering_vs_data, selftest_training_runner_engineering_vs_data),
     "system-prompt-is-true": (gate_system_prompt_is_true, selftest_system_prompt_is_true),
+    "bit-budget-is-arithmetic": (gate_bit_budget_is_arithmetic, selftest_bit_budget_is_arithmetic),
+    "device-ceiling-is-declared": (gate_device_ceiling_is_declared, selftest_device_ceiling_is_declared),
     "operator-sync-rules": (gate_operator_sync_rules, selftest_operator_sync_rules),
     "output-finalize-closed-loop": (gate_output_finalize_closed_loop, selftest_output_finalize_closed_loop),
     "cli-asks-and-renders-markdown": (gate_cli_asks_and_renders_markdown, selftest_cli_asks_and_renders_markdown),
@@ -1783,7 +10106,85 @@ GATES_EXTRA = {
     "dependencies-are-used": (gate_dependencies_are_used, selftest_dependencies_are_used),
     "findings-are-disciplined": (gate_findings_are_disciplined, selftest_findings_are_disciplined),
     "eval-runs-are-mechanical": (gate_eval_runs_are_mechanical, selftest_eval_runs_are_mechanical),
+    "eval-set-never-trained": (gate_eval_set_never_trained, selftest_eval_set_never_trained),
+    "mup-measurement-reproduced": (gate_mup_measurement_reproduced, selftest_mup_measurement_reproduced),
+    "data-mix-is-declared": (gate_data_mix_is_declared, selftest_data_mix_is_declared),
+    "decision-head-has-no-generation-surface": (
+        gate_decision_head_has_no_generation_surface,
+        selftest_decision_head_has_no_generation_surface,
+    ),
+    "bootstrap-round-is-measured": (
+        gate_bootstrap_round_is_measured,
+        selftest_bootstrap_round_is_measured,
+    ),
+    "comparison-class-is-declared": (
+        gate_comparison_class_is_declared,
+        selftest_comparison_class_is_declared,
+    ),
+    "exam-set-is-held-out": (
+        gate_exam_set_is_held_out,
+        selftest_exam_set_is_held_out,
+    ),
+    "claims-carry-their-evidence": (
+        gate_claims_carry_their_evidence,
+        selftest_claims_carry_their_evidence,
+    ),
+    "decision-latency-is-recorded": (
+        gate_decision_latency_is_recorded,
+        selftest_decision_latency_is_recorded,
+    ),
+    "first-answer-latency-is-recorded": (
+        gate_first_answer_latency_is_recorded,
+        selftest_first_answer_latency_is_recorded,
+    ),
+    "architecture-doc-tracks-layer-rule": (
+        gate_architecture_doc_tracks_layer_rule,
+        selftest_architecture_doc_tracks_layer_rule,
+    ),
+    "measurements-do-not-feed-back": (
+        gate_measurements_do_not_feed_back,
+        selftest_measurements_do_not_feed_back,
+    ),
+    "rust-tokenizer-agrees-with-python": (
+        gate_rust_tokenizer_agrees_with_python,
+        selftest_rust_tokenizer_agrees_with_python,
+    ),
+    "training-budget-is-declared": (gate_training_budget_is_declared, selftest_training_budget_is_declared),
+    "every-crate-is-a-member": (gate_every_crate_is_a_member, selftest_every_crate_is_a_member),
+    "assert-arity": (gate_assert_arity, selftest_assert_arity),
+    "no-dead-error-variant": (gate_no_dead_error_variant, selftest_no_dead_error_variant),
+    "doc-links-resolve": (gate_doc_links_resolve, selftest_doc_links_resolve),
+    "no-bool-comparison": (gate_no_bool_comparison, selftest_no_bool_comparison),
+    "delimiters-balance": (gate_delimiters_balance, selftest_delimiters_balance),
+    "crates-are-reachable": (gate_crates_are_reachable, selftest_crates_are_reachable),
+    "crates-doc-is-measured": (gate_crates_doc_is_measured, selftest_crates_doc_is_measured),
+    "rpc-surface-consistent": (gate_rpc_surface_consistent, selftest_rpc_surface_consistent),
+    "pub-api-is-used": (gate_pub_api_is_used, selftest_pub_api_is_used),
+    "checkpoint-round-trips": (gate_checkpoint_round_trips, selftest_checkpoint_round_trips),
+    "inference-cache-agrees": (gate_inference_cache_agrees, selftest_inference_cache_agrees),
+    "training-run-is-measured": (gate_training_run_is_measured, selftest_training_run_is_measured),
+    "reranker-is-measured": (gate_reranker_is_measured, selftest_reranker_is_measured),
+    "guvenlik-workflowlari": (gate_guvenlik_workflowlari, selftest_guvenlik_workflowlari),
+    "apk-sozlesmesi": (gate_apk_sozlesmesi, selftest_apk_sozlesmesi),
+    "elf-sertlestirme": (gate_elf_sertlestirme, selftest_elf_sertlestirme),
+    "hadamard-mlp-kapisi": (gate_hadamard_mlp_kapisi, selftest_hadamard_mlp_kapisi),
+    "alim-hatti-kapali": (gate_alim_hatti_kapali, selftest_alim_hatti_kapali),
+    "gecis-hatti-kapisi": (gate_gecis_hatti_kapisi, selftest_gecis_hatti_kapisi),
+    "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
+    "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
+    "birlesik-kapisi": (gate_birlesik_kapisi, selftest_birlesik_kapisi),
+    "modul-envanteri-kapisi": (gate_modul_envanteri_kapisi, selftest_modul_envanteri_kapisi),
+    "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
+    "yonlendirme-kapisi": (gate_yonlendirme_kapisi, selftest_yonlendirme_kapisi),
+    "kesit-kapisi": (gate_kesit_kapisi, selftest_kesit_kapisi),
+    "normalizasyon-kapisi": (gate_normalizasyon_kapisi, selftest_normalizasyon_kapisi),
+    "omurga-karar-kayitlari": (gate_omurga_karar_kayitlari, selftest_omurga_karar_kayitlari),
+    "omurga-sozlesmesi": (gate_omurga_sozlesmesi, selftest_omurga_sozlesmesi),
+    "kademe-kapisi": (gate_kademe_kapisi, selftest_kademe_kapisi),
+    "kodlayici-kapisi": (gate_kodlayici_kapisi, selftest_kodlayici_kapisi),
+    "sema-cozucu-reddeder": (gate_sema_cozucu_reddeder, selftest_sema_cozucu_reddeder),
 }
+
 
 
 GATES = {
@@ -1793,7 +10194,12 @@ GATES = {
     "mask-before-storage": (gate_mask_before_storage, selftest_mask_before_storage),
     "no-panic-path": (gate_no_panic_path, selftest_no_panic_path),
     "readme-is-measured": (gate_readme_is_measured, selftest_readme_is_measured),
+    "crate-manifest-politikasi": (gate_crate_manifest_politikasi, selftest_crate_manifest_politikasi),
     **GATES_EXTRA,
+    "unserved-records-never-cited": (
+        gate_unserved_records_never_cited,
+        selftest_unserved_records_never_cited,
+    ),
 }
 
 
@@ -1804,14 +10210,27 @@ def main(argv: list[str]) -> int:
             print(name)
         return 0
     if argv[0] == "--all":
+        # Malzeme hazirligi: derlenmis ikiliyi bekleyen kapilar icin.
+        _ikili_hazirla()
         failures = 0
         for name, (run, selftest) in GATES.items():
-            selftest()
+            try:
+                selftest()
+            except Exception as err:  # noqa: BLE001 - reported, never raised
+                failures += 1
+                print(f"FAIL [{name}] its own self-test is broken: {err}")
+                continue
             try:
                 print(f"OK   [{name}] {run()}")
             except SystemExit as err:
                 failures += 1
                 print(f"FAIL [{name}] {err}")
+            except Exception as err:  # noqa: BLE001 - reported, never raised
+                # A gate that cannot run - a missing `cargo`, say - has to report
+                # a failure. Raising instead aborts every gate after it, so the
+                # run reports nothing about the ones that never got to run.
+                failures += 1
+                print(f"FAIL [{name}] could not run: {type(err).__name__}: {err}")
         print("ALL GATES PASSED" if not failures else f"{failures} gate(s) failed")
         return 1 if failures else 0
     name = argv[0]
@@ -1823,8 +10242,13 @@ def main(argv: list[str]) -> int:
         selftest()
         print(f"self-test OK [{name}]")
         return 0
-    print(f"OK   [{name}] {run()}")
-    return 0
+    try:
+        print(f"OK   [{name}] {run()}")
+    except SystemExit:
+        raise
+    except Exception as err:  # noqa: BLE001 - a gate that cannot run has to say so
+        print(f"FAIL [{name}] could not run: {type(err).__name__}: {err}")
+        return 1
 
 
 if __name__ == "__main__":

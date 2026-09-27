@@ -1,0 +1,301 @@
+{
+  "surum": 1,
+  "tarih": "2026-09-25T01:55:05",
+  "kosucu": "betik",
+  "is": "Rekabet olcumu: ayni kilitli kartlarda Lubot ve danisma katmani ayni siklari puanlar; top-1 dogruluk kart bazinda kaydedilir.",
+  "olcut": {
+    "ad": "lubot_top1_dogrulugu_danisma_katmanindan_yuksek_mi",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 21.447,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kart_sayisi": 12,
+  "lubot_dogru": 3,
+  "lubot_top1": 0.25,
+  "laya_olculen": 12,
+  "laya_dogru": 0,
+  "laya_top1": 0.0,
+  "kartlar": [
+    {
+      "kart": "sinav-01",
+      "dogru_sik": "00ed2c4cda09ca759e842115783fe96fd12393f77386eff2879b45824e28c1bd",
+      "lubot_sik": "01d0baf833abfe88af3d4aca49d530eb2d15ecdd180da8d63c2cfb089a255c1d",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -5.139274,
+        -5.142795,
+        -5.369843,
+        -5.346575
+      ],
+      "sik_sirasi": [
+        "01d0baf8",
+        "03135d15",
+        "00ed2c4c",
+        "0726d9ec"
+      ],
+      "lubot_sure_s": 0.5939,
+      "laya_sik": "0726d9ecc4fd2967dc6c184aa90a5c6ee22ae921cb56eee9c4e53a6c94b45f63",
+      "laya_dogru": false,
+      "laya_guven": 0.3313,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-02",
+      "dogru_sik": "01d0baf833abfe88af3d4aca49d530eb2d15ecdd180da8d63c2cfb089a255c1d",
+      "lubot_sik": "084d5672e0e245b7cf8a2b9bf31936c33cb88771d7fb9ba00e66317e7999bd10",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -5.142774,
+        -5.138588,
+        -4.74596,
+        -5.342216
+      ],
+      "sik_sirasi": [
+        "03135d15",
+        "01d0baf8",
+        "084d5672",
+        "0726d9ec"
+      ],
+      "lubot_sure_s": 0.6329,
+      "laya_sik": "084d5672e0e245b7cf8a2b9bf31936c33cb88771d7fb9ba00e66317e7999bd10",
+      "laya_dogru": false,
+      "laya_guven": 0.3651,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-03",
+      "dogru_sik": "03135d151c96b1cedb9a1d586786ea8b0166efa326fc89cf9cde3856225c197b",
+      "lubot_sik": "0c45d4fe7dfd273c646684a749bc59418d6777a408a439c7a16073ee3257bd43",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -4.714937,
+        -5.139265,
+        -5.31711,
+        -4.704865
+      ],
+      "sik_sirasi": [
+        "084d5672",
+        "03135d15",
+        "0726d9ec",
+        "0c45d4fe"
+      ],
+      "lubot_sure_s": 1.0414,
+      "laya_sik": "0726d9ecc4fd2967dc6c184aa90a5c6ee22ae921cb56eee9c4e53a6c94b45f63",
+      "laya_dogru": false,
+      "laya_guven": 0.7305,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-04",
+      "dogru_sik": "0726d9ecc4fd2967dc6c184aa90a5c6ee22ae921cb56eee9c4e53a6c94b45f63",
+      "lubot_sik": "0c45d4fe7dfd273c646684a749bc59418d6777a408a439c7a16073ee3257bd43",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -5.340201,
+        -6.298475,
+        -4.737859,
+        -4.706142
+      ],
+      "sik_sirasi": [
+        "0726d9ec",
+        "10ec15a4",
+        "084d5672",
+        "0c45d4fe"
+      ],
+      "lubot_sure_s": 1.0828,
+      "laya_sik": "084d5672e0e245b7cf8a2b9bf31936c33cb88771d7fb9ba00e66317e7999bd10",
+      "laya_dogru": false,
+      "laya_guven": 0.6306,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-05",
+      "dogru_sik": "084d5672e0e245b7cf8a2b9bf31936c33cb88771d7fb9ba00e66317e7999bd10",
+      "lubot_sik": "15fe76afb7164fbf484816dadb33e309401fa53c2f005fd93d79015ac73eb1cb",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -4.667089,
+        -4.724555,
+        -6.270648,
+        -4.571617
+      ],
+      "sik_sirasi": [
+        "0c45d4fe",
+        "084d5672",
+        "10ec15a4",
+        "15fe76af"
+      ],
+      "lubot_sure_s": 1.0688,
+      "laya_sik": "15fe76afb7164fbf484816dadb33e309401fa53c2f005fd93d79015ac73eb1cb",
+      "laya_dogru": false,
+      "laya_guven": 0.4625,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-06",
+      "dogru_sik": "0c45d4fe7dfd273c646684a749bc59418d6777a408a439c7a16073ee3257bd43",
+      "lubot_sik": "15fe76afb7164fbf484816dadb33e309401fa53c2f005fd93d79015ac73eb1cb",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -4.693782,
+        -4.570563,
+        -6.3047,
+        -8.715714
+      ],
+      "sik_sirasi": [
+        "0c45d4fe",
+        "15fe76af",
+        "10ec15a4",
+        "1a8ab3e6"
+      ],
+      "lubot_sure_s": 1.1264,
+      "laya_sik": "10ec15a408b2cb5438399efd5b9152d616c204d06a7f34680a266369d19409ca",
+      "laya_dogru": false,
+      "laya_guven": 0.6205,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-07",
+      "dogru_sik": "10ec15a408b2cb5438399efd5b9152d616c204d06a7f34680a266369d19409ca",
+      "lubot_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -6.312067,
+        -8.679903,
+        -4.574053,
+        -4.609791
+      ],
+      "sik_sirasi": [
+        "10ec15a4",
+        "1a8ab3e6",
+        "2883f5fe",
+        "15fe76af"
+      ],
+      "lubot_sure_s": 0.7991,
+      "laya_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "laya_dogru": false,
+      "laya_guven": 0.6078,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-08",
+      "dogru_sik": "15fe76afb7164fbf484816dadb33e309401fa53c2f005fd93d79015ac73eb1cb",
+      "lubot_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -4.441807,
+        -4.858901,
+        -4.554771,
+        -8.631839
+      ],
+      "sik_sirasi": [
+        "2883f5fe",
+        "29e2d96f",
+        "15fe76af",
+        "1a8ab3e6"
+      ],
+      "lubot_sure_s": 0.8722,
+      "laya_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "laya_dogru": false,
+      "laya_guven": 0.6287,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-09",
+      "dogru_sik": "1a8ab3e6127ec40a8448692bc4edfca4ccdfd0540584b70ef14a6db83ce2f72c",
+      "lubot_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "lubot_dogru": false,
+      "lubot_puanlar": [
+        -4.515833,
+        -4.893209,
+        -5.067813,
+        -8.380737
+      ],
+      "sik_sirasi": [
+        "2883f5fe",
+        "29e2d96f",
+        "3ff4bcdf",
+        "1a8ab3e6"
+      ],
+      "lubot_sure_s": 0.8911,
+      "laya_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "laya_dogru": false,
+      "laya_guven": 0.439,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-10",
+      "dogru_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "lubot_sik": "2883f5feb2cbd1d813a3c31822449cbad678c72c9cd263e3a1ea882f27f59adb",
+      "lubot_dogru": true,
+      "lubot_puanlar": [
+        -5.337465,
+        -4.47299,
+        -5.046168,
+        -4.862905
+      ],
+      "sik_sirasi": [
+        "00ed2c4c",
+        "2883f5fe",
+        "3ff4bcdf",
+        "29e2d96f"
+      ],
+      "lubot_sure_s": 0.8215,
+      "laya_sik": "29e2d96f0f7d2434f280c7ce54bba2526dd969e9bdd836f0db0c700e11ec15c6",
+      "laya_dogru": false,
+      "laya_guven": 0.928,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-11",
+      "dogru_sik": "29e2d96f0f7d2434f280c7ce54bba2526dd969e9bdd836f0db0c700e11ec15c6",
+      "lubot_sik": "29e2d96f0f7d2434f280c7ce54bba2526dd969e9bdd836f0db0c700e11ec15c6",
+      "lubot_dogru": true,
+      "lubot_puanlar": [
+        -5.301602,
+        -4.877243,
+        -5.066875,
+        -5.036671
+      ],
+      "sik_sirasi": [
+        "00ed2c4c",
+        "29e2d96f",
+        "01d0baf8",
+        "3ff4bcdf"
+      ],
+      "lubot_sure_s": 0.8345,
+      "laya_sik": "01d0baf833abfe88af3d4aca49d530eb2d15ecdd180da8d63c2cfb089a255c1d",
+      "laya_dogru": false,
+      "laya_guven": 0.5109,
+      "laya_ms": null
+    },
+    {
+      "kart": "sinav-12",
+      "dogru_sik": "3ff4bcdfe69cce2e182fc5d5130b2ebf95557c5f050f6afcf5680c81f10004ef",
+      "lubot_sik": "3ff4bcdfe69cce2e182fc5d5130b2ebf95557c5f050f6afcf5680c81f10004ef",
+      "lubot_dogru": true,
+      "lubot_puanlar": [
+        -5.137589,
+        -5.068777,
+        -5.317703,
+        -5.034701
+      ],
+      "sik_sirasi": [
+        "03135d15",
+        "01d0baf8",
+        "00ed2c4c",
+        "3ff4bcdf"
+      ],
+      "lubot_sure_s": 0.7149,
+      "laya_sik": "01d0baf833abfe88af3d4aca49d530eb2d15ecdd180da8d63c2cfb089a255c1d",
+      "laya_dogru": false,
+      "laya_guven": 0.771,
+      "laya_ms": null
+    }
+  ]
+}

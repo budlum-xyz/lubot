@@ -91,11 +91,16 @@ pub struct Reader<'a, C: Corpus> {
 }
 
 impl<'a, C: Corpus> Reader<'a, C> {
-    /// Build a reader and index every item the corpus holds.
+    /// Build a reader and index every item the answer surface may use.
+    ///
+    /// Records stamped `served: false` at corpus build time (process and
+    /// planning documents, per the operator serving policy) load into the
+    /// archive but are never indexed here: they can neither be searched nor
+    /// cited. This is the same surface `ara` uses, so the two agree.
     #[must_use]
     pub fn new(corpus: &'a C, lines_per_passage: usize, passages_per_answer: usize) -> Self {
         let mut index = Index::new();
-        for id in corpus.ids() {
+        for id in corpus.served_ids() {
             if let Some(item) = corpus.get(&id) {
                 index.add(item, lines_per_passage);
             }
@@ -255,7 +260,7 @@ mod tests {
         let c = corpus();
         let reader = Reader::new(&c, 2, 3);
         let mut grants = GrantBook::new();
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "dm-1".to_string(),
             grantee: "someone".to_string(),
             expires_at: 100,
@@ -277,7 +282,7 @@ mod tests {
         let c = corpus();
         let reader = Reader::new(&c, 2, 3);
         let mut grants = GrantBook::new();
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "dm-1".to_string(),
             grantee: "someone".to_string(),
             expires_at: 100,
@@ -306,6 +311,64 @@ mod tests {
         );
     }
 
+    /// A corpus whose builder stamped one record `served: false`: the reader
+    /// must behave exactly as if that record did not exist.
+    struct Politikali {
+        ic: FixtureCorpus,
+        disi: &'static str,
+    }
+
+    impl Corpus for Politikali {
+        fn get(&self, id: &str) -> Option<&Item> {
+            self.ic.get(id)
+        }
+        fn ids(&self) -> Vec<String> {
+            self.ic.ids()
+        }
+        fn served_ids(&self) -> Vec<String> {
+            self.ic
+                .ids()
+                .into_iter()
+                .filter(|id| id != self.disi)
+                .collect()
+        }
+    }
+
+    #[test]
+    fn an_unserved_record_is_neither_searched_nor_cited() {
+        let mut ic = FixtureCorpus::new();
+        ic.insert(Item::new(
+            "bilgi",
+            "docs/grants.md",
+            SourceKind::Local,
+            false,
+            "A view grant names a grantee and a key id.",
+        ))
+        .unwrap();
+        ic.insert(Item::new(
+            "plan",
+            "PLAN.md",
+            SourceKind::Local,
+            false,
+            "The work queue mentions the revocation scheduler here.",
+        ))
+        .unwrap();
+        let politikali = Politikali { ic, disi: "plan" };
+        let reader = Reader::new(&politikali, 2, 3);
+        let mut grants = GrantBook::new();
+        // Only the stamped record covers these terms, so the answer must be
+        // NotFound - never an invention and never a citation of the stamp.
+        assert_eq!(
+            reader.ask(
+                "someone",
+                "what does the work queue mention?",
+                &mut grants,
+                1
+            ),
+            Answer::NotFound
+        );
+    }
+
     #[test]
     fn an_impossible_computation_is_reported_not_answered() {
         let c = corpus();
@@ -330,7 +393,7 @@ mod tests {
         .unwrap();
         let reader = Reader::new(&c, 2, 3);
         let mut grants = GrantBook::new();
-        grants.issue(ViewGrant {
+        grants.issue(&ViewGrant {
             key_id: "dm-1".to_string(),
             grantee: "someone".to_string(),
             expires_at: 100,

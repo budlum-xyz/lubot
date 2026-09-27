@@ -1,0 +1,368 @@
+#
+#     and the fix is to write the caller.
+#   - the item encodes a rule the project decided on and is waiting for a caller,
+#   - the item is meant to be `pub(crate)`, and the fix is to narrow it;
+# Deleting an entry is a judgement call about which of those it is, so the gate
+# Public items reached from nowhere outside their own crate.
+# The binary crate is searched as a consumer but reported on by nothing: it is
+# This is a ratchet, not a permission. gates/check.py::pub-api-is-used fails the
+# Two different situations land here and they need different answers:
+# egitim cagrisini bekliyor. Cagri yazilinca bu satirlar silinir (liste kisalir).
+# every item it calls look unused.
+# mlp_hadamard (bilesen 3): sekil ve gradyan sozlesmesi kararlastirildi,
+# moment an entry is added, and fails again when an entry becomes used and is not
+# nicem:paketle_ucdeger is the ternary packer. Its caller inside the crate is the
+# note above: an item waiting for a caller, and the fix is to write the caller.
+# public unpacker with no public counterpart, so this is the second case in the
+# quantiser; its caller outside it is the reader that maps a container and
+# rebuilds weights, which is not written yet. Deleting the packer would leave a
+# removed. The list may only shrink.
+# reports rather than removes.
+# the main caller of the libraries, so excluding it from the search would make
+alim:Admitted
+alim:EcParams
+alim:MAX_SHARDS
+alim:Placement
+alim:SCHEMA
+alim:ShardPlan
+alim:SourceClass
+alim:check_monotonic
+alim:data_shard
+alim:is_sha256_hex
+alim:weight_id
+anlama:Abstention
+anlama:ClassifierError
+anlama:Signal
+anlama:TIE_EPSILON
+answer:OUTPUT_TAG
+answer:OutputRecord
+bpe-gelismis:BpeGelismis
+bpe-gelismis:OzelToken
+bpe-gelismis:OzelTur
+cikarim:CikarimConfig
+cikarim:CikarimMotoru
+cikarim:CikarimSonuc
+cikarim:KvCache
+denetim:AuditError
+derin:AgirlikBaglama
+derin:ModelSpec
+derin:Oran
+egitim:BLOK_UST_SINIRI
+egitim:EgitimConfig
+egitim:EgitimDongusu
+egitim:HadamardAgirliklar
+egitim:HadamardBellek
+egitim:HadamardGradyanlar
+egitim:HadamardSekilHatasi
+egitim:HadamardSpec
+egitim:kayip_gradyan
+egitim:sgd_adimi
+# cok_serit (bilesen 5): cok-seritli artik baglanti adayi; olcumleri kendi
+# modulunde durur, egitim cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:CokSeritSpec
+egitim:SERIT_UST_SINIRI
+egitim:SeritAgirliklar
+egitim:SeritDurumu
+egitim:SeritGradyanlar
+egitim:SeritSekilHatasi
+egitim:kimlik_doldur
+egitim:rms_profili
+egitim:tohumlu_doldur
+# kesit (aile dilimleri) ve normalizasyon (sifir merkezli RMS) adaylari;
+# boru hattina baglanmayi bekler. Baglaninca bu satirlar silinir.
+egitim:NormCikti
+egitim:NormHatasi
+egitim:NormSpec
+egitim:derinlik_merdiveni
+egitim:duz_rms
+egitim:genislik_izgarasi
+egitim:merkezle
+egitim:norm_ileri
+# kesit (aile dilimleri) ve normalizasyon (sifir merkezli RMS) adaylari;
+# boru hattina baglanmayi bekler. Baglaninca bu satirlar silinir.
+# yonlendirme (tasarim 3.5): uzman rotasi adayi;
+# skorlama cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:RotaHatasi
+egitim:RotaSonucu
+egitim:RotaSpec
+egitim:TabSonucu
+egitim:UZMAN_UST_SINIRI
+egitim:YINELEME_UST_SINIRI
+egitim:ornek_puanlar
+egitim:rota_hesapla
+egitim:taban_olc
+# engram (tasarim 3.3): n-gram karmasiyla adreslenen KV tablosu adayi;
+# skorlama cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:CakismaOlcumu
+egitim:EngramKatkisi
+egitim:EngramOkuma
+egitim:EngramOzet
+egitim:EngramSekilHatasi
+egitim:EngramSpec
+egitim:NGRAM_UST_SINIRI
+egitim:cakisma_olc
+egitim:ngram_karmasi
+# gecis (gecis hatti): veri modeli cli'den serilestirme yoluyla kullanilir,
+# tarayici cagri gormez; gerc. bir cagri yazilinca bu satirlar kisalir.
+gecis:ATLAMA
+gecis:DosyaKaydi
+gecis:DosyaTuru
+gecis:ModulDurumu
+gecis:ModulPlani
+gecis:SINIRLAR
+gecis:Sembol
+gecis:SembolTuru
+gecis:Tesisat
+gecis:say_sinirli
+# birlesik (tasarim 3.8): alti tekil adayi tek blokta kosturan kompozisyon
+# yuzeyi. Ayni durum: sekil, gradyan ve kapali-bilesen sozlesmesi olculdu, ama
+# hicbir aile bu blogu cagirmiyor - hangi bilesenin hangi aileye girecegi
+# M1/M2/M3 olarak isaretli operator karari. Cagri yazilinca bu satirlar silinir.
+egitim:BirlesikAgirliklar
+egitim:BirlesikBellek
+egitim:BirlesikCikti
+egitim:BirlesikGirdi
+egitim:BirlesikGradyanlar
+egitim:BirlesikHatasi
+egitim:BirlesikSpec
+egitim:EngramSayim
+egitim:GradyanDenetimi
+egitim:belirgin_durumlar
+egitim:gradyan_denetle
+egitim:parametre_yollari
+# kademe adayi (tasarim 3.5 kalem 1) bagli degil: egitim cagrisini ve M4
+# damgasini bekliyor. Cagri yazilinca bu satirlar silinir (liste kisalir).
+egitim:DERINLIK_UST_SINIRI
+egitim:KADEME_UST_SINIRI
+egitim:KademeHatasi
+egitim:KademeKayip
+egitim:KademeSpec
+egitim:kademeli_kayip
+egitim:ornek_cikislar
+egitim:ornek_hedef
+egitim:taban_kayip
+egitim:ALFABE
+egitim:MAKS_CIKTI_BAYT
+egitim:SemaCozucu
+egitim:SemaRed
+esik:QuorumError
+esik:byzantine_floor
+grant:AuditEntry
+grant:EpochBook
+grant:EpochEntry
+grant:EpochOutcome
+grant:EpochRefusal
+grant:TrainingDataGrant
+gunluk:NginxSatiri
+gunluk:SyslogOlayi
+gunluk:facility_cikar
+gunluk:nginx_satiri
+gunluk:pri_coz
+gunluk:severity_cikar
+gunluk:syslog_satiri
+index:BM25_B
+index:BM25_K1
+index:MIN_TERM_COVERAGE
+index:compact
+index:mask_secrets
+kanaat:BASLANGIC_OZETI
+kanaat:DefterHatasi
+kanaat:beklenen_metni
+kanit:ProofError
+kanit:ProofRecord
+kanit:Status
+kapisma:BoslukHaritasi
+kapisma:EvalKayit
+kapisma:EvalSet
+kapisma:KapismaProtokol
+kapisma:KiyasRapor
+kapisma:Rakip
+karar:Doktrin
+karar:Rota
+karar:SecenekPuani
+karar:Tetikleyici
+karar:k_of_n_karar
+karar:olumsuzluk_var
+karma:AsamaKarisim
+karma:UcAsamaliKarisim
+karma:VeriKaynagi
+kendinden:DamitmaDongusu
+kendinden:DamitmaSonuc
+kendinden:HataMadenciligi
+kendinden:JuriSonuc
+kendinden:MekanikJuri
+kodlayici:BaslikHatasi
+kodlayici:DikkatAgirliklari
+kodlayici:EklenenJeton
+kodlayici:EylemKafasi
+kodlayici:GommeKaynagi
+kodlayici:ISARET
+kodlayici:KafaKatmani
+kodlayici:KatmanAgirliklari
+kodlayici:MlpAgirliklari
+kodlayici:OZELLIK_SAYISI
+kodlayici:Puanlayici
+kodlayici:RopeAyari
+kodlayici:SekilHatasi
+kodlayici:TIP_SAYISI
+kodlayici:TensorBasligi
+kodlayici:f16_to_f32
+kodlayici:f32_to_f16
+kodlayici:katman_norm
+kodlayici:katman_norm_sapmali
+kodlayici:matris_vektor
+kodlayici:metaspace
+kodlayici:pencere_icinde
+kodlayici:rope_tablosu
+kuyruk:DeadItem
+kuyruk:QueueError
+mimari:Component
+mu:MuP
+mu:MuSpec
+mu:Olcek
+muhur:LINK_HEX_LEN
+muhur:SEAL_TAG
+nicem:paketle_ucdeger
+olcek:PolicyError
+olcum:BataryaAdi
+olcum:BataryaSonuc
+olcum:BilgiBoslugu
+olcum:KapismaSonuc
+olcum:OlcumMotoru
+paralel:BatchHesap
+paralel:ParalelConfig
+paralel:SuperComputer
+read:PerceptionKind
+read:PerceptionRefusal
+read:is_known
+read:source_kind
+sertlestirme:CozHatasi
+sertlestirme:nokta_sayisi
+sikistir:CCR_ASLI
+sikistir:CCR_TUR
+sikistir:IcerikTuru
+sikistir:OgrenSatiri
+sikistir:Sikistirma
+sikistir:yonlendir
+sir:sirli_mi
+sir:taninan_onekler
+sistem:BilesenDurum
+sistem:Sistem
+sistem:SistemConfig
+sozluk:BpeEgitim
+sozluk:Dilim
+sozluk:DilimTuru
+sozluk:Kodlama
+sozluk:kod_mu
+takip:TrackError
+tools:ALLOWED_METHODS
+tools:AiInferenceRequest
+tools:AiInferenceResult
+tools:CeilingsReport
+tools:ChainOutcome
+tools:CheckpointWindow
+tools:OVERWRITE_PATTERNS
+tools:OperatorRecord
+tools:Rational
+tools:ScopeRefusal
+tools:ceilings_request
+tools:compute_bond_ok
+tools:effort_hash
+tools:effort_tag_ok
+tools:is_allowed_method
+tools:jsonrpc_request
+tools:parse_ceilings
+tools:parse_get_outcome
+tools:parse_request
+tools:parse_result
+tools:same_model_hash
+tools:scan_line
+tools:to_corpus_line
+transformer:Dikkat
+uc-asama:Asama
+uc-asama:AsamaDetay
+uc-asama:UcAsamaSistem
+uc-asama:VeriKovasi
+usl:MEDIA_TAG
+veri:DerleyiciHakem
+veri:KayitTuru
+veri:SentetikUretim
+yetenek:CapabilityError
+yetenek:Handle
+# engram tasima (direktif 7.1: tablo model durumunun parcasi) bagli degil:
+# engram hicbir aileye bagli olmadigi icin (M1/M2/M3) kontrol noktasi
+# yazicisi henuz cagirmiyor. Aile karari verilince bu satirlar silinir.
+egitim:ENGRAM_BLOK_ADI
+egitim:ENGRAM_SIHIR
+egitim:ENGRAM_SURUM
+egitim:EngramTasimaHatasi
+egitim:EngramTasiyici
+# sema jeton (direktif 7.3: sekizinci modulun ornekleme yarisi) bagli degil:
+# jeton maskesi hicbir cikarim cagrisindan gecmiyor, cunku decode yolunun
+# sozlugu henuz bu modulden gecmiyor. Cagri baglaninca bu satirlar silinir.
+egitim:JetonRaporu
+egitim:JetonRed
+egitim:SemaJeton
+egitim:SozlukRed
+egitim:YuruyusOlcum
+egitim:baytlari_topla
+egitim:coz_jetonlar
+egitim:maskesiz_yuruyus_olc
+egitim:olcum_sozlugu
+egitim:yuruyus_olc
+# otonom dongu (direktif bolum 6) bagli degil: dokuz halka da yazildi ve
+# olculdu ama hicbir egitim ya da cikarim cagrisindan gecmiyor. Dongu bir
+# kosucuya baglanınca bu satirlar silinir - o baglama isareti bir karar.
+otonom:ANAHTARLAR
+otonom:Ayirici
+otonom:Biriktirici
+otonom:BiriktirmeRed
+otonom:Corba
+otonom:CorbaRed
+otonom:Dal
+otonom:Dogrulayici
+otonom:EN_AZ_BAGIMSIZ_ONAY
+otonom:EN_AZ_PARCA
+otonom:ESITLIK_TOLERANSI
+otonom:EsikRed
+otonom:EtiketKumesi
+otonom:Fren
+otonom:GRUP
+otonom:HALKA_SAYISI
+otonom:Halka
+otonom:KapiSonucu
+otonom:Katki
+otonom:KokenRed
+otonom:KosumRed
+otonom:Kurul
+otonom:KurulRed
+otonom:LISANSLAR
+otonom:MAKS_GOVDE_BAYT
+otonom:MAKS_PARTI
+otonom:MAKS_PENCERE_SANIYE
+otonom:Numerik
+otonom:OLCEK_BIT
+otonom:OZET_BASAMAK
+otonom:Oy
+otonom:RegresyonRed
+otonom:Sayac
+otonom:SecimRed
+otonom:TOPLAM_TOLERANSI
+otonom:Tetik
+otonom:TetikYuruyusOlcumu
+otonom:UCLUK_BIT
+otonom:YUZEYLER
+otonom:Yargi
+otonom:YayinRed
+otonom:Yayinci
+otonom:Yol
+otonom:YolKarari
+otonom:YolRed
+otonom:YolYuruyusOlcumu
+otonom:Yon
+otonom:lisans_tanimli
+otonom:ozet_dogrula
+otonom:sahte_ozet
+otonom:tetik_yuruyusu_olc
+otonom:yol_yuruyusu_olc
+otonom:yuzey_tanimli

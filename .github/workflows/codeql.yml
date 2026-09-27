@@ -1,0 +1,62 @@
+name: CodeQL
+
+# Static analysis on the languages the extractor supports. Rust support is
+# public preview and accepts `build-mode: none` only, which means the source is
+# read and the binary is not built: nothing here compiles the workspace, so a
+# build-script failure cannot hide the analysis.
+#
+# If the runner reports that Rust is not a supported language, the run fails
+# loudly rather than passing on zero databases - a scanner that silently scans
+# nothing is worse than no scanner, because it is trusted.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, egitim-dongusu]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "43 5 * * 1"
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write  # Uploads the analysis as SARIF to code scanning
+      actions: read  # Reads the workflow run that produced this analysis
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize
+        uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52 # codeql-bundle
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52 # codeql-bundle
+        with:
+          category: "/language:${{ matrix.language }}"

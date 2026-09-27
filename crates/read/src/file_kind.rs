@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! # file_kind - know what you are reading before you read it
+//! # `file_kind` - know what you are reading before you read it
 //!
 //! Know the kind before the content, encoded as routing: magic
 //! bytes decide the kind, and the kind decides the route. A file whose kind

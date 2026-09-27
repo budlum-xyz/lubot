@@ -1,0 +1,41 @@
+{
+  "is": "Kodlayici omurgasi: kayan pencere siniri her konum ciftinde tutar, cikti belirlenimci, bos ve sozluk disi girdi reddedilir, derinlik ve gecit/deger ayrimi ciktiya yansir",
+  "kanit": {
+    "bit_ozdes": 1.0,
+    "bos_red": 1.0,
+    "cift": 64.0,
+    "derinlik_farki": 0.1367507,
+    "gecit_takas_farki": 0.02529061,
+    "genislik": 4.0,
+    "ici_degisen": 15.0,
+    "ici_toplam": 15.0,
+    "olcut_sonucu": true,
+    "pencere": 2.0,
+    "pencere_ihlal": 0.0,
+    "sonlu": 1.0,
+    "sozluk_disi_red": 1.0,
+    "sure_saniye": 0.06,
+    "uzunluk": 8.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.06
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "gercek bir kontrol noktasiyla referans uyumu (safetensors okuma ayri kapida)",
+    "cok katmanli kayan dikkatte alici alanin buyumesi (tek katman olculdu)",
+    "etiketli karar kumesinde dogruluk: olculmedi, iddia edilmez"
+  ],
+  "olcut": {
+    "ad": "pencere_siniri_her_ciftte_tutar_ve_cikti_belirlenimci",
+    "ifade": "uzunluk=8, sol pencere=2: 64 (sorgu, degisen) ciftinin tamami olculur; pencere disindaki hicbir degisiklik sorguya ulasmaz (ihlal 0) VE pencere icindeki her degisiklik ulasir (ici_degisen == ici_toplam) VE ayni girdi bit-ozdes cikti verir VE bos dizi ve sozluk disi kimlik reddedilir VE 3 katman 2 katmandan farkli ve sonlu VE gecit/deger takasi ciktiyi degistirir",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "Olcum kucuk (genislik 4, uzunluk 8), tohumlu agirliklarla ve tek katmanda yapilir; egitilmis bir omurga yok. Cok katmanli kayan dikkatte alici alan katman sayisiyla buyur, bu kayit yalniz tek katmandaki siniri olcer."
+}

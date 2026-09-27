@@ -1,0 +1,34 @@
+{
+  "kosucu": "betik",
+  "tarih": "2026-09-24",
+  "is": "first-answer-latency-is-recorded",
+  "olcut": {
+    "ad": "soru_yolu_30_kez_soguk_kosuldu_ve_medyan_sure_kaydedildi",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 11.133,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kanit": "`lubot ask --corpus corpus/knowledge-self.jsonl.gz --effort 1x \"what does a view grant name?\"` 30 kez soguk kosuldu; medyan 364.695 ms, en dusuk 350.967 ms, en yuksek 460.605 ms.",
+  "gecikme": {
+    "olculen_yol": "lubot ask --corpus corpus/knowledge-self.jsonl.gz --effort 1x \"what does a view grant name?\"",
+    "kosu_sayisi": 30,
+    "medyan_ms": 364.695,
+    "en_dusuk_ms": 350.967,
+    "en_yuksek_ms": 460.605,
+    "standart_sapma_ms": 22.187,
+    "ikili": "target/debug/lubot",
+    "soguk": true
+  },
+  "uyari": "Olculen sure surec baslatmayi VE korpus ayristirmayi icerir: bu yolda sicak bilesen yok (artalanda bekleyen sunucu, onbellek veya yuklu agirlik yok), her cagri soguktur. Sayi, sicak bir yolun odeyecegi maliyet degil bir cagiranin odeyecegi ust sinirdir. W maddesi (karar/cevap onbellegi) kapandiginda tekrarli sorunun marjinal maliyeti ayri satirda olculecek ve ikisi kiyaslanacak.",
+  "olculmeyen": [
+    "tekrarli soruda marjinal maliyet (W acik, onbellek yok)",
+    "egitilmis basligin cikarim suresi (kontrol noktasi yok, K6)",
+    "cihaz uzerinde JNI koprusu uzerinden gecikme (cihazda olculmedi)"
+  ],
+  "not": "Bu bir TABANDIR ve ratchet'e konmadi: duvar saati makineye baglidir, burada olculen sayi daha yavas bir CI makinesinde 'gerileme' gibi gorunurdu. Eksen beyan ediliyor, sayi esik yapilmiyor."
+}

@@ -1,0 +1,27 @@
+{
+  "surum": 1,
+  "not": "Deneyin dokunabilecegi alan. Dokunulmazlar listesi INVARIANTS.md'dedir ve bu listeyle kesisemez; kesisirse kapi mutation-surface-is-closed kirmizi yanar.",
+  "dugme_uzayi": {
+    "--ogrenme-orani": {"alt": 0.001, "ust": 0.05, "adim_carpani": 2.0, "aile": "optimizasyon"},
+    "--agirlik-sonumu": {"alt": 0.0, "ust": 0.5, "adim_carpani": 2.0, "aile": "optimizasyon"},
+    "--kirpma": {"alt": 0.5, "ust": 2.0, "adim_carpani": 1.5, "aile": "kararlilik"},
+    "--isinma": {"alt": 0, "ust": 200, "adim_carpani": 2.0, "aile": "kararlilik"},
+    "--yigin": {"alt": 1, "ust": 4, "adim_carpani": 1.0, "aile": "yigin"}
+  },
+  "kapsam_disi_dugmeler": {
+    "--pencere": "mimari/spec ekseni: max_seq_len beyanina dokunur, insan karari (S1)",
+    "--adim": "olcutun kendisi: adim butcesi kalibrasyondan turetilir, deneyin degiskeni olamaz",
+    "--tohum": "karsilastirmanin gecerlilik kosulu: sabit kalmali",
+    "--dogrulama-her": "olcum duzeni: sabit kalmali",
+    "--vocab": "sozluk ailesi spec'ten gelir, donmus (tokenizer-vocab-is-frozen)",
+    "--corpus": "veri kaynagi K2 ile sabit: yalniz bu agac"
+  },
+  "kaynak_yamasi": {
+    "izinli_dosyalar": [
+      "crates/egitim/src/",
+      "crates/cli/src/egitim_kosu.rs",
+      "training/make_sft.py"
+    ],
+    "kural": "yama yalniz izinli dosyalara dokunabilir; dokunulmazlar ve kapsam disi alanlara dokunan yama reddedilir ve bu reddin kendisi kanaryayla olculur"
+  }
+}

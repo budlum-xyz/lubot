@@ -1,4 +1,4 @@
-//! # lubot-grant::training - epoch-bounded bulk-read authority
+//! # `lubot-grant::training` - epoch-bounded bulk-read authority
 //!
 //! A view grant says "this reader may open this item until this second".
 //! Training is different: the same corpus is read over and over, once per
@@ -34,15 +34,23 @@ impl Id {
     /// The lowercase hex form used on the wire and in logs.
     #[must_use]
     pub fn to_hex(&self) -> String {
+        use std::fmt::Write as _;
+
         let mut out = String::with_capacity(66);
         out.push_str("0x");
         for byte in self.0 {
-            out.push_str(&format!("{byte:02x}"));
+            // Writing into the string rather than formatting into a temporary:
+            // the id is 32 bytes and this runs per comparison in some paths.
+            let _ = write!(out, "{byte:02x}");
         }
         out
     }
 
     /// Parse a hex id (`0x` prefix optional). Wrong length is a refusal.
+    ///
+    /// # Errors
+    /// The string is not `0x`-prefixed hex of exactly 64 characters, or a pair
+    /// of characters is not a byte.
     pub fn from_hex(input: &str) -> Result<Self, String> {
         let clean = input.strip_prefix("0x").unwrap_or(input);
         if clean.len() != 64 {
@@ -92,7 +100,11 @@ impl TrainingDataGrant {
     }
 
     /// The issuance shape rule. Only issuance fields are checked; the ones
-    /// that change later (epochs_used) are checked by the book, not here.
+    /// that change later (`epochs_used`) are checked by the book, not here.
+    ///
+    /// # Errors
+    /// Zero epochs, more than the ceiling, an expiry at or before issuance, or
+    /// a grant that starts with epochs already used.
     pub fn validate_shape(&self) -> Result<(), String> {
         if self.max_epochs == 0 {
             return Err("training-data grant needs at least one epoch".into());
@@ -113,6 +125,9 @@ impl TrainingDataGrant {
 
     /// Consume one training epoch (fail-closed: errors once the limit is
     /// reached). The caller receives the remaining budget on success.
+    ///
+    /// # Errors
+    /// The epoch budget is exhausted; the counter is not touched.
     pub fn consume_epoch(&mut self) -> Result<u32, String> {
         if self.epochs_used >= self.max_epochs {
             return Err("training-data grant epochs exhausted".into());
@@ -122,6 +137,7 @@ impl TrainingDataGrant {
     }
 
     /// Whether it may still be used: time and epoch budget both live.
+    #[must_use]
     pub fn is_valid(&self, now_block: u64) -> bool {
         now_block >= self.issued_at_block
             && now_block <= self.expires_at_block
@@ -182,6 +198,10 @@ impl EpochBook {
     /// Register a grant. The shape rule applies before anything is stored;
     /// the canonical id is the key, so a second registration with the same
     /// preimage is a refusal rather than a silent overwrite.
+    ///
+    /// # Errors
+    /// The shape rule refuses, or a grant with the same canonical id is
+    /// already registered.
     pub fn issue(&mut self, grant: TrainingDataGrant) -> Result<Id, String> {
         grant.validate_shape()?;
         let id = grant.derive_id();

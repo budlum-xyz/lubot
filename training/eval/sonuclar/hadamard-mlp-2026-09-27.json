@@ -1,0 +1,40 @@
+{
+  "is": "Hadamard/Monarch MLP adayi: elle yazilmis geri gecis merkezi sonlu farka karsi, parametre muhasebesi tam sayi, 40 adim inis, carpim yapisi; spec'e baglanmadi",
+  "kanit": {
+    "blok": 2.0,
+    "carpim_sifir": 1.0,
+    "d_model": 8.0,
+    "d_r": 6.0,
+    "denetlenen": 116.0,
+    "en_kotu_bagil": 1.028572e-07,
+    "ihlal": 0.0,
+    "kayip0": 1.08900082,
+    "kayip40": 0.68437168,
+    "monoton": 1.0,
+    "olcut_sonucu": true,
+    "parametre": 116.0,
+    "parametre_bloksuz": 164.0,
+    "sure_saniye": 8.5
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 8.5
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "d_r ve blok secimi izgarasi (isaretli karar M1; olculmeden aileye girmez)",
+    "bu korpusun api/behaviour agirligi altinda standart MLP ile kalite kiyasi (egitim kosusu ister)",
+    "muP tablosunda Hadamard fan_in satiri (init/LR aktarimi olculmedi)",
+    "spec genisliginde (d_model 64, d_ff 256) parametre/hiz olcumu"
+  ],
+  "olcut": {
+    "ad": "gradyan_sonlu_farkla_ve_sayim_sekle_bagli_ve_inis",
+    "ifade": "d_model=8, d_r=6, blok=2: denetlenen gradyan sayisi = sekilden turetilen parametre sayisi VE ihlal 0 VE en kotu bagil sapma < 1e-6 VE 40 adimda kayip her adimda duser VE ikinci dal sifirken cikti = b3 (carpim gercek) VE bloklu parametre < bloksuz",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "Olcum kucuk tohumlu sekilde (8/6/2) yapilir; hicbir egitim kosusuna bagli degil. \"Standart MLP'den iyi\" iddiasi yok: bloksuz Hadamard ayni ic genislikte standart MLP'den pahalidir (ek dusus izdusumu), bu modul testinde yazilidir."
+}

@@ -1,0 +1,75 @@
+{
+  "a1_karsilastirma": {
+    "a1_toplam": 924288,
+    "a2_toplam": 1783776,
+    "not": "a2 daha buyuk ve bunun nedeni engram: tablolar toplamin %29.4'i. Engram parametreleri matmul gormez, gather ile okunur - yani parametre sayisi ile FLOP ayni yonde buyumuyor ve ikisi ayri raporlanir.",
+    "oran": 1.929892
+  },
+  "aile": "a2",
+  "bagli_degil": "Bu spec hicbir egitim cagrisindan gecmiyor. model_spec.json degismedi; a1 ailesi ve lubot-a1-derin-dar oldugu gibi duruyor.",
+  "ceiling_reference": {
+    "kaynak": "training/model_spec.json (a1 spec'inden okunur, yeniden yazilmaz)",
+    "max_params_train_fp32_adamw": 97565184,
+    "pay": 0.018283
+  },
+  "jeton_param": {
+    "korpus_jeton": 1791712,
+    "not": "a1'de 1.94 token/param, a2'de daha dusuk - engram tabani parametre sayisini buyuttugu icin. Chinchilla referansi 20 (olculmedi); iki aile de referansin cok altinda ve bu bilincli asilıyor. Hangi ailenin daha iyi oldugu **olculmedi**; bu spec bir iddia degil, bir sekil beyani.",
+    "oran": 1.004449
+  },
+  "karar": "Ikinci mimari ailesi: yeni yazilan moduller ilk kez tek bir spec'te toplaniyor. a1 duz transformer; a2 FFN yerine Hadamard MLP, tek artik akis yerine 4 serit, ek olarak engram tablosu ve parametresiz Sinkhorn rotasi tasiyor. Bu spec bir egitim kosusu baslatmiyor - aile 'yazildi'dan 'calisiyor'a gectigi ilk adim, ve bir kosuya baglanmasi isaretli bir karardir.",
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.0
+  },
+  "matmul_orani": 0.70608,
+  "name": "lubot-a2",
+  "olcut": {
+    "ad": "a2_param_sayimi_iki_yoldan_ayni_ve_K6_tavani_altinda",
+    "ifade": "model_spec_a2.py'nin mimari tanimindan turettigi parametre sayisi Rust'taki BirlesikSpec::parametre_sayisi() ile blok duzeyinde ayni VE toplam K6 tavaninin altinda",
+    "sonuc": true
+  },
+  "params": {
+    "blok_engramli": 314712,
+    "blok_engramsiz": 50520,
+    "bloklar": 1134624,
+    "dikkat_gqa": 124800,
+    "embedding_bagli": 524288,
+    "engram_tablolari": 524288,
+    "matmul_etkin": 1259488,
+    "rota": 0,
+    "son_norm": 64,
+    "toplam": 1783776
+  },
+  "params_etiket": "turetildi: model_spec_a2.py, mimari tanimindan; crates/egitim/tests/a2_spec_baglanti.rs ayni JSON'u okuyup BirlesikSpec::parametre_sayisi() ile karsilastiriyor (iki yol, tek sayi)",
+  "schema": 1,
+  "sekil": {
+    "d_model": 64,
+    "engram": {
+      "d_kv": 32,
+      "n": 3,
+      "tablo": 4096
+    },
+    "engram_katmanlari": 2,
+    "hadamard": {
+      "blok": 4,
+      "d_r": 128
+    },
+    "n_heads": 4,
+    "n_kv_heads": 1,
+    "n_layers": 12,
+    "rota": {
+      "k": 2,
+      "sicaklik": 1.0,
+      "uzman": 4,
+      "yineleme": 4
+    },
+    "serit": 4,
+    "uzman": 4,
+    "vocab_size": 8192
+  },
+  "vocab_family": "lubot-bpe-v2"
+}

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 QUESTION_BY_KIND = {
@@ -45,6 +46,10 @@ def grounded(record: dict) -> dict | None:
         ],
         "kind": record["kind"],
         "citation": citation,
+        # The passage's own digest travels with the row so a leak check stays
+        # mechanical: the evaluator compares this against the eval-only stamp
+        # list (PP) instead of re-parsing a citation string.
+        "content_id": record.get("content_id") or record.get("digest"),
     }
 
 
@@ -53,14 +58,32 @@ def main() -> int:
     parser.add_argument("--corpus", required=True)
     parser.add_argument("--curriculum", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--eval-only",
+        default="training/eval/eval-only.json",
+        help="held-out stamp list; stamped passages never become training rows",
+    )
     args = parser.parse_args()
+
+    # Prevention, not only detection. `eval_sft` refuses a set that contains a
+    # stamped passage, but a refusal after the set is built is a refused run,
+    # not a held-out exam set. Dropping the row here is what makes the exam set
+    # actually held out; the evaluator's refusal stays as the second wall.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import eval_sft  # noqa: PLC0415  (the reader that owns the stamp contract)
+
+    stamps = eval_sft.load_eval_only(Path(args.eval_only))
 
     rows: list[dict] = []
     dropped = 0
+    dropped_eval_only = 0
 
     with Path(args.corpus).open(encoding="utf-8") as handle:
         for line in handle:
             record = json.loads(line)
+            if record.get("content_id") in stamps:
+                dropped_eval_only += 1
+                continue
             row = grounded(record)
             if row is None:
                 dropped += 1
@@ -92,6 +115,7 @@ def main() -> int:
         "grounded": len(rows) - curriculum,
         "curriculum": curriculum,
         "dropped_without_citation": dropped,
+        "dropped_eval_only": dropped_eval_only,
     }, ensure_ascii=False))
     return 0
 

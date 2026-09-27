@@ -46,6 +46,46 @@ pub fn save(path: &Path, baseline: &Baseline) -> Result<(), String> {
     std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Rewrite only the four measured keys, leaving every other key in the file
+/// untouched.
+///
+/// The baseline file is not this struct's private property: `training/
+/// ratchet.json` also carries the corpus token count, the bootstrap round
+/// count and the exam-question count, which other gates own. A `--set` that
+/// serialised the struct would delete those keys - the numbers would vanish
+/// from the file and from the checks that read them, silently, in a commit
+/// whose message said "baseline rewritten". A rewrite moves the numbers it
+/// measured and nothing else.
+///
+/// # Errors
+/// Unreadable file, unparsable JSON, or a failed write.
+pub fn save_measured_keys(path: &Path, baseline: &Baseline) -> Result<Vec<String>, String> {
+    let mut doc: serde_json::Map<String, serde_json::Value> = match std::fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::Map::new(),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let mut kept: Vec<String> = doc
+        .keys()
+        .filter(|k| !matches!(k.as_str(), "tests" | "gates" | "pedantic" | "corpus"))
+        .cloned()
+        .collect();
+    kept.sort();
+    for (key, value) in [
+        ("tests", baseline.tests),
+        ("gates", baseline.gates),
+        ("pedantic", baseline.pedantic),
+        ("corpus", baseline.corpus),
+    ] {
+        doc.insert(key.to_string(), serde_json::Value::from(value));
+    }
+    let mut text =
+        serde_json::to_string_pretty(&serde_json::Value::Object(doc)).map_err(|e| e.to_string())?;
+    text.push('\n');
+    std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(kept)
+}
+
 /// One comparison result, named so the report reads both directions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diff {
@@ -276,6 +316,42 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("ratchet.json");
         save(&path, &baseline()).unwrap();
+        assert_eq!(load(&path).unwrap(), baseline());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_rewrite_keeps_the_keys_it_does_not_measure() {
+        let dir = std::env::temp_dir().join(format!("lubot-ratchet-keep-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ratchet.json");
+        std::fs::write(
+            &path,
+            // Korpustan gelen hicbir sayi bu dosyada durmaz: buradaki
+            // yabanci anahtarlarin degerleri kasten gercek olamayacak
+            // sayilar (olcum geri beslemesi kapisi bunlari arar).
+            r#"{"tests": 1, "gates": 2, "pedantic": 0, "corpus": 3, "tokens": 987654321,
+                "bootstrap": 99, "exam": 424242}"#,
+        )
+        .unwrap();
+        let kept = save_measured_keys(&path, &baseline()).unwrap();
+        assert_eq!(kept, vec!["bootstrap", "exam", "tokens"]);
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(raw["tokens"], serde_json::json!(987654321));
+        assert_eq!(raw["bootstrap"], serde_json::json!(99));
+        assert_eq!(raw["exam"], serde_json::json!(424242));
+        assert_eq!(raw["tests"], serde_json::json!(baseline().tests));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_rewrite_without_a_file_writes_only_measured_keys() {
+        let dir = std::env::temp_dir().join(format!("lubot-ratchet-fresh-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("yeni.json");
+        let kept = save_measured_keys(&path, &baseline()).unwrap();
+        assert!(kept.is_empty(), "bos dosyada korunacak anahtar olamaz");
         assert_eq!(load(&path).unwrap(), baseline());
         std::fs::remove_dir_all(&dir).unwrap();
     }
