@@ -180,8 +180,17 @@ pub fn tohumlu_doldur(spec: CokSeritSpec, tohum: u64) -> SeritAgirliklar {
 ///
 /// `katman_cikti` cagiranin katmaninin urettigi `y`'dir (`d_model` uzunlugunda;
 /// eksik eleman sifir sayilir, panik yolu yok).
+/// Okuma yarisi tek basina: serit durumundan katman girdisi.
+///
+/// [`ileri`] okuma ve yazmayi birlikte yapar, cunku tek katmanli kullanimda
+/// ikisi ayni cagridir. Kompozisyonda (bkz. `birlesik`) degildir: katman
+/// ciktisi `y` okumanin **sonucundan** hesaplanir, yani once okumak, sonra
+/// bloktan gecmek, sonra yazmak gerekir. Bu yuzden okuma yarisi disari acilir.
+/// Ikinci bir kopya yazilmadi bilerek: `ileri` de bu fonksiyonu cagirir ve bir
+/// test ikisinin bit-ozdes oldugunu olcer - ayni aritmetigin iki yeri, iki
+/// yerde yanlis olma ihtimalidir.
 #[must_use]
-fn okuma(spec: &CokSeritSpec, w: &SeritAgirliklar, durum: &SeritDurumu) -> Vec<f64> {
+pub fn okuma(spec: &CokSeritSpec, w: &SeritAgirliklar, durum: &SeritDurumu) -> Vec<f64> {
     let mut girdi = vec![0.0f64; spec.d_model];
     for l in 0..spec.serit {
         let agirlik = w.alfa.get(l).copied().unwrap_or(0.0);

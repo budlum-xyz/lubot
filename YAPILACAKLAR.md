@@ -102,6 +102,31 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       değil crate içindeki sabit dizilere ait, o yüzden burada durabilir.
       CLI artık paketli adımı gerçek korpus verisiyle koşuyor ve maskenin kaç
       konumda devreye girdiğini raporluyor.
+- [x] **Port adaylarının kompozisyonu (tasarım notu 3.8).** Altı tekil aday
+      (`mlp_hadamard`, `cok_serit`, `engram`, `yonlendirme`, `normalizasyon`,
+      `kesit` ailesi) tek başına yazılmış, ölçülmüş ve kapılanmıştı ama hiçbiri
+      birbirine bağlı değildi. `crates/egitim/src/birlesik.rs` altısını tek
+      blokta koşturuyor: şerit okuma → sıfır merkezli RMS norm → rotalı
+      Hadamard uzmanları → engram değer belleği → şerit yazma. Hiçbir adım
+      yeniden yazılmadı — kapı (`birlesik-kapisi`) her alt modül çağrısının
+      varlığını denetliyor. Ölçülen: 544 parametrenin tamamı dört noktalı
+      (Richardson) sonlu farkla, ihlal 0, en kötü oran 7.93e-3; iniş 40 adımda
+      29.44711861 → 4.93556415. İki noktalı fark deponun kendi toleransını
+      **geçemiyordu** (oran 1.233); tolerans gevşetilmedi, ölçüm aleti
+      düzeltildi ve adım taraması U eğrisini kalıcı bir testte kayda geçirdi.
+      Kapalı her bileşen yokluğuyla bit-özdeş (`to_bits`). Kalan iş **bu blok
+      değil, bağlama kararı**: hangi bileşenin hangi aileye gireceği
+      `docs/MIMARI-TASARIM.md` 5. bölümünde M1/M2/M3 olarak işaretli operatör
+      kararıdır; `model_spec.json` değişmedi.
+- [ ] **Port envanterinin ürettiği iki eksik.** `docs/PORT-ENVANTERI.md` +
+      `port-envanteri-kapisi` direktif 7.4'ün sekiz modül adını bu ağaçtaki
+      dosya yollarına, kapı adlarına ve ölçüm kayıtlarına bağlıyor; kapı her
+      satırın kanıtını denetliyor. Envanterin ürettiği, bu turda kapatılmayan
+      iki somut eksik: (1) `modernbert_encoder` (`crates/kodlayici`,
+      `crates/transformer`) için deposal bir **kapı yok** — kaynak ve testler
+      var ama bir regresyon kapıya takılmaz; (2) `hadamard_mlp` ve `cq2_quant`
+      için ayrı **ölçüm kaydı yok**, ölçüm modül testlerinin içinde, yani
+      tazeliği dışarıdan denetlenemiyor.
 - [ ] **Eğitim çekirdeğinin korpusla ilk gerçek turu.** Jetonlayıcı ve veri yolu
       ölçümü hazır; eksik olan paketlenmiş pencerelerle koşan tur ve K6
       donanımında ölçülecek ilk kayıp eğrisi. Sınav skoru hâlâ ölçülemez:
