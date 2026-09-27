@@ -437,7 +437,7 @@ pub fn istatistik_ekle(yol: &Path, kayit: &IstatistikKaydi) -> Result<(), Hata> 
 // ogren: mine a log for failure patterns (the learn shape)
 // ---------------------------------------------------------------------------
 
-/// Failure patterns the miner recognises: (needle, stable code).
+/// Failure patterns the miner recognises: (pattern, stable code).
 pub const HATA_DESENLERI: &[(&str, &str)] = &[
     ("##[error]", "ci-hatasi"),
     ("error[", "derleme-hatasi"),
