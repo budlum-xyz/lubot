@@ -32,6 +32,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod activation;
 pub mod egitim_kosu;
+pub mod gecis;
 pub mod graph;
 pub mod gunluk;
 pub mod kalibrasyon;

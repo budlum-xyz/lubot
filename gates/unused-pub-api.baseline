@@ -79,6 +79,18 @@ egitim:EngramSpec
 egitim:NGRAM_UST_SINIRI
 egitim:cakisma_olc
 egitim:ngram_karmasi
+# gecis (gecis hatti): veri modeli cli'den serilestirme yoluyla kullanilir,
+# tarayici cagri gormez; gerc. bir cagri yazilinca bu satirlar kisalir.
+gecis:ATLAMA
+gecis:DosyaKaydi
+gecis:DosyaTuru
+gecis:ModulDurumu
+gecis:ModulPlani
+gecis:SINIRLAR
+gecis:Sembol
+gecis:SembolTuru
+gecis:Tesisat
+gecis:say_sinirli
 esik:QuorumError
 esik:byzantine_floor
 grant:AuditEntry
@@ -222,7 +234,6 @@ uc-asama:VeriKovasi
 usl:MEDIA_TAG
 veri:DerleyiciHakem
 veri:KayitTuru
-veri:Kaynak
 veri:SentetikUretim
 yetenek:CapabilityError
 yetenek:Handle

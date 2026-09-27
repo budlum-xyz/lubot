@@ -7737,6 +7737,123 @@ def selftest_engram_kapisi() -> None:
 
 
 
+
+def _gecis_kayit_bulgu(kayit: dict, taze: dict) -> str | None:
+    """Sayimin, planin ve durumun kayda karsi tutarligi. Uc olcum de
+    deterministik oldugu icin kayitla taze arasindaki her fark bir
+    bozulmadir; duvar saati yoktur, bahane de yoktur."""
+    if taze.get("agac_ozeti") != kayit.get("agac_ozeti"):
+        return "sayim ozeti kayittan farkli: sablon agaci degismis"
+    if taze.get("dosya_sayisi") != kayit.get("dosya_sayisi"):
+        return "dosya sayisi kayittan farkli"
+    if taze.get("modul_sayisi") != kayit.get("modul_sayisi"):
+        return "modul sayisi kayittan farkli"
+    if taze.get("test_amaci") != kayit.get("test_amaci"):
+        return "planin sozlesme buyuklugu kayittan farkli"
+    if taze.get("modul_kapsami") != kayit.get("modul_kapsami"):
+        return "modul kapsami kayittan farkli"
+    if taze.get("bekleyen") != kayit.get("bekleyen"):
+        return "bekleyen modul listesi kayittan farkli"
+    if kayit.get("tesisat_uyumlu") is not True:
+        return "kayit tesisat uyumunu tasimiyor"
+    return None
+
+
+def gate_gecis_hatti_kapisi() -> str:
+    """Gecis hatti olculur: sayim yinelenebilir, planin tesisat satirlari
+    agacin kendi satirlariyla bayt esit, kapsam kayitla ayni, redler adli.
+
+    Hattin hiz iddiasi su: bir kaynak agacini envanterlemek, planini
+    kurmak ve tesisatini yazmak mekaniktir ve mekanik olan her sey bu
+    komuttadir. Kapinin olctugu uc sey var: (1) ayni sablon agaci her
+    kosuda ayni ozeti verir, (2) planin urettigi uye satiri ve cli
+    bagimlilik satiri repodaki gerc. satirlarla bayt bayt eslesir - biçim
+    tarafi kayarsa plan yararsiz uretir - ve (3) durum, sablonda
+    gerceklesmis olan yari kapsami ayni sayi ile raporlar."""
+    import json
+    import tempfile
+
+    _ikili_hazirla()
+    kok = ROOT / "crates" / "gecis" / "tests" / "ornek-kaynak"
+    gercek = ROOT / "crates" / "gecis" / "tests" / "ornek-gerceklesen"
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "gecis-hatti-2026-09-27.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("gecis hatti kaydi yok: training/eval/sonuclar/gecis-hatti-2026-09-27.json")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+
+    sayim_kosu = _cli("gecis", "sayim", "--kaynak", str(kok), "--lisans", "MIT")
+    if sayim_kosu.returncode != 0:
+        raise SystemExit(f"sayim kosmadi: {(sayim_kosu.stderr or sayim_kosu.stdout)[-300:]}")
+    sayim = json.loads(sayim_kosu.stdout)
+
+    with tempfile.TemporaryDirectory() as td:
+        sayim_dosya = Path(td) / "sayim.json"
+        sayim_dosya.write_text(sayim_kosu.stdout, encoding="utf-8")
+        plan_kosu = _cli("gecis", "plan", "--sayim", str(sayim_dosya), "--ad", "gecis")
+        if plan_kosu.returncode != 0:
+            raise SystemExit(f"plan kosmadi: {(plan_kosu.stderr or plan_kosu.stdout)[-300:]}")
+        pln = json.loads(plan_kosu.stdout)
+        plan_dosya = Path(td) / "plan.json"
+        plan_dosya.write_text(plan_kosu.stdout, encoding="utf-8")
+        durum_kosu = _cli("gecis", "durum", "--plan", str(plan_dosya),
+                          "--gerceklesen", str(gercek))
+        if durum_kosu.returncode != 0:
+            raise SystemExit(f"durum kosmadi: {(durum_kosu.stderr or durum_kosu.stdout)[-300:]}")
+        dur = json.loads(durum_kosu.stdout)
+
+    # tesisat satirlari gerc. satirlarla bayt bayt
+    uye = pln["tesisat"]["uye_satiri"]
+    if uye not in (ROOT / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        raise SystemExit(f"planin uye satiri repoda yok: {uye!r}")
+    bagimlilik = pln["tesisat"]["cli_bagimliligi"]
+    if bagimlilik not in (ROOT / "crates" / "cli" / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        raise SystemExit(f"planin cli bagimlilik satiri repoda yok: {bagimlilik!r}")
+
+    taze = {
+        "agac_ozeti": sayim["agac_ozeti"],
+        "dosya_sayisi": len(sayim["dosyalar"]),
+        "modul_sayisi": len(pln["moduller"]),
+        "test_amaci": pln["test_amaci"],
+        "modul_kapsami": dur["modul_kapsami"],
+        "bekleyen": dur["bekleyen"],
+        "tesisat_uyumlu": True,
+    }
+    bulgu = _gecis_kayit_bulgu(kayit, taze)
+    if bulgu:
+        raise SystemExit(bulgu)
+
+    # redler: olmayan kaynak ve kapali lisans, kendini adlandirmali
+    _alim_refusal(_cli("gecis", "sayim", "--kaynak", "/tmp/gecis-boyle-bir-yol-yok",
+                       "--lisans", "MIT"), "kaynak yok")
+    _alim_refusal(_cli("gecis", "sayim", "--kaynak", str(kok),
+                       "--lisans", "GPL-3.0"), "kapali kumede degil")
+
+    return (
+        f"gecis hatti olculdu: sablon {taze['dosya_sayisi']} dosya / ozet {taze['agac_ozeti'][:12]}..., "
+        f"plan {taze['modul_sayisi']} modul / sozlesme {taze['test_amaci']} sembol, "
+        f"tesisat satirlari agacla bayt esit, kapsam {taze['modul_kapsami']} "
+        f"(bekleyen: {', '.join(taze['bekleyen'])})"
+    )
+
+
+def selftest_gecis_hatti_kapisi() -> None:
+    """Kanaryalar: bozulmus ozet, degismis kapsam, degismis bekleyen ve
+    uyumsuzlukta 'tesisat_uyumlu' tasimayan kayit ayri ayri reddedilir;
+    tutarli kayit gecer."""
+    taze = {"agac_ozeti": "a" * 64, "dosya_sayisi": 5, "modul_sayisi": 2,
+            "test_amaci": 5, "modul_kapsami": 0.5,
+            "bekleyen": ["katman-rope"], "tesisat_uyumlu": True}
+    kayit = dict(taze)
+    assert _gecis_kayit_bulgu(kayit, taze) is None, "gecerli kayit reddedildi"
+    assert "ozet" in (_gecis_kayit_bulgu(kayit, dict(taze, agac_ozeti="b" * 64)) or "")
+    assert "dosya sayisi" in (_gecis_kayit_bulgu(kayit, dict(taze, dosya_sayisi=4)) or "")
+    assert "modul sayisi" in (_gecis_kayit_bulgu(kayit, dict(taze, modul_sayisi=3)) or "")
+    assert "sozlesme" in (_gecis_kayit_bulgu(kayit, dict(taze, test_amaci=6)) or "")
+    assert "kapsam" in (_gecis_kayit_bulgu(kayit, dict(taze, modul_kapsami=1.0)) or "")
+    assert "bekleyen" in (_gecis_kayit_bulgu(kayit, dict(taze, bekleyen=[])) or "")
+    assert "tesisat" in (_gecis_kayit_bulgu(dict(kayit, tesisat_uyumlu=False), taze) or "")
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -7858,6 +7975,7 @@ GATES_EXTRA = {
     "elf-sertlestirme": (gate_elf_sertlestirme, selftest_elf_sertlestirme),
     "hadamard-mlp-kapisi": (gate_hadamard_mlp_kapisi, selftest_hadamard_mlp_kapisi),
     "alim-hatti-kapali": (gate_alim_hatti_kapali, selftest_alim_hatti_kapali),
+    "gecis-hatti-kapisi": (gate_gecis_hatti_kapisi, selftest_gecis_hatti_kapisi),
     "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
     "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
     "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),

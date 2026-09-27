@@ -1,0 +1,16 @@
+[package]
+name = "lubot-gecis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+lubot-alim = { path = "../alim", version = "0.1.0" }
+
+[lints]
+workspace = true
