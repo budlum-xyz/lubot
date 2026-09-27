@@ -22,7 +22,7 @@ def yukle(ad):
 class PortKayitlari(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.moduller = [yukle(ad) for ad in ("kesit", "normalizasyon")]
+        cls.moduller = [yukle(ad) for ad in ("kesit", "normalizasyon", "birlesik")]
 
     def kayit(self, modul):
         return json.loads(modul.KAYIT.read_text(encoding="utf-8"))
