@@ -37,6 +37,7 @@ pub mod kosu;
 pub mod mlp_hadamard;
 pub mod olcum;
 pub mod veri;
+pub mod yonlendirme;
 
 /// Relative error above which the backward pass is considered wrong.
 pub const GRADIENT_CHECK_TOLERANCE: f64 = 1e-6;

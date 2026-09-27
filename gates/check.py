@@ -7267,6 +7267,162 @@ def selftest_alim_hatti_kapali() -> None:
     except SystemExit as err:
         assert "must refuse" in str(err)
 
+def _yonlendirme_denetle(path: Path) -> list:
+    """Rota adayinin (tasarim 3.5) olculebilir sozlesmesi. Metin denetimidir;
+    ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Log uzayinda normalizasyon: tasmayi onleyen yardimci ve -sonsuz destek.
+    for iz in ("fn log_toplam_us", "NEG_INFINITY"):
+        if iz not in metin:
+            ihlaller.append(f"log uzayi sozlesmesi eksik: {iz}")
+    # 2) Destek korunur: top-k secimi ve sayim bagi olcumu.
+    for iz in ("fn top_k_destegi", "destek_korunur_ve_sayim_sekle_bagli"):
+        if iz not in metin:
+            ihlaller.append(f"destek sozlesmesi eksik: {iz}")
+    # 3) Iki yonlu normalizasyon (satir + sutun) ve kapanis adimi.
+    for iz in ("Sutun adimi", "Son adim satir"):
+        if iz not in metin:
+            ihlaller.append(f"normalizasyon adimi eksik: {iz}")
+    # 4) Denge klasik tabana karsi olculur (iddia degil).
+    for iz in ("fn taban_olc", "yuk_dengesi_klasik_tabandan_iyi", "yineleme_sifirsa_tabanin_kendisi"):
+        if iz not in metin:
+            ihlaller.append(f"denge olcumu eksik: {iz}")
+    # 5) Sicaklik davranisi ve egri tutarliligi olculur.
+    for iz in ("sicaklik_dustukce_secim_keskinlesir", "sicaklik_egimi_iki_sonlu_farkla_ayni"):
+        if iz not in metin:
+            ihlaller.append(f"sicaklik olcumu eksik: {iz}")
+    # 6) Sekil hatalari reddedilir ve parametre tutulmaz.
+    for iz in ("fn sekil_hatalari_reddedilir", "fn parametre_sayisi(&self) -> usize"):
+        if iz not in metin:
+            ihlaller.append(f"sekil sozlesmesi eksik: {iz}")
+    if "fn parametre_sayisi(&self) -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("rota parametre tutuyor: parametre sayisi sifir olmali")
+    # 7) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 8) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        govde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in govde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_yonlendirme_kapisi() -> str:
+    """Rota olculur halde duruyor: log uzayinda iki yonlu normalizasyon, top-k
+    destegi korunur, satirlar 1'e toplanir, yuk dengesi klasik tabana karsi
+    olculur, sicaklik davranisi test edilir ve rota parametre tutmaz."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "yonlendirme.rs"
+    ihlaller = _yonlendirme_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("rota sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "yonlendirme"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/yonlendirme.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("rota kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"rota olculur: {gecen} test, log uzayinda iki yonlu normalizasyon, top-k destegi "
+        f"korunmus, yuk dengesi tabana karsi olculmus, parametre sifir"
+    )
+
+
+def selftest_yonlendirme_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme, degistirilmis kayit ve sayimi tutmayan
+    kayit yakalanmali."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "yonlendirme.rs"
+    if _yonlendirme_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "yonlendirme.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) log uzayi yardimcisi sokulursa
+        bozuk.write_text(metin.replace("fn log_toplam_us", "fn x"), encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("log uzayi sokulmus kopya yakalanmadi")
+        # 2) top-k destegi sokulursa (destek korunmasi olculemez)
+        bozuk.write_text(metin.replace("fn top_k_destegi", "fn x"), encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("top-k destegi sokulmus kopya yakalanmadi")
+        # 3) taban karsilastirmasi sokulursa (denge iddiasi sahipsiz kalir)
+        bozuk.write_text(metin.replace("fn taban_olc", "fn x"), encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("taban karsilastirmasi sokulmus kopya yakalanmadi")
+        # 4) rota parametre tutmaya baslarsa
+        bozuk.write_text(metin.replace("fn parametre_sayisi(&self) -> usize {\n        0\n    }",
+                                       "fn parametre_sayisi(&self) -> usize {\n        self.uzman\n    }", 1),
+                         encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("parametre tutan kopya yakalanmadi")
+        # 5) panik yolu sokulursa
+        bozuk.write_text(metin.replace("    let taban_spec = RotaSpec { yineleme: 0, ..spec.clone() };",
+                                       "    let _ = vec![1].first().unwrap();\n    let taban_spec = RotaSpec { yineleme: 0, ..spec.clone() };", 1),
+                         encoding="utf-8")
+        if not _yonlendirme_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 6) Kayit tazeligi ve sayim bagi.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "sinkhorn-yonlendirme-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["yuk_orani"] = veri["kanit"]["taban_orani"] + 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/yonlendirme.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("dengeyi kaybetmis kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["secim"] = veri["kanit"]["secim"] + 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/yonlendirme.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("sayimi tutmayan kayit kabul edildi")
+
+
+
 def _cok_serit_denetle(path: Path) -> list:
     """Cok-seritli artik baglanti adayinin (bilesen 5) olculebilir sozlesmesi.
     Metin denetimidir - ihlal listesi doner, bos liste gecer demektir. Kaynak
@@ -7861,6 +8017,7 @@ GATES_EXTRA = {
     "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
     "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
     "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
+    "yonlendirme-kapisi": (gate_yonlendirme_kapisi, selftest_yonlendirme_kapisi),
 }
 
 
