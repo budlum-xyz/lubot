@@ -7251,9 +7251,37 @@ def gate_alim_hatti_kapali() -> str:
                   "--defter", ledger, "--adim", "3"),
             "behind the previous",
         )
+        # Existing provenance is evidence, not merely parseable JSON. Each
+        # corruption must refuse before admitting another manifest, unchanged.
+        baseline = Path(ledger).read_bytes()
+        row = json.loads(baseline.splitlines()[0])
+        for field, invalid in {
+            "manifest_id": "not-a-digest", "loader": " ", "content_id": " ",
+            "path": "../outside", "kind": "unapproved", "licence": "unapproved",
+        }.items():
+            broken = dict(row, **{field: invalid})
+            before = (json.dumps(broken) + "\n").encode()
+            Path(ledger).write_bytes(before)
+            _alim_refusal(
+                admit("--manifest", str(root / "ok.json"),
+                      "--defter", ledger, "--adim", "5"), "not a row",
+            )
+            if Path(ledger).read_bytes() != before:
+                raise SystemExit(f"refused ledger was changed: {field}")
+        # A complete last record without LF must not merge with the next JSON.
+        prefix = baseline.rstrip(b"\n")
+        Path(ledger).write_bytes(prefix)
+        resumed = admit("--manifest", str(root / "ok.json"),
+                        "--defter", ledger, "--adim", "5")
+        if resumed.returncode != 0:
+            raise SystemExit("complete final record without LF could not resume")
+        after = Path(ledger).read_bytes()
+        parsed = [json.loads(line) for line in after.splitlines()]
+        if not after.startswith(prefix) or len(parsed) != 3:
+            raise SystemExit("resumed ledger lost prefix or record framing")
     return (
         "the intake admits whole or refuses by name: K2 class, licence, path, "
-        "ledger, digest, step"
+        "ledger, digest, step; six provenance fields and final-line framing"
     )
 
 
@@ -7439,10 +7467,14 @@ def _kesit_denetle(path: Path) -> list:
     for iz in ("pub fn kesit(", "fn derinlik_merdiveni", "fn genislik_izgarasi"):
         if iz not in metin:
             ihlaller.append(f"kesit sozlesmesi eksik: {iz}")
-    # Tamlik, gecerlilik, kosma ve monotonluk ayri ayri olculmeli.
+    # Tamlik, gecerlilik ve kosma ayri ayri olculmeli. Monotonluk yalniz
+    # referans aile icin olculur; evrensel olmadigini gosteren karsi ornek de
+    # regresyon olarak kalmali.
     for iz in ("tamlik_girdinin_kendisi", "her_kesit_kendi_dogrulamasindan_gecer",
                "kesit_kosumdan_gecer", "derinlik_arttikca_parametre_azalmaz",
-               "genislik_arttikca_parametre_azalmaz", "kafa_silinir_kafa_daraltilmaz",
+               "genislik_arttikca_parametre_azalmaz",
+               "genislik_monotonlugu_her_spece_genellenmez",
+               "kafa_silinir_kafa_daraltilmaz",
                "agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
                "tam_agirlik_kesiti_bit_ozdes", "agirlik_bellek_tavani_tam_sinirda",
                "her_blok_bozuk_sekli_tahsisten_once_reddeder",
@@ -7475,8 +7507,9 @@ def _kesit_denetle(path: Path) -> list:
 
 def gate_kesit_kapisi() -> str:
     """Aile kesiti olculur halde duruyor: tam kesit girdinin kendisi, her kesit
-    kendi dogrulamasindan geciyor ve **kosuyor**, parametre sayisi derinlik ve
-    genislikle monoton, kafa silinir (daraltilmaz), sessiz yuvarlama yok."""
+    kendi dogrulamasindan geciyor ve **kosuyor**; parametre monotonlugu referans
+    ailede olculuyor, evrensel olmayan siniri karsi-ornekle korunuyor; kafa
+    silinir (daraltilmaz), sessiz yuvarlama yok."""
     import re
     import subprocess
 
@@ -7498,7 +7531,8 @@ def gate_kesit_kapisi() -> str:
                              cwd=ROOT, capture_output=True, text=True)
     if dogrula.returncode != 0:
         raise SystemExit("kesit kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
-    return (f"kesit olculur: {beklenen} test, tamlik + gecerlilik + kosma + monotonluk, "
+    return (f"kesit olculur: {beklenen} test, tamlik + gecerlilik + kosma + "
+            f"referans-aile monotonlugu + evrensel-sinir karsi ornegi, "
             f"kafa silme ve sessiz yuvarlama yok")
 
 
@@ -7530,6 +7564,12 @@ def selftest_kesit_kapisi() -> None:
         bozuk.write_text(metin.replace("kesit_kosumdan_gecer", "kosmaz"), encoding="utf-8")
         if not _kesit_denetle(bozuk):
             raise SystemExit("kosma olcumu sokulmus kopya yakalanmadi")
+        bozuk.write_text(
+            metin.replace("genislik_monotonlugu_her_spece_genellenmez", "sinir_sokuldu"),
+            encoding="utf-8",
+        )
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("monotonluk karsi ornegi sokulmus kopya yakalanmadi")
         bozuk.write_text(metin.replace("    let mut kesilen = Spec {",
                                        "    let _ = vec![1].first().unwrap();\n    let mut kesilen = Spec {", 1),
                          encoding="utf-8")
