@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -127,14 +128,32 @@ def kur() -> Path:
 
 
 def _bulgu(kayit: dict) -> str | None:
+    if not isinstance(kayit, dict):
+        return "kayit nesne degil"
     if not isinstance(kayit.get("olcut"), dict):
         return "olcut bolumu yok"
     if not isinstance(kayit["olcut"].get("sonuc"), bool):
         return "olcut.sonuc mantiksal degil"
-    kanit = kayit.get("kanit") or {}
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kanit nesne degil"
     for alan in TAM_ALANLAR + KESIRLI_ALANLAR:
         if alan not in kanit:
             return f"kanit alani yok: {alan}"
+        deger = kanit[alan]
+        # bool, int alt sinifi olsa da sayisal olcum degildir. NaN ve sonsuz
+        # karsilastirmalarla sessizce gecmemeli; once tur ve sonluluk denetlenir.
+        if type(deger) not in (int, float):
+            return f"sayisal olmayan kanit: {alan}"
+        if isinstance(deger, float) and not math.isfinite(deger):
+            return f"sonlu olmayan kanit: {alan}"
+        if alan in TAM_ALANLAR and (deger <= 0 or deger != int(deger)):
+            return f"pozitif tam sayi olmayan kanit: {alan}"
+    for alan in ("merkez_fark", "duz_rms_fark", "gradyan_sapma", "cikti_rms2"):
+        if kanit[alan] < 0:
+            return f"negatif buyukluk: {alan}"
+    if not 0 <= kanit["cikti_rms2"] <= 1:
+        return "RMS karesi birim aralik disinda"
     sonuc = bool(
         kanit["merkez_fark"] < 1e-12
         and kanit["duz_rms_fark"] > 1.0

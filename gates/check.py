@@ -7496,6 +7496,14 @@ def selftest_kesit_kapisi() -> None:
     import subprocess
     import tempfile
 
+    # Sayisal kayit siniri da CI kanaryasinin parcasi: NaN/Inf, bool,
+    # kesirli sayimlar ve negatif hata olculeri kabul edilmez.
+    subprocess.run(
+        ["python3", "-m", "unittest", "discover", "-s", "training",
+         "-p", "test_port_kayitlari.py"],
+        cwd=ROOT, check=True,
+    )
+
     gercek = ROOT / "crates" / "egitim" / "src" / "kesit.rs"
     if _kesit_denetle(gercek):
         raise SystemExit("saglam modul metin denetiminden gecmedi")
