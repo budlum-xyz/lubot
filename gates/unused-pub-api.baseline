@@ -31,7 +31,6 @@ alim:data_shard
 alim:is_sha256_hex
 alim:weight_id
 anlama:Abstention
-anlama:CALIBRATION_BUCKETS
 anlama:ClassifierError
 anlama:Signal
 anlama:TIE_EPSILON
@@ -58,6 +57,17 @@ egitim:HadamardSekilHatasi
 egitim:HadamardSpec
 egitim:kayip_gradyan
 egitim:sgd_adimi
+# cok_serit (bilesen 5): cok-seritli artik baglanti adayi; olcumleri kendi
+# modulunde durur, egitim cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:CokSeritSpec
+egitim:SERIT_UST_SINIRI
+egitim:SeritAgirliklar
+egitim:SeritDurumu
+egitim:SeritGradyanlar
+egitim:SeritSekilHatasi
+egitim:kimlik_doldur
+egitim:rms_profili
+egitim:tohumlu_doldur
 esik:QuorumError
 esik:byzantine_floor
 grant:AuditEntry
@@ -140,7 +150,6 @@ olcek:PolicyError
 olcum:BataryaAdi
 olcum:BataryaSonuc
 olcum:BilgiBoslugu
-olcum:Kalibrasyon
 olcum:KapismaSonuc
 olcum:OlcumMotoru
 paralel:BatchHesap
@@ -201,7 +210,6 @@ uc-asama:UcAsamaSistem
 uc-asama:VeriKovasi
 usl:MEDIA_TAG
 veri:DerleyiciHakem
-veri:Karisim
 veri:KayitTuru
 veri:Kaynak
 veri:SentetikUretim

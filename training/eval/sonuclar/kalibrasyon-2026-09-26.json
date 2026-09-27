@@ -1,0 +1,39 @@
+{
+  "is": "Kalibre guven bandi (tasarim 3.7): ham (puan, dogru) kayitlarindan sicaklik uyduruldu, ECE duzeltme oncesi/sonrasi hesaplandi ve bantlar (kirmizi/orta/yesil) kayitlardan olculdu. Sayilar `lubot kalibrasyon` komutundan gelir; Python tarafinda ikinci bir hesaplama yok.",
+  "kanit": {
+    "destek_alti": 1,
+    "ece_fit": 0.071667,
+    "ece_ham": 0.195833,
+    "girdi": "training/kalibrasyon-fixture.jsonl",
+    "girdi_kayit": 240,
+    "hedef_0_9_reddi": "lubot: kalibrasyon: yesil-bant-yok",
+    "hedef_olculen": 0.75,
+    "hedef_reddedilen": 0.9,
+    "kayit": 240,
+    "kirmizi_ust": 0.6,
+    "nll_fit": 0.666879,
+    "nll_ham": 0.776325,
+    "sicaklik": 3.419455,
+    "sure_saniye": 0.19,
+    "yesil_alt": 0.7
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.19
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "egitilmis bir karar basinin kalibrasyonu (agirlik yok, K6)",
+    "gercek dogrulama kumesinde bant genisligi (ilk egitim turundan sonra)",
+    "bant basina yukseltme maliyeti (gecikme kaydi ayri tutuluyor)"
+  ],
+  "olcut": {
+    "ad": "uydurma_egitim_hatasini_ve_eceyi_dusurdu_bantlar_olcumden_cikti",
+    "sonuc": true
+  },
+  "tarih": "2026-09-26",
+  "uyari": "Kayit dosyasi bir DUZENEK KANARYASIDIR: egitilmis bir basin skorlari degil, olcum duzenegini sinayan beyanli veridir. Duzeltme bilgi uretemez - kanaryada hedef 0.9'da yesil band cikmaz ve komut bunu reddeder; olculen sey mekanizmanin kendisidir."
+}
