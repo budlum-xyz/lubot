@@ -10,10 +10,13 @@
   },
   "deney": 6,
   "durus": {
-    "durdu": true,
+    "durdu": false,
     "kanit": "spec parametre sayisi okunamadi: donanim butcesi denetlenemez",
     "kosul": "S3",
-    "onay": null,
+    "onay": {
+      "gerekce": "operator emri 2026-09-26: otomasyonu dondur; S3 okuma yolu 2026-09-24'te duzeltildi, taze K6 olcumu gecerli",
+      "tarih": "2026-09-26T23:59:00"
+    },
     "tarih": "2026-09-24T14:27:42"
   },
   "en_iyi_skor": 6.671741,
