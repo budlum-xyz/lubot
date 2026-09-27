@@ -45,6 +45,7 @@ pub mod odeme;
 pub mod olcum;
 pub mod queue;
 pub mod ratchet;
+pub mod sema;
 pub mod sertleme;
 pub mod sikistir;
 pub mod sir;

@@ -50,6 +50,7 @@ members = [
   "crates/kanaat",
   "crates/sertlestirme",
   "crates/kodlayici",
+  "crates/sema-cozucu",
   "crates/nicem",
   "crates/tasiyici",
 ]
