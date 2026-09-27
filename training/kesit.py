@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 KAYIT = ROOT / "training" / "eval" / "sonuclar" / "kesit-2026-09-27.json"
 ETIKET = "kesit |"
 TAM_ALANLAR = ("derinlik", "genislik", "d_k", "izgara", "kosan",
-               "parametre_en_az", "parametre_tam", "parametre_genislik_en_az")
+               "parametre_en_az", "parametre_tam", "parametre_genislik_en_az", "tam_ozdes")
 
 
 def _test_kos() -> tuple[int, str]:
@@ -71,6 +71,7 @@ def olc() -> dict:
     olcum["sure_saniye"] = round(time.monotonic() - basla, 2)
     olcum["olcut_sonucu"] = bool(
         olcum["kosan"] == olcum["derinlik"] * 3
+        and olcum["tam_ozdes"] == 1
         and olcum["parametre_tam"] > 0
         and olcum["parametre_genislik_en_az"] < olcum["parametre_tam"]
     )
@@ -91,7 +92,7 @@ def _kayit(olcum: dict) -> dict:
             "sonuc": bool(olcum["olcut_sonucu"]),
             "ifade": (
                 "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, "
-                "sonlu pozitif kayip) VE tam kesitin parametresi girdi spec'ine esit VE "
+                "sonlu pozitif kayip) VE tam agirliklar bit ozdes (tam_ozdes=1) VE "
                 "en dar genislik kesitinin parametresi tam kesitten kucuk"
             ),
         },
@@ -104,15 +105,15 @@ def _kayit(olcum: dict) -> dict:
         },
         "kanit": olcum,
         "uyari": (
-            "Kesit bir **spec** islemidir: agirlik tasimaz, agirlik kirpmaz. Olculen sey "
+            "Kesit ayni kaynak agirliklardan koordinatla kirpilir. Olculen sey "
             "'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis "
             "model kaliteyi koruyor' degil."
         ),
         "olculmeyen": [
             "kesilmis modelin sinav/kalite davranisi (egitim ve sinav kosusu ister)",
-            "agirlik kirpma: kesit yalnizca spec uretir; agirliklardan dilim alma ayri is",
+            "optimizer momentlerini alt-modele tasima ve ortak agirlik egitimi olculmedi",
             "ortadan katman cikarma (sadece bastan kisaltma olculdu)",
-            "K/V kafa gruplarinin kesitte yeniden hizalanmasi (grup orani korunuyor)",
+            "K/V grup orani degisebilir: dar kesitin kaynakla fonksiyonel esdegerligi iddia edilmez",
         ],
     }
 
@@ -151,6 +152,7 @@ def _bulgu(kayit: dict) -> str | None:
             return f"pozitif tam sayi olmayan kanit: {alan}"
     sonuc = bool(
         kanit["kosan"] == kanit["derinlik"] * 3
+        and kanit["tam_ozdes"] == 1
         and kanit["parametre_tam"] > 0
         and kanit["parametre_genislik_en_az"] < kanit["parametre_tam"]
     )

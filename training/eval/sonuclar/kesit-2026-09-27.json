@@ -10,28 +10,29 @@
     "parametre_en_az": 78720.0,
     "parametre_genislik_en_az": 21344.0,
     "parametre_tam": 216192.0,
-    "sure_saniye": 0.89
+    "sure_saniye": 2.18,
+    "tam_ozdes": 1.0
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.89
+    "sure_saniye": 2.18
   },
   "kosucu": "betik",
   "olculmeyen": [
     "kesilmis modelin sinav/kalite davranisi (egitim ve sinav kosusu ister)",
-    "agirlik kirpma: kesit yalnizca spec uretir; agirliklardan dilim alma ayri is",
+    "optimizer momentlerini alt-modele tasima ve ortak agirlik egitimi olculmedi",
     "ortadan katman cikarma (sadece bastan kisaltma olculdu)",
-    "K/V kafa gruplarinin kesitte yeniden hizalanmasi (grup orani korunuyor)"
+    "K/V grup orani degisebilir: dar kesitin kaynakla fonksiyonel esdegerligi iddia edilmez"
   ],
   "olcut": {
     "ad": "her_derinlikte_kesit_kosar_ve_parametre_monoton",
-    "ifade": "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, sonlu pozitif kayip) VE tam kesitin parametresi girdi spec'ine esit VE en dar genislik kesitinin parametresi tam kesitten kucuk",
+    "ifade": "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, sonlu pozitif kayip) VE tam agirliklar bit ozdes (tam_ozdes=1) VE en dar genislik kesitinin parametresi tam kesitten kucuk",
     "sonuc": true
   },
   "port_karti": "workspace:port-kartlari/needle-derinlik-genislik.md",
   "tarih": "2026-09-27",
-  "uyari": "Kesit bir **spec** islemidir: agirlik tasimaz, agirlik kirpmaz. Olculen sey 'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis model kaliteyi koruyor' degil."
+  "uyari": "Kesit ayni kaynak agirliklardan koordinatla kirpilir. Olculen sey 'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis model kaliteyi koruyor' degil."
 }
