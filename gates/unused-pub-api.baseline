@@ -298,3 +298,16 @@ egitim:ENGRAM_SIHIR
 egitim:ENGRAM_SURUM
 egitim:EngramTasimaHatasi
 egitim:EngramTasiyici
+# sema jeton (direktif 7.3: sekizinci modulun ornekleme yarisi) bagli degil:
+# jeton maskesi hicbir cikarim cagrisindan gecmiyor, cunku decode yolunun
+# sozlugu henuz bu modulden gecmiyor. Cagri baglaninca bu satirlar silinir.
+egitim:JetonRaporu
+egitim:JetonRed
+egitim:SemaJeton
+egitim:SozlukRed
+egitim:YuruyusOlcum
+egitim:baytlari_topla
+egitim:coz_jetonlar
+egitim:maskesiz_yuruyus_olc
+egitim:olcum_sozlugu
+egitim:yuruyus_olc

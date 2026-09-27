@@ -1,0 +1,43 @@
+{
+  "burada_olculen": {
+    "bos_belgede_erisilmez_bayt": 166,
+    "bos_belgede_izinli_bayt": 179,
+    "bos_belgede_red_bayt": 77,
+    "cok_baytli_jeton": 20,
+    "sozlugun_yazabildigi_onbayt": 13,
+    "sozluk_jeton": 26,
+    "sozluk_logit": 27,
+    "utf8_yarim_birakan_jeton": []
+  },
+  "kaynak_dosya": "crates/egitim/src/sema_jeton.rs",
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.0
+  },
+  "kosucu": "betik",
+  "olcum": "sema-jeton-sozluk-muhasebesi",
+  "olcut": {
+    "ad": "maskeli_yuruyus_kacissiz_ve_sozluk_muhasebesi_iki_yoldan_ayni",
+    "ifade": "256 maskeli rastgele yuruyusun tamaminda sema_cozucu::coz kabul eder (kacis=0) VE ayni tohumla maskesiz taban en az bir gecersiz belge uretir VE Python'un UTF-8 tanimindan turettigi izinli/erisilmez bayt sayilari Rust olcumundekiyle ayni",
+    "sonuc": true
+  },
+  "rust_olcumu": {
+    "bos_belgede_izinli": 26,
+    "bos_belgede_tuzak": 0,
+    "kaynak": "rust",
+    "maskeli_adim": 7600,
+    "maskeli_bayt": 24434,
+    "maskeli_cikmaz": 0,
+    "maskeli_kacis": 0,
+    "maskeli_kapandi": 204,
+    "maskeli_maskelenen": 2412,
+    "maskeli_yuruyus": 256,
+    "maskesiz_kacis": 35,
+    "maskesiz_yuruyus": 256,
+    "not": "yuruyus sayilari sema_jeton::olcum_raporu() ile olculur; sema Python'da ucuncu kez yazilmadi"
+  },
+  "tarih": "2026-09-27"
+}

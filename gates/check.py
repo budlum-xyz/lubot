@@ -9470,7 +9470,159 @@ def selftest_omurga_sozlesmesi() -> None:
             raise SystemExit("geri alinan agac hala kirmizi")
 
 
+SEMA_JETON_MARKERLAR = (
+    # Reddin adi: cikmaz bir jeton ikamesiyle degil, adlandirilmis hatayla biter.
+    ("JetonRed::KabulEdilenJetonYok", "red varyanti sokulmus: cikmaz artik adlandirilmiyor"),
+    ("KabulEdilenJetonYok {", "red varyanti tanimi yok"),
+    # Butunluk: jeton kismen yazilamaz.
+    ("fn jeton_dene(", "jeton_dene sokulmus: jeton butun olarak denenmiyor"),
+    ("JetonBaytiRed", "ic-bayt reddi sokulmus: red hangi baytta oldugunu soylemiyor"),
+    # Maske ve sert red.
+    ("pub fn maskele(", "maskele yok: logit maskesi uygulanmiyor"),
+    ("f64::NEG_INFINITY", "maske yumusatilmis: reddedilen jeton -inf'e gitmiyor"),
+    ("pub fn jeton_izin_verilir(", "izin sorusu yan etkisiz sorulamiyor"),
+    ("pub fn bitirebilir(", "bitirebilir yok: cikmaz ile bitis ayirt edilemez"),
+    # Beyanli sinirlar sayilir halde durmali; gizlenmeleri en kolay sayilar bunlar.
+    ("pub fn tuzak_sayisi(", "tuzak sayaci sokulmus: tek-jeton ileri bakisin sinirini kimse olcmuyor"),
+    ("pub fn erisilmez_bayt_sayisi(", "erisilmez bayt sayaci sokulmus: sozlugun maliyeti olculmuyor"),
+    # Saglamlik alttaki katmana karsi olculur, kendi kanaatiyle degil.
+    ("crate::sema_cozucu::coz", "capraz kontrol sokulmus: kacis alt katmana sorulmuyor"),
+    ("maskesiz_yuruyus_olc", "maskesiz taban sokulmus: maskenin etkisi varsayilmis"),
+    ("to_bits()", "bit-ozdeslik olcumu sokulmus"),
+)
+
+
+def _sema_jeton_denetle(kaynak: Path) -> list:
+    """Sozlesme metin duzeyinde ayakta mi: jeton butun olarak denenir, red
+    adlandirilir, maske sertlestirir, iki beyanli sinir sayilir ve modul
+    parametre tutmaz."""
+    if not kaynak.exists():
+        return [f"kaynak yok: {kaynak}"]
+    metin = kaynak.read_text(encoding="utf-8")
+    ihlaller = [mesaj for imza, mesaj in SEMA_JETON_MARKERLAR if imza not in metin]
+    if "pub const fn parametre_sayisi() -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("modul parametre tutmaya basladi (parametre_sayisi != 0)")
+    # Yumusatmanin klasik bicimleri: reddi yutup bir adaya dusmek, ya da
+    # jetonun kabul edilen onekini yazip gerisini atmak.
+    for yasak in ("en_yakin_jeton", "fallback_jeton", "yumusat(", "kismi_yaz("):
+        if yasak in metin:
+            ihlaller.append(f"yumusatma yolu eklenmis: {yasak}")
+    return ihlaller
+
+
+def gate_sema_jeton_maskeler() -> str:
+    """Jeton maskesi olculur halde duruyor: bir jeton ancak butun baytlari
+    kabul edilirse izinlidir, reddedilen jeton -inf'e gider, cikmaz
+    adlandirilmis bir hatadir, ve maskenin sagladigi dil alttaki bayt
+    otomatina karsi yuruyusle olculur (kacis sifir). Sozluk muhasebesi
+    Python'da UTF-8 tanimindan bagimsiz turetilir ve Rust olcumuyle
+    karsilastirilir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "sema_jeton.rs"
+    ihlaller = _sema_jeton_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("sema jeton sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+
+    kayit_yolu = ROOT / "training" / "eval" / "sonuclar" / "sema-jeton-2026-09-27.json"
+    if not kayit_yolu.is_file():
+        raise SystemExit("sema jeton kaydi yok: sozluk maliyeti olculemez")
+    kayit = json.loads(kayit_yolu.read_text(encoding="utf-8"))
+    kosu = subprocess.run(
+        [sys.executable, str(ROOT / "training" / "sema_jeton.py"), "--olc"],
+        cwd=ROOT, capture_output=True, text=True, check=False, timeout=300,
+    )
+    if kosu.returncode != 0:
+        raise SystemExit(f"uretici dustu: {(kosu.stderr or kosu.stdout)[-300:]}")
+    taze = json.loads(kosu.stdout[kosu.stdout.index("{"):])
+    if taze["burada_olculen"] != kayit["burada_olculen"]:
+        raise SystemExit(
+            "kayit bayat: sozluk degismis ama kayit yeniden uretilmemis\n"
+            f"  taze:  {taze['burada_olculen']}\n  kayit: {kayit['burada_olculen']}"
+        )
+    if kayit["rust_olcumu"]["maskeli_kacis"] != 0:
+        raise SystemExit("maskeli yuruyus sema disina cikmis: kayit kacis bildiriyor")
+    if kayit["rust_olcumu"]["maskesiz_kacis"] <= 0:
+        raise SystemExit("maskesiz taban hic hata vermemis: maskenin etkisi olculmemis")
+
+    kosu_test = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "sema_jeton"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu_test.stdout + kosu_test.stderr
+    if kosu_test.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+
+    b = taze["burada_olculen"]
+    return (
+        f"jeton maskesi olculur: {gecen} test, jeton butun olarak denenir, red "
+        f"adlandirilmis (yumusatma yok), maske -inf; {b['sozluk_jeton']} jetonluk "
+        f"sozlukte semanin izin verdigi {b['bos_belgede_izinli_bayt']} baytin "
+        f"{b['bos_belgede_erisilmez_bayt']}'i hicbir jetonla yazilamiyor (beyanli, "
+        f"sozlugun maliyeti); maskeli yuruyus 0 kacis, maskesiz taban "
+        f"{kayit['rust_olcumu']['maskesiz_kacis']}/{kayit['rust_olcumu']['maskesiz_yuruyus']}"
+    )
+
+
+def selftest_sema_jeton_maskeler() -> None:
+    """Kanaryalar: sokulmus red varyanti, yumusatilmis maske, kismi yazma yolu,
+    sokulmus butunluk denemesi, sokulmus capraz kontrol, sokulmus taban, sokulmus
+    sinir sayaclari ve parametre tutan kopya yakalanmali."""
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "sema_jeton.rs"
+    if _sema_jeton_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    metin = gercek.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "sema_jeton.rs"
+        kanaryalar = (
+            ("red varyanti sokulmus kopya",
+             metin.replace("KabulEdilenJetonYok", "SessizceDevamEt")),
+            ("yumusatilmis maske",
+             metin.replace("f64::NEG_INFINITY", "-1.0e9")),
+            ("butunluk denemesi sokulmus kopya",
+             metin.replace("fn jeton_dene(", "fn x(")),
+            ("ic-bayt reddi sokulmus kopya",
+             metin.replace("JetonBaytiRed", "Sessiz")),
+            ("capraz kontrol sokulmus kopya",
+             metin.replace("crate::sema_cozucu::coz", "yoksay")),
+            ("maskesiz taban sokulmus kopya",
+             metin.replace("maskesiz_yuruyus_olc", "yoksay")),
+            ("tuzak sayaci sokulmus kopya",
+             metin.replace("pub fn tuzak_sayisi(", "fn gizli_tuzak(")),
+            ("erisilmez bayt sayaci sokulmus kopya",
+             metin.replace("pub fn erisilmez_bayt_sayisi(", "fn gizli_erisilmez(")),
+            ("bit-ozdeslik olcumu sokulmus kopya",
+             metin.replace("to_bits()", "abs()")),
+            ("parametre tutan kopya",
+             metin.replace(
+                 "pub const fn parametre_sayisi() -> usize {\n        0\n    }",
+                 "pub const fn parametre_sayisi() -> usize {\n        1\n    }", 1)),
+            ("kismi yazma yolu eklenmis kopya",
+             metin.replace("pub fn maskele(", "fn kismi_yaz() {}\n    pub fn maskele(", 1)),
+        )
+        for ad, icerik in kanaryalar:
+            if icerik == metin:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            bozuk.write_text(icerik, encoding="utf-8")
+            if not _sema_jeton_denetle(bozuk):
+                raise SystemExit(f"{ad} yakalanmadi")
+
+
 GATES_EXTRA = {
+    "sema-jeton-maskeler": (gate_sema_jeton_maskeler, selftest_sema_jeton_maskeler),
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
         selftest_credential_shapes_are_measured,
