@@ -71,10 +71,11 @@ impl EcParams {
 }
 
 /// How an artefact splits: the shard size every shard is padded to, and the
-/// padding the last data shard carries.
+/// total padding across the data shards (possibly more than one whole shard).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShardPlan {
     params: EcParams,
+    total_len: u64,
     shard_size: u64,
     pad_len: u64,
 }
@@ -89,10 +90,14 @@ pub fn plan(params: EcParams, total_len: u64) -> Result<ShardPlan, Refusal> {
     if total_len == 0 {
         return Err(Refusal::EmptyArtefact);
     }
-    let shard_size = total_len.div_ceil(u64::from(params.data));
-    let pad_len = shard_size * u64::from(params.data) - total_len;
+    let data = u64::from(params.data);
+    let shard_size = total_len.div_ceil(data);
+    // The padded total may exceed u64::MAX even though every shard fits.
+    // Compute the padding from the remainder, never from that product.
+    let pad_len = (data - total_len % data) % data;
     Ok(ShardPlan {
         params,
+        total_len,
         shard_size,
         pad_len,
     })
@@ -138,13 +143,22 @@ impl ShardPlan {
 /// verified by concatenating data shards and stripping the declared padding.
 ///
 /// # Errors
-/// [`Refusal::ShardOutOfRange`] when `index` is not a data shard.
+/// [`Refusal::ShardOutOfRange`] when `index` is not a data shard, or
+/// [`Refusal::ArtefactLengthMismatch`] before allocation when `bytes` do not
+/// have the length the plan was made for. Equal length is not a digest check;
+/// the caller must still verify the artefact's content address.
 pub fn data_shard(bytes: &[u8], shard_plan: ShardPlan, index: u32) -> Result<Vec<u8>, Refusal> {
     let count = shard_plan.data_shards();
     if index >= count {
         return Err(Refusal::ShardOutOfRange { index, data: count });
     }
     let len = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if len != shard_plan.total_len {
+        return Err(Refusal::ArtefactLengthMismatch {
+            expected: shard_plan.total_len,
+            measured: len,
+        });
+    }
     let start = u64::from(index) * shard_plan.shard_size;
     let begin = usize::try_from(start.min(len)).unwrap_or(0);
     let end = usize::try_from(start.saturating_add(shard_plan.shard_size).min(len)).unwrap_or(0);
@@ -321,5 +335,70 @@ mod tests {
         assert_eq!(forward.len(), 4);
         assert_eq!(forward[0].shard, 0);
         assert_eq!(forward[0].holder, "alpha");
+    }
+
+    #[test]
+    fn plans_at_the_u64_limit_have_exact_padding() {
+        for data in 1..MAX_SHARDS {
+            let params = EcParams::new(data, MAX_SHARDS - data).expect("valid");
+            for len in [
+                1,
+                2,
+                253,
+                254,
+                255,
+                256,
+                u64::MAX - 254,
+                u64::MAX - 1,
+                u64::MAX,
+            ] {
+                let p = plan(params, len).expect("plan");
+                let padded = u128::from(p.shard_size()) * u128::from(data);
+                assert_eq!(padded, u128::from(len) + u128::from(p.pad_len()));
+                assert!(p.pad_len() < u64::from(data));
+            }
+        }
+    }
+
+    #[test]
+    fn shards_refuse_input_lengths_different_from_the_plan() {
+        let p = plan(EcParams::new(2, 1).expect("params"), 4).expect("plan");
+        for len in [0, 1, 3, 5, 8] {
+            let bytes = vec![7; len];
+            for index in 0..p.data_shards() {
+                let refusal = data_shard(&bytes, p, index).expect_err("length mismatch");
+                assert!(refusal.message().contains("length mismatch"));
+            }
+        }
+    }
+
+    #[test]
+    fn extreme_plan_refuses_short_input_before_allocating() {
+        let p = plan(EcParams::new(1, 1).expect("params"), u64::MAX).expect("plan");
+        let refusal = data_shard(b"x", p, 0).expect_err("length mismatch before allocation");
+        assert!(refusal.message().contains("length mismatch"));
+    }
+
+    #[test]
+    fn small_plans_round_trip_including_multiple_padding_shards() {
+        for data in 1..MAX_SHARDS {
+            let params = EcParams::new(data, MAX_SHARDS - data).expect("params");
+            for len in 1u8..=17 {
+                let bytes: Vec<_> = (0..len).collect();
+                let p = plan(params, u64::from(len)).expect("plan");
+                let mut joined = Vec::new();
+                for index in 0..data {
+                    let shard = data_shard(&bytes, p, index).expect("shard");
+                    assert_eq!(u64::try_from(shard.len()).expect("length"), p.shard_size());
+                    joined.extend(shard);
+                }
+                assert_eq!(&joined[..bytes.len()], bytes);
+                assert!(joined[bytes.len()..].iter().all(|byte| *byte == 0));
+                assert_eq!(
+                    u64::try_from(joined.len() - bytes.len()).expect("padding"),
+                    p.pad_len()
+                );
+            }
+        }
     }
 }

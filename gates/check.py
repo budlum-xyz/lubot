@@ -7154,6 +7154,22 @@ def _alim_refusal(run: subprocess.CompletedProcess[str], needle: str) -> None:
         raise SystemExit(f"the refusal does not name {needle!r}: {text[:200]!r}")
 
 
+AGIRLIK_REGRESYONLARI = (
+    "plans_at_the_u64_limit_have_exact_padding",
+    "shards_refuse_input_lengths_different_from_the_plan",
+    "extreme_plan_refuses_short_input_before_allocating",
+    "small_plans_round_trip_including_multiple_padding_shards",
+)
+
+
+def _agirlik_test_kaniti(stdout: str, returncode: int) -> None:
+    if returncode != 0 or "test result: ok." not in stdout:
+        raise SystemExit("weight shard tests did not pass")
+    for name in AGIRLIK_REGRESYONLARI:
+        if f"test agirlik::tests::{name} ... ok" not in stdout:
+            raise SystemExit(f"weight shard regression did not run: {name}")
+
+
 def gate_alim_hatti_kapali() -> str:
     """`lubot alim dogrula` reads a manifest from storage and admits it whole
     or refuses it by name: an unadmitted source class (K2), a licence outside
@@ -7279,15 +7295,34 @@ def gate_alim_hatti_kapali() -> str:
         parsed = [json.loads(line) for line in after.splitlines()]
         if not after.startswith(prefix) or len(parsed) != 3:
             raise SystemExit("resumed ledger lost prefix or record framing")
+    shard_tests = subprocess.run(
+        ["cargo", "test", "-p", "lubot-alim", "agirlik::tests"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    _agirlik_test_kaniti(shard_tests.stdout, shard_tests.returncode)
     return (
         "the intake admits whole or refuses by name: K2 class, licence, path, "
-        "ledger, digest, step; six provenance fields and final-line framing"
+        "ledger, digest, step; six provenance fields and final-line framing; "
+        "weight shards: overflow boundary, length binding, round-trip"
     )
 
 
 def selftest_alim_hatti_kapali() -> None:
     """The canary: the refusal expectation must reject a run that succeeded,
     or the gate cannot fire at all."""
+    evidence = "\n".join(
+        f"test agirlik::tests::{name} ... ok" for name in AGIRLIK_REGRESYONLARI
+    ) + "\ntest result: ok. 4 passed; 0 failed"
+    _agirlik_test_kaniti(evidence, 0)
+    for output, code in (
+        (evidence, 1), ("test result: ok. 0 passed; 0 failed", 0),
+        (evidence.replace(AGIRLIK_REGRESYONLARI[0], "removed_regression"), 0),
+    ):
+        try:
+            _agirlik_test_kaniti(output, code)
+        except SystemExit:
+            continue
+        raise AssertionError("weight gate accepted failed or missing regression evidence")
     benign = _cli("ceilings")
     try:
         _alim_refusal(benign, "K2")
