@@ -55,6 +55,7 @@
 //! band) has not been re-measured here.
 
 pub mod dikkat;
+pub mod hadamard;
 pub mod katman;
 pub mod konum;
 pub mod pencere;
@@ -295,6 +296,14 @@ impl Tohum {
     fn birim(&mut self) -> f64 {
         let ham = self.sonraki() >> 11;
         ((ham as f64) + 0.5) / ((1u64 << 53) as f64)
+    }
+
+    /// One raw draw, for callers that need a whole number rather than a
+    /// normal sample - a frozen permutation, for instance, where a Gaussian
+    /// would have to be rounded and the rounding would bias the shuffle.
+    #[must_use]
+    pub fn tam_sayi(&mut self) -> u64 {
+        self.sonraki()
     }
 
     /// One standard normal sample.

@@ -75,6 +75,34 @@ lineer-geri geçiş blokları yeniden kullanılır, yalnız `⊙` gradyanı yeni
 **K-çapraz:** K1 uygun (desen bizim); K6: param formülü değişir, tavan yeniden türetilir
 (`recommend_model_size` zinciri otomatik); EE: aile değişikliği — lubot-a2 adayı.
 
+**2026-09-27 düzeltmesi: bu notun tarif ettiği blok, port kartının bloğu değil.**
+Yukarıdaki `h = (W1·x) ⊙ act(W2·x)` bir *kapılı* MLP'dir ve `egitim::mlp_hadamard`
+onu uygular. Port kartının bloğu ise başka bir şeydir ve adı yüzünden aynı
+sanılıyordu: **Kronecker çarpanlı Walsh-Hadamard dönüşümü**. Kartın aritmetiği
+sayısal olarak birebir alındı ve `crates/omurga/src/hadamard.rs`'e yazıldı
+(adlar ve dosya düzeni bu deponun; hiçbir dosya ithal edilmedi, lisans notu port
+kartında durur):
+
+| | bu notun bloğu (`egitim::mlp_hadamard`) | kartın bloğu (`omurga::hadamard`) |
+|---|---|---|
+| çekirdek | iki projeksiyonun eleman-bazlı çarpımı | üç aşamalı Kronecker-Walsh dönüşümü |
+| ara genişlik | `d_r` seçilir | `n` = `d_model`'in üstündeki ikinin kuvveti, seçim yok |
+| çarpan maliyeti | `3·d·d_r` | `3·(ba² + bb²)`, `ba·bb = n` |
+| 768 genişlikte | `d_r`'ye bağlı | 6144 çarpan sayısı, yoğun eşdeğeri 1.048.576 |
+| aktivasyon | GELU kolu | SiLU, ikinci aşamada |
+| koşullama | yok | `c = 1 + softmax(x·W_v)·W_u`, rank 8, `W_u` sıfır → taze blokta `c = 1` (bit-özdeş) |
+| karıştırma | yok | iki donmuş permütasyon, aşamalar arasında |
+| çıkış ölçeği | init kuralı | çıkış diagonali 0.02, yani blok sessiz başlar |
+
+**Beyan edilen tek sapma:** iki donmuş permütasyon kartın üretecinden değil bu
+deponun `Tohum`'undan çekiliyor. Permütasyon bir *bijeksiyon* olduğu sürece
+dönüşümün yapısı aynıdır; hangi bijeksiyon olduğu ise farklıdır, yani eğitilmiş
+ağırlıklarda iki uygulama bit bit uyuşmaz. Bu saklanmadı: kapı permütasyonun
+gerçekten bijeksiyon olduğunu ölçüyor.
+
+**Ölçülmeyen:** geri geçiş yazılmadı (bu crate ileri-yönlü). Hangi bloğun aileye
+gireceği hâlâ M1'dir ve bu iki blok artık **ayrı iki aday**tır, tek aday değil.
+
 **Açık sorular (işaretli, mimari karar):** d_r seçimi ölçüm ister (aday ızgara yöntemi,
 NN-3'ün 63 adaylı desenine eşdeğer); Hadamard MLP'nin bu korpusun api/behaviour ağırlığı
 altında standart MLP'den iyi olup olmadığı **ölçülmeden varsayılmaz**.

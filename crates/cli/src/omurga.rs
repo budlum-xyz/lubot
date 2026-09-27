@@ -23,6 +23,10 @@
 //!   is measured rather than assumed to work.
 
 use lubot_omurga::dikkat::{yumusak_azami, DikkatHatasi, Gqa};
+use lubot_omurga::hadamard::{
+    blok_bol, karisim, kron_uygula, silu, walsh, Hadamard, HadamardHatasi, HadamardSekli,
+    CIKIS_DIAGONAL_INIT, KARISIM_TOHUMLARI, KARISIM_UST_YARI_OFSETI, KOSUL_INIT_STD, KOSUL_RANK,
+};
 use lubot_omurga::katman::{carp, gelu, kapili_ileri, KatmanHatasi, Norm};
 use lubot_omurga::konum::{Eslesme, KonumHatasi, Rope};
 use lubot_omurga::pencere::{Kapsam, PencereHatasi, Plan};
@@ -37,6 +41,10 @@ fn deger_bul(args: &[String], ad: &str) -> Option<String> {
         .position(|a| a == ad)
         .and_then(|i| args.get(i + 1))
         .cloned()
+}
+
+fn bayrak(args: &[String], ad: &str) -> bool {
+    args.iter().any(|a| a == ad)
 }
 
 fn sayi(args: &[String], ad: &str, varsayilan: usize) -> Result<usize, String> {
@@ -72,6 +80,7 @@ fn kullanim() -> String {
         "  lubot omurga donme [--kafa-boyutu D] [--eslesme komsu|yariya]",
         "  lubot omurga ileri [--jeton N] [--tohum S]",
         "  lubot omurga birlesim [--tohum S] [--tohum-b S]",
+        "  lubot omurga hadamard [--genislik D] [--jeton N] [--tohum S] [--yariya-ayrik]",
         "  lubot omurga parca",
         "",
         "shared shape flags: --genislik --katman --kafa --kv-kafa --dff --sozluk",
@@ -341,6 +350,101 @@ fn parca(_args: &[String]) -> Result<(), String> {
 ///
 /// A usage string when the verb is missing or unknown, and whatever the
 /// backbone refuses with otherwise.
+/// The Kronecker-Walsh conditioned feed-forward, counted and run.
+///
+/// Prints what the block costs against the dense layer it would replace, then
+/// runs it once: the fresh-block identities (`c == 1`, zero maps to zero) are
+/// printed as measurements rather than asserted in prose.
+fn hadamard(args: &[String]) -> Result<(), String> {
+    let genislik = sayi(args, "--genislik", 768)?;
+    let jeton = sayi(args, "--jeton", 4)?;
+    let tohum_no = sayi(args, "--tohum", 1)? as u64;
+    let yariya_ayrik = bayrak(args, "--yariya-ayrik");
+
+    let sekil = HadamardSekli::yeni(genislik).map_err(|e: HadamardHatasi| format!("sekil: {e}"))?;
+    let (yogun, yapisal) = sekil.carp_tasarrufu();
+    println!(
+        "genislik: {} | dolgulu: {} | blok: {}x{} | kosul rank: {}",
+        sekil.d_model, sekil.n, sekil.ba, sekil.bb, KOSUL_RANK
+    );
+    println!(
+        "parametre: {} (formul) | yogun esdeger {} carpim, yapisal {} carpim",
+        sekil.param_sayisi(),
+        yogun,
+        yapisal
+    );
+
+    let mut tohum = Tohum::yeni(tohum_no);
+    let blok = Hadamard::yeni(genislik, &mut tohum, yariya_ayrik)
+        .map_err(|e: HadamardHatasi| format!("kurulum: {e}"))?;
+    println!(
+        "tutulan parametre: {} | formulle ayni mi: {}",
+        blok.tutulan_param_sayisi(),
+        blok.tutulan_param_sayisi() == sekil.param_sayisi()
+    );
+
+    let x: Vec<f32> = (0..jeton * genislik)
+        .map(|i| ((i % 17) as f32) * 0.05 - 0.4)
+        .collect();
+    let c = blok.kosul(&x[..genislik]);
+    let kosul_bir = c.iter().all(|v| v.to_bits() == 1.0f32.to_bits());
+    println!("taze kosul vektoru tam olarak 1 mi: {kosul_bir} (init std {KOSUL_INIT_STD})");
+
+    let y = blok
+        .ileri(&x)
+        .map_err(|e: HadamardHatasi| format!("ileri: {e}"))?;
+    let enb = y.iter().fold(0.0f32, |a, v| a.max(v.abs()));
+    let rms =
+        (y.iter().map(|v| f64::from(*v) * f64::from(*v)).sum::<f64>() / (y.len() as f64)).sqrt();
+    println!(
+        "cikis: {} sayi | en buyuk |y| {:.6} | rms {:.6} | cikis diagonali {}",
+        y.len(),
+        enb,
+        rms,
+        CIKIS_DIAGONAL_INIT
+    );
+
+    let sifir = blok
+        .ileri(&vec![0.0f32; genislik])
+        .map_err(|e: HadamardHatasi| format!("ileri: {e}"))?;
+    let sifir_kalir = sifir.iter().all(|v| v.to_bits() == 0.0f32.to_bits());
+    println!("sifir girdi tam olarak sifir mi: {sifir_kalir}");
+
+    let (ba, bb) = blok_bol(sekil.n);
+    let h = walsh(ba);
+    let dik: f32 = (0..ba).map(|k| h[k] * h[k]).sum();
+    println!(
+        "walsh {ba}x{ba}: ilk satir normu {dik:.6} | ikinci faktor {bb}x{bb} | silu(1) {:.6}",
+        silu(1.0)
+    );
+
+    // Two orthogonal factors cannot change the length of what they transform,
+    // so the Kronecker stage is measured by the one number that would move if
+    // a factor were unnormalised: the norm.
+    let hb = walsh(bb);
+    let birim: Vec<f32> = (0..sekil.n)
+        .map(|i| if i == 0 { 1.0 } else { 0.0 })
+        .collect();
+    let donusen = kron_uygula(&birim, &h, ba, &hb, bb);
+    let norm = donusen
+        .iter()
+        .map(|v| f64::from(*v) * f64::from(*v))
+        .sum::<f64>()
+        .sqrt();
+    println!("kronecker asamasi normu korur mu: {norm:.6} (beklenen 1)");
+
+    let p1 = karisim(sekil.n, KARISIM_TOHUMLARI.0, yariya_ayrik);
+    let p2 = karisim(sekil.n, KARISIM_TOHUMLARI.1, yariya_ayrik);
+    println!(
+        "karisim: iki permutasyon ayri mi {} | yariya ayrik {} | ust yari ofseti {}",
+        p1 != p2,
+        yariya_ayrik,
+        KARISIM_UST_YARI_OFSETI
+    );
+    println!("olculmedi: geri gecis yok, bu blok egitilmedi; M1 damgasi bekliyor");
+    Ok(())
+}
+
 pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("plan") => plan(&args[1..]),
@@ -348,6 +452,7 @@ pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
         Some("donme") => donme(&args[1..]),
         Some("ileri") => ileri(&args[1..]),
         Some("birlesim") => birlesim(&args[1..]),
+        Some("hadamard") => hadamard(&args[1..]),
         Some("parca") => parca(&args[1..]),
         _ => Err(kullanim()),
     }
@@ -370,6 +475,27 @@ mod tests {
     #[test]
     fn plan_calisir() {
         cmd_omurga(&arg(&["plan", "--katman", "7", "--periyot", "3"])).unwrap();
+    }
+
+    #[test]
+    fn hadamard_calisir() {
+        assert!(hadamard(&arg(&["--genislik", "64", "--jeton", "2"])).is_ok());
+    }
+
+    #[test]
+    fn hadamard_yariya_ayrik_calisir() {
+        assert!(hadamard(&arg(&["--genislik", "32", "--yariya-ayrik"])).is_ok());
+    }
+
+    #[test]
+    fn hadamard_sifir_genislik_reddedilir() {
+        assert!(hadamard(&arg(&["--genislik", "0"])).is_err());
+    }
+
+    #[test]
+    fn bayrak_yoksa_false() {
+        assert!(!bayrak(&arg(&["--genislik", "8"]), "--yariya-ayrik"));
+        assert!(bayrak(&arg(&["--yariya-ayrik"]), "--yariya-ayrik"));
     }
 
     #[test]

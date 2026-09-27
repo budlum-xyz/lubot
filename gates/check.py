@@ -8845,6 +8845,16 @@ _OMURGA_SOZLESME = [
         ],
     ),
     (
+        "crates/omurga/src/hadamard.rs",
+        [
+            ("fn param_sayisi_iki_yoldan_ayni", "the structured block's parameter count is derived only once"),
+            ("fn kosul_sifirken_birdir", "a fresh conditioning path is not measured to be a no-op"),
+            ("fn karisim_gercek_permutasyon", "the frozen mixing is not measured to be a bijection"),
+            ("fn kron_yogun_esdeger", "the factored transform is never checked against its dense equivalent"),
+            ("fn walsh_dik", "the Walsh factors are not measured to be orthonormal"),
+        ],
+    ),
+    (
         "crates/omurga/src/katman.rs",
         [
             ("fn carp_satir_esleme_dogru", "nothing catches a transposed weight store"),
