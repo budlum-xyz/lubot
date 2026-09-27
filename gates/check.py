@@ -7251,9 +7251,37 @@ def gate_alim_hatti_kapali() -> str:
                   "--defter", ledger, "--adim", "3"),
             "behind the previous",
         )
+        # Existing provenance is evidence, not merely parseable JSON. Each
+        # corruption must refuse before admitting another manifest, unchanged.
+        baseline = Path(ledger).read_bytes()
+        row = json.loads(baseline.splitlines()[0])
+        for field, invalid in {
+            "manifest_id": "not-a-digest", "loader": " ", "content_id": " ",
+            "path": "../outside", "kind": "unapproved", "licence": "unapproved",
+        }.items():
+            broken = dict(row, **{field: invalid})
+            before = (json.dumps(broken) + "\n").encode()
+            Path(ledger).write_bytes(before)
+            _alim_refusal(
+                admit("--manifest", str(root / "ok.json"),
+                      "--defter", ledger, "--adim", "5"), "not a row",
+            )
+            if Path(ledger).read_bytes() != before:
+                raise SystemExit(f"refused ledger was changed: {field}")
+        # A complete last record without LF must not merge with the next JSON.
+        prefix = baseline.rstrip(b"\n")
+        Path(ledger).write_bytes(prefix)
+        resumed = admit("--manifest", str(root / "ok.json"),
+                        "--defter", ledger, "--adim", "5")
+        if resumed.returncode != 0:
+            raise SystemExit("complete final record without LF could not resume")
+        after = Path(ledger).read_bytes()
+        parsed = [json.loads(line) for line in after.splitlines()]
+        if not after.startswith(prefix) or len(parsed) != 3:
+            raise SystemExit("resumed ledger lost prefix or record framing")
     return (
         "the intake admits whole or refuses by name: K2 class, licence, path, "
-        "ledger, digest, step"
+        "ledger, digest, step; six provenance fields and final-line framing"
     )
 
 

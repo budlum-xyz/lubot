@@ -117,3 +117,30 @@ yeni bir manifest, sınıfı kümenin dışındaysa adıyla reddedilir.
   kapılarıyla yeşildir.
 - **Sayılar.** Bu belgede ölçülmüş gibi yazılmış hiçbir sayı yoktur; ölçümün
   tek kaynağı `training/ratchet.json` ile kapı çıktılarıdır.
+
+## Defter yazma sınırı
+
+`provenance::append`, mevcut defteri ve yeni satırların tamamını yazma
+kolunu açmadan denetler: manifest özeti, boş olmayan yükleyici/content_id,
+güvenli göreli yol, kapalı tür/lisans kümeleri ve azalmayan eğitim adımı.
+`content_id` manifestteki gibi opak, boş olmayan kimliktir; yeni bir digest
+zorunluluğu eklenmez. Kayıt baytlarının doğrulanması hâlâ manifest kabulünün
+işidir; defter metadata denetimi geçmiş baytların yeniden hash'lendiği iddiası
+değildir. Sıfır zaman/adım ve eşit adımlar geçerlidir.
+
+Doğrulama reddinde mevcut baytlar değişmez; yeni dosya oluşturulmaz. Boş
+batch dosya oluşturmaz. Son tam JSON kaydının LF'si eksikse yalnız ayırıcı LF
+eklenir; eksik JSON reddedilir, onarılmaz. Retlerde boş satırlar dahil
+**fiziksel satır numarası** korunur.
+
+Çağıran tek yazarı sağlamalıdır: süreçler arası kilit ve crash-atomic batch
+bu arayüzün garantisi değildir. Başarılı yazı `sync_data` ile eşlenir; I/O
+hatası sonrası yarım JSON kalırsa yeniden okumada reddedilir. Tam satırlar
+arasındaki kesinti dış bir anchor olmadan saptanamaz; batch bütünlüğü
+ispatlanmış değildir. JSON'u
+önceden serialize etmek tek başına atomik disk yazımı anlamına gelmez.
+
+English: validate the whole ledger and batch before mutation; preserve the
+existing prefix and physical line numbers. Single writer only; no claim of
+cross-process serialization or crash-atomic append. Metadata checks do not
+re-verify historical content bytes.
