@@ -9868,7 +9868,174 @@ def selftest_otonom_dongu_reddeder() -> None:
             yol.write_text(saglam, encoding="utf-8")
 
 
+
+# --------------------------------------------------------------------------
+# gate: the a2 family's shape is declared, derived twice and bound to the code
+# --------------------------------------------------------------------------
+A2_MARKERLAR = (
+    ("def hadamard_param", "Hadamard sayimi sokulmus"),
+    ("def engram_param", "engram tablosu sayimi sokulmus"),
+    ("def rota_param", "rota terimi sokulmus: parametresizlik gorunmez olur"),
+    ("def dikkat_param", "GQA sayimi sokulmus"),
+    ("matmul_etkin", "matmul payi ayri raporlanmiyor: engramin butun iddiasi bu ayrimda"),
+    ("engram_tablolari", "engram tablolarinin payi gizlenmis"),
+    ("def tavan", "K6 tavani a1 spec'inden okunmuyor: iki dosyada iki tavan"),
+)
+
+# a2 eklenirken a1'e dokunulmadigi da sozlesmenin parcasi.
+A2_A1_DOKUNULMAZ = (("name", "lubot-a1-derin-dar"), ("d_ff", 256))
+
+
+def _a2_denetle(kok) -> list:
+    """Uretici hala iki yoldan sayiyor ve a1'e dokunulmamis mi."""
+    ihlaller = []
+    uretici = kok / "training" / "model_spec_a2.py"
+    spec = kok / "training" / "model_spec_a2.json"
+    baglanti = kok / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs"
+    for yol, ad in ((uretici, "uretici"), (spec, "spec"), (baglanti, "baglanti testi")):
+        if not yol.exists():
+            ihlaller.append(f"{ad} yok: {yol}")
+    if ihlaller:
+        return ihlaller
+    metin = uretici.read_text(encoding="utf-8")
+    ihlaller += [m for imza, m in A2_MARKERLAR if imza not in metin]
+    # Uretici a1'in say_params'ini cagirmamali: o fonksiyon duz transformer sayiyor.
+    if "from model_spec import" in metin or "import model_spec\n" in metin:
+        ihlaller.append("uretici a1'in sayacini cagiriyor: duz transformer formulu a2'ye uygulanir")
+    # Baglanti testi Python'un formulunu tekrar etmemeli - Rust'a sormali.
+    bag = baglanti.read_text(encoding="utf-8")
+    if "parametre_sayisi()" not in bag:
+        ihlaller.append("baglanti testi Rust'a sormuyor: iki yol tek yola dusmus")
+    if "d_r * d_model" in bag or "2 * blok *" in bag:
+        ihlaller.append("baglanti testi Python formulunu kopyalamis: bu kontrol degil tekrar")
+    # a1 dokunulmaz.
+    a1 = json.loads((kok / "training" / "model_spec.json").read_text(encoding="utf-8"))
+    for anahtar, deger in A2_A1_DOKUNULMAZ:
+        if a1.get(anahtar) != deger:
+            ihlaller.append(f"a1 spec'i degismis: {anahtar} = {a1.get(anahtar)!r}, {deger!r} bekleniyordu")
+    return ihlaller
+
+
+def gate_a2_spec_tutarli() -> str:
+    """`lubot-a2-needle` sekli beyanli, iki yoldan turetilmis ve koda bagli:
+    Python mimari tanimindan sayiyor, Rust alt modullerin kendi
+    `parametre_sayisi()` gövdelerinden topluyor, ve bir baglanti testi ikisini
+    esitliyor. Engram tablolarinin payi ayri raporlanir (matmul gormezler),
+    rota sifir **terim olarak** yazilir, K6 tavani a1 spec'inden okunur. a1
+    ailesine dokunulmamistir."""
+    import re
+    import subprocess
+
+    ihlaller = _a2_denetle(ROOT)
+    if ihlaller:
+        raise SystemExit("a2 spec sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+
+    for bayrak in ("--self-test", "--dogrula"):
+        kosu = subprocess.run(
+            [sys.executable, str(ROOT / "training" / "model_spec_a2.py"), bayrak],
+            cwd=ROOT, capture_output=True, text=True, check=False, timeout=300,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(
+                f"model_spec_a2.py {bayrak} dustu: {(kosu.stderr or kosu.stdout)[-400:]}"
+            )
+
+    spec = json.loads((ROOT / "training" / "model_spec_a2.json").read_text(encoding="utf-8"))
+    p = spec["params"]
+    if p["matmul_etkin"] >= p["toplam"]:
+        raise SystemExit("matmul payi toplamla ayni: engram ayrimi kaybolmus")
+    if p["engram_tablolari"] <= 0:
+        raise SystemExit("engram tablosu sifir: a2 ailesi a1'den ayirt edilemez")
+    ust = spec["ceiling_reference"]["max_params_train_fp32_adamw"]
+    if p["toplam"] >= ust:
+        raise SystemExit(f"K6 ihlali: {p['toplam']} >= {ust}")
+
+    baglanti = ROOT / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs"
+    beklenen = len(re.findall(r"#\[test\]", baglanti.read_text(encoding="utf-8")))
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "--test", "a2_spec_baglanti"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("a2 baglanti testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-600:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} baglanti testi var ama {gecen} kostu; sessiz atlama var")
+
+    return (
+        f"a2 sekli tutarli: {p['toplam']:,} parametre, {gecen} baglanti testi, "
+        f"matmul payi {spec['matmul_orani']}, engram tablolari "
+        f"{p['engram_tablolari']:,} (matmul gormez), K6 payi "
+        f"{spec['ceiling_reference']['pay']}; a1 ailesi degismedi. Bagli degil."
+    )
+
+
+def selftest_a2_spec_tutarli() -> None:
+    """Kanaryalar: uretici a1'in duz-transformer sayacina baglanirsa, matmul
+    ayrimi kaldirilirsa, rota terimi silinirse, baglanti testi Rust'a sormak
+    yerine Python formulunu kopyalarsa ve a1 spec'i degistirilirse kapi
+    kirmizi yanmali."""
+    import shutil
+    import tempfile
+
+    if _a2_denetle(ROOT):
+        raise SystemExit("saglam agac metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        kok = Path(td)
+        (kok / "training").mkdir(parents=True)
+        (kok / "crates" / "egitim" / "tests").mkdir(parents=True)
+        shutil.copy(ROOT / "training" / "model_spec_a2.py", kok / "training")
+        shutil.copy(ROOT / "training" / "model_spec_a2.json", kok / "training")
+        shutil.copy(ROOT / "training" / "model_spec.json", kok / "training")
+        shutil.copy(
+            ROOT / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs",
+            kok / "crates" / "egitim" / "tests",
+        )
+        if _a2_denetle(kok):
+            raise SystemExit("kopya saglam halde denetimden gecmedi")
+
+        uretici = kok / "training" / "model_spec_a2.py"
+        baglanti = kok / "crates" / "egitim" / "tests" / "a2_spec_baglanti.rs"
+        a1json = kok / "training" / "model_spec.json"
+        kanaryalar = [
+            ("rota terimi silinmis", uretici, "def rota_param", "def _kaldirildi"),
+            ("matmul ayrimi kaldirilmis", uretici, "matmul_etkin", "toplam_tekrar"),
+            ("engram payi gizlenmis", uretici, "engram_tablolari", "gizli"),
+            ("tavan yeniden yazilmis", uretici, "def tavan", "def _sabit_tavan"),
+            ("a1 sayacina baglanmis", uretici,
+             "import argparse", "import argparse\nfrom model_spec import say_params"),
+            ("baglanti testi Rust'a sormuyor", baglanti,
+             "parametre_sayisi()", "beklenen_sabit()"),
+            ("baglanti testi Python formulunu kopyalamis", baglanti,
+             "use lubot_egitim::birlesik::BirlesikSpec;",
+             "use lubot_egitim::birlesik::BirlesikSpec;\n// d_r * d_model"),
+        ]
+        for ad, yol, eski, yeni in kanaryalar:
+            saglam = yol.read_text(encoding="utf-8")
+            bozuk = saglam.replace(eski, yeni)
+            if bozuk == saglam:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            yol.write_text(bozuk, encoding="utf-8")
+            if not _a2_denetle(kok):
+                raise SystemExit(f"{ad} yakalanmadi")
+            yol.write_text(saglam, encoding="utf-8")
+
+        # a1 spec'ine dokunmak da yakalanmali.
+        saglam = a1json.read_text(encoding="utf-8")
+        bozuk = json.loads(saglam)
+        bozuk["d_ff"] = 512
+        a1json.write_text(json.dumps(bozuk), encoding="utf-8")
+        if not _a2_denetle(kok):
+            raise SystemExit("a1 spec'inin degistirilmesi yakalanmadi")
+        a1json.write_text(saglam, encoding="utf-8")
+
+
 GATES_EXTRA = {
+    "a2-spec-tutarli": (gate_a2_spec_tutarli, selftest_a2_spec_tutarli),
     "otonom-dongu-reddeder": (gate_otonom_dongu_reddeder, selftest_otonom_dongu_reddeder),
     "sema-jeton-maskeler": (gate_sema_jeton_maskeler, selftest_sema_jeton_maskeler),
     "credential-shapes-are-measured": (
