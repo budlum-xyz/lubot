@@ -33,7 +33,7 @@ herkes kendi listesine bakar ve farkli cevap verir.
 | `hyperconnections` | `crates/egitim/src/cok_serit.rs` | `cok-serit-kapisi` | `cok-serit-2026-09-26.json` | bagimsiz |
 | `sinkhorn_router` | `crates/egitim/src/yonlendirme.rs` | `yonlendirme-kapisi` | `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |
 | `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi`, `omurga-karar-port-kayitlari` | `kalibrasyon-2026-09-26.json`, `tipli-karar-2026-09-27.json` | bagli |
-| `schema_decoder` | `crates/read/src/output_schema.rs`, `crates/egitim/src/sema_cozucu.rs` | `ai-output-schema-enforced`, `sema-cozucu-reddeder` | `sema-kapsam-2026-09-24.json` | bagli |
+| `schema_decoder` | `crates/read/src/output_schema.rs`, `crates/egitim/src/sema_cozucu.rs`, `crates/egitim/src/sema_jeton.rs` | `ai-output-schema-enforced`, `sema-cozucu-reddeder`, `sema-jeton-maskeler` | `sema-kapsam-2026-09-24.json`, `sema-jeton-2026-09-27.json` | bagli |
 
 | `cq2_quant` | `crates/nicem/src/lib.rs`, `crates/nicem/src/grup.rs`, `crates/tasiyici/src/lib.rs` | `bit-budget-is-arithmetic` | `nicem-2026-09-27.json` | bagli |
 
