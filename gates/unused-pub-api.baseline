@@ -114,6 +114,17 @@ egitim:kimlik_doldur
 egitim:rms
 egitim:rms_profili
 egitim:tohumlu_doldur
+# engram (tasarim 3.3): n-gram karmasiyla adreslenen KV tablosu adayi;
+# skorlama cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:CakismaOlcumu
+egitim:EngramKatkisi
+egitim:EngramOkuma
+egitim:EngramOzet
+egitim:EngramSekilHatasi
+egitim:EngramSpec
+egitim:NGRAM_UST_SINIRI
+egitim:cakisma_olc
+egitim:ngram_karmasi
 egitim:EgitimConfig
 egitim:EgitimDongusu
 gunluk:NginxSatiri

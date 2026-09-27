@@ -1,12 +1,12 @@
 {
   "is": "egitim-turu",
-  "kanit": "adim 0 -> 140; kayip 9.035798 -> 5.821471; dogrulama 6.123750; ckpt sha256 ff1115e343d5c813fc47af80aeeaa43e0d59ab81557f79421619668ba76f1365",
+  "kanit": "adim 0 -> 140; kayip 9.047749 -> 5.634027; dogrulama 6.117361; ckpt sha256 ad03c2b7c43b59f740631e2e3f17cffcf15d44129ef33676354bc757c69ecb97",
   "kaynaklar": {
     "cikti_jetonlari": 35560,
     "girdi_jetonlari": 35560,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 161.543
+    "sure_saniye": 97.051
   },
   "kosucu": "model",
   "olcut": {
