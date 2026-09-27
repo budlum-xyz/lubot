@@ -130,6 +130,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "sohbet" => lubot::sohbet::cmd_sohbet(rest),
         "tasiyici" => lubot::tasiyici::cmd_tasiyici(rest),
         "nicem" => lubot::nicem::cmd_nicem(rest),
+        "omurga" => lubot::omurga::cmd_omurga(rest),
         "ratchet" => cmd_ratchet(rest),
         "envanter" => cmd_envanter(rest),
         "it" => cmd_it(rest),
