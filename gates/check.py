@@ -9270,6 +9270,16 @@ _OMURGA_SOZLESME = [
         ],
     ),
     (
+        "crates/omurga/src/sonda.rs",
+        [
+            ("fn havuz_jeton_sirasindan_bagimsiz", "the pooling is never measured to be order-free"),
+            ("fn maskeli_jeton_tam_olarak_disarida", "a masked token is not measured to be absent"),
+            ("TumuMaskeli", "a pooling row with no support is not refused by name"),
+            ("fn param_sayisi_iki_yoldan_ayni", "the head's parameter count is derived only once"),
+            ("fn havuz_genisligi_dizi_uzunlugundan_bagimsiz", "the pooled width is never measured against a second sequence length"),
+        ],
+    ),
+    (
         "crates/omurga/src/hadamard.rs",
         [
             ("fn param_sayisi_iki_yoldan_ayni", "the structured block's parameter count is derived only once"),

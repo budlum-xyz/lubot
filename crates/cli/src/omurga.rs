@@ -30,6 +30,10 @@ use lubot_omurga::hadamard::{
 use lubot_omurga::katman::{carp, gelu, kapili_ileri, KatmanHatasi, Norm};
 use lubot_omurga::konum::{Eslesme, KonumHatasi, Rope};
 use lubot_omurga::pencere::{Kapsam, PencereHatasi, Plan};
+use lubot_omurga::sonda::{
+    birim_rms, maskeli_yumusak_azami, Bas, Sonda, SondaHatasi, SondaSekli, GOMME_SICAKLIK_INIT,
+    GOMME_YANLILIK_INIT, RMS_EPS, ROTA_KALIBRASYONU, SONDA_INIT_STD,
+};
 use lubot_omurga::{Omurga, OmurgaHatasi, TensorKaydi, Tohum, Yapilandirma};
 
 fn hata(e: &OmurgaHatasi) -> String {
@@ -81,6 +85,7 @@ fn kullanim() -> String {
         "  lubot omurga ileri [--jeton N] [--tohum S]",
         "  lubot omurga birlesim [--tohum S] [--tohum-b S]",
         "  lubot omurga hadamard [--genislik D] [--jeton N] [--tohum S] [--yariya-ayrik]",
+        "  lubot omurga sonda [--seviye L] [--sonda K] [--sorgu Q] [--genislik D] [--jeton N]",
         "  lubot omurga parca",
         "",
         "shared shape flags: --genislik --katman --kafa --kv-kafa --dff --sozluk",
@@ -445,6 +450,120 @@ fn hadamard(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Probe pooling, counted and run.
+///
+/// The three properties that make the pooling usable are printed as
+/// measurements: the pooled width does not follow the sequence length, a
+/// shuffle does not move the answer, and a masked token is absent rather than
+/// quiet.
+fn sonda(args: &[String]) -> Result<(), String> {
+    let seviye = sayi(args, "--seviye", 2)?;
+    let sonda_sayisi = sayi(args, "--sonda", 4)?;
+    let sorgu = sayi(args, "--sorgu", 4)?;
+    let genislik = sayi(args, "--genislik", 16)?;
+    let jeton = sayi(args, "--jeton", 6)?;
+
+    let sekil = SondaSekli::yeni(seviye, sonda_sayisi, sorgu, genislik)
+        .map_err(|e: SondaHatasi| format!("sekil: {e}"))?;
+    println!(
+        "seviye: {seviye} | seviye basina sonda: {sonda_sayisi} | sorgu: {sorgu} | genislik: {genislik}"
+    );
+    println!(
+        "havuz genisligi: {} (dizi uzunlugundan bagimsiz) | havuz parametresi: {}",
+        sekil.havuz_genisligi(),
+        sekil.havuz_param_sayisi()
+    );
+
+    let mut tohum = Tohum::yeni(sayi(args, "--tohum", 1)? as u64);
+    for bas in [Bas::Guven, Bas::YonSecimi, Bas::Gomme { genislik: 128 }] {
+        let s =
+            Sonda::yeni(sekil, bas, &mut tohum).map_err(|e: SondaHatasi| format!("bas: {e}"))?;
+        println!(
+            "  bas {:?}: cikis {} | yanlilik {} | parametre {} (formul) / {} (yurume) | ayni mi {}",
+            bas,
+            bas.cikis_genisligi(),
+            bas.yanlilik_var(),
+            sekil.param_sayisi(bas),
+            s.tutulan_param_sayisi(),
+            sekil.param_sayisi(bas) == s.tutulan_param_sayisi()
+        );
+    }
+
+    let s = Sonda::yeni(sekil, Bas::YonSecimi, &mut tohum)
+        .map_err(|e: SondaHatasi| format!("bas: {e}"))?;
+    let hucre_genislik = seviye * genislik;
+    let hucreler: Vec<f32> = (0..jeton * hucre_genislik)
+        .map(|i| ((i % 13) as f32) * 0.11 - 0.6)
+        .collect();
+    let duz = s
+        .havuzla(&hucreler, jeton, None, None)
+        .map_err(|e: SondaHatasi| format!("havuz: {e}"))?;
+
+    let mut karisik = vec![0.0f32; hucreler.len()];
+    for yeni in 0..jeton {
+        let eski = jeton - 1 - yeni;
+        karisik[yeni * hucre_genislik..(yeni + 1) * hucre_genislik]
+            .copy_from_slice(&hucreler[eski * hucre_genislik..(eski + 1) * hucre_genislik]);
+    }
+    let ters = s
+        .havuzla(&karisik, jeton, None, None)
+        .map_err(|e: SondaHatasi| format!("havuz: {e}"))?;
+    let sira_farki = duz
+        .iter()
+        .zip(ters.iter())
+        .fold(0.0f32, |a, (x, y)| a.max((x - y).abs()));
+
+    let mut maske = vec![true; jeton];
+    maske[jeton - 1] = false;
+    let maskeli = s
+        .havuzla(&hucreler, jeton, Some(&maske), None)
+        .map_err(|e: SondaHatasi| format!("havuz: {e}"))?;
+    let kisa = s
+        .havuzla(
+            &hucreler[..(jeton - 1) * hucre_genislik],
+            jeton - 1,
+            None,
+            None,
+        )
+        .map_err(|e: SondaHatasi| format!("havuz: {e}"))?;
+    let maske_tam = maskeli
+        .iter()
+        .zip(kisa.iter())
+        .all(|(a, b)| a.to_bits() == b.to_bits());
+
+    println!("havuz cikisi: {} sayi", duz.len());
+    println!("jeton sirasi ters cevrilince en buyuk fark: {sira_farki:.3e} (beklenen 0)");
+    println!("maskeli jeton tam olarak disarida mi: {maske_tam}");
+
+    let tumu_kapali = vec![false; jeton];
+    let red = s.havuzla(&hucreler, jeton, Some(&tumu_kapali), None);
+    println!(
+        "tum jetonlar maskeliyken: {}",
+        match red {
+            Err(e) => format!("reddedildi ({e})"),
+            Ok(_) => "SAYI URETTI (beklenmiyor)".to_string(),
+        }
+    );
+
+    let mut birim = vec![3.0f32, -4.0, 0.0, 12.0];
+    birim_rms(&mut birim);
+    let rms = (birim
+        .iter()
+        .map(|v| f64::from(*v) * f64::from(*v))
+        .sum::<f64>()
+        / (birim.len() as f64))
+        .sqrt();
+    let dagilim = maskeli_yumusak_azami(&[1.0, 50.0, 3.0], &[true, false, true])
+        .map_err(|e: SondaHatasi| format!("yumusak azami: {e}"))?;
+    println!(
+        "birim rms: {rms:.6} (eps {RMS_EPS:e}) | maskeli agirlik: {:.6} (beklenen 0) | init std {SONDA_INIT_STD}",
+        dagilim[1]
+    );
+    println!("rota kalibrasyonu: {ROTA_KALIBRASYONU:?} | gomme sicakligi {GOMME_SICAKLIK_INIT} yanliligi {GOMME_YANLILIK_INIT}");
+    println!("olculmedi: geri gecis yok, hicbir bas egitilmedi");
+    Ok(())
+}
+
 pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("plan") => plan(&args[1..]),
@@ -453,6 +572,7 @@ pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
         Some("ileri") => ileri(&args[1..]),
         Some("birlesim") => birlesim(&args[1..]),
         Some("hadamard") => hadamard(&args[1..]),
+        Some("sonda") => sonda(&args[1..]),
         Some("parca") => parca(&args[1..]),
         _ => Err(kullanim()),
     }
@@ -496,6 +616,16 @@ mod tests {
     fn bayrak_yoksa_false() {
         assert!(!bayrak(&arg(&["--genislik", "8"]), "--yariya-ayrik"));
         assert!(bayrak(&arg(&["--yariya-ayrik"]), "--yariya-ayrik"));
+    }
+
+    #[test]
+    fn sonda_calisir() {
+        assert!(sonda(&arg(&["--seviye", "2", "--sonda", "2", "--jeton", "4"])).is_ok());
+    }
+
+    #[test]
+    fn sonda_sifir_boyut_reddedilir() {
+        assert!(sonda(&arg(&["--seviye", "0"])).is_err());
     }
 
     #[test]

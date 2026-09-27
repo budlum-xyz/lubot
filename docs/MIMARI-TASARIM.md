@@ -319,6 +319,45 @@ olmasının şartıdır. `Omurga::ortala` parametre uzayında ortalama alır, im
 uymuyorsa reddeder. Bu, dal-birleştir işleminin *tanımlı* olduğunu gösterir;
 birleşmenin kaliteyi düşürüp düşürmediği kapı işidir ve ölçülmedi.
 
+### 3.10 Sonda havuzlama: diziyi sabit sayıda vektöre indirmek
+
+**Ne:** omurga jeton başına bir vektör üretir; karar tek vektör ister. Alışılmış
+üç cevap da kötüdür: son konum bir özet değil bir konumdur, ortalama bir atıfla
+bir dolgu sözcüğünü eşitler, dolgulu maksimum uzunluk üzerinde tek bir doğrusal
+katman şekli dolguya bağlar.
+
+**Nasıl:** iki aşama, ikisi de öğrenilmiş. (1) Yığının her seviyesi `k` sonda
+vektörü taşır; sonda her jetonu puanlar, softmax **jetonlar** üzerinedir ve
+sondanın cevabı jeton durumlarının ağırlıklı toplamıdır. `l·k` cevap çıkar, her
+biri birim RMS'e çekilip kendi öğrenilmiş kazancıyla ölçeklenir — böylece
+söyleyecek sözü olmayan bir sonda, yalnızca uzun bir vektör tutarak sözü olanın
+üstüne çıkamaz. (2) `q` sorgunun her biri `l·k` cevabı puanlar, softmax
+düzleştirilmiş küme üzerindedir, sonuç `q·d` sayıdır: dizi ne kadar uzun olursa
+olsun **sabit şekil**.
+
+**Ölçülen iki özellik (iddia değil):**
+- *Sıra bu başlığa ulaşmaz.* Havuzlama jetonlar üzerinde ağırlıklı toplamdır,
+  yani karıştırma sonucu değiştiremez. Sıra bilgisi omurganın konumlarından
+  gelir; buraya sıraya duyarlı bir kestirme eklenirse o test düşer.
+- *Maskeli jeton sessiz değil yoktur.* Maske softmax'tan **önce** uygulanır,
+  ağırlık tam olarak sıfırdır ve dört jetonu beşincisi maskeliyken havuzlamak,
+  dördünü tek başına havuzlamakla **bit-özdeş** sonuç verir.
+
+**Reddettiği yer:** her jetonu maskeli bir satırın softmax'ı yoktur; payda
+sıfırdır ve alışılmış sonuç, çok uzağa giden sessiz bir `NaN`'dır. Burada
+`TumuMaskeli` ile reddedilir. Aynısı her seviyeyi kapatan seviye maskesi için.
+
+**Üç baş, tek tip:** güven (1 sayı), rota (3 sayı, kalibrasyon üçlüsü) ve gömme
+(yapılandırılan genişlik, **bilinçli olarak yanlılıksız** — her gömmeye eklenen
+sabit her mesafeyi aynı kadar kaydırır, hiçbir şey kazandırmaz ama iki koşuyu
+farklı model gibi gösterir). Taze gömme başı kapalı başlar: sıfır benzerlikte
+kapı `sigmoid(-10) = 4.5e-5`, yani eğitilene kadar hiçbir şeyi içeri almaz.
+Hiçbiri metin üretmez.
+
+**Yeri:** `crates/omurga/src/sonda.rs`, CLI `lubot omurga sonda`, kapı
+`omurga-sozlesmesi`. Geri geçiş yok: bu crate ileri yönlüdür, hiçbir baş
+eğitilmedi.
+
 ## 4. Birleşik taslak: lubot-a2 adayı (yön, değil taahhüt)
 
 Sıra, ölçüm disiplinine göre kurulur; her satır ayrı artım, kendi self-test'i ve
