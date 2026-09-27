@@ -144,3 +144,18 @@ English: validate the whole ledger and batch before mutation; preserve the
 existing prefix and physical line numbers. Single writer only; no claim of
 cross-process serialization or crash-atomic append. Metadata checks do not
 re-verify historical content bytes.
+
+## Shard planının aritmetik ve uzunluk bağı
+
+Planın dolgu hesabı `(data - total_len % data) % data` kullanır: toplam
+padded uzunluk u64 sınırını aşsa bile her shard boyu ve dolgu u64'e sığar.
+Bu metadata hesabı büyük nesnenin belleğe alındığı iddiası değildir.
+`data_shard`, ayırmadan önce gerçek girdi uzunluğunu planın kaynak
+uzunluğuyla karşılaştırır; kısa/uzun/boş girdi `ArtefactLengthMismatch`
+ile reddedilir. Sessiz kesme veya eksik kaynak baytını dolgu sayma yoktur.
+Aynı uzunluk aynı içerik demek değildir: içerik adresini doğrulamak halen
+çağıranın işidir. Parity kodlama ve holder politikası değişmedi.
+
+English: padding arithmetic remains exact through u64::MAX. Shard extraction
+binds the input length to its plan before allocating. This does not replace
+content-address verification or demonstrate storage of an extreme-size object.
