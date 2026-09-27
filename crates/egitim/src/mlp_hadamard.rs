@@ -829,7 +829,7 @@ mod tests {
         assert_ne!(ca, cb);
     }
 
-    /// Port kaydi olcumu: `training/hadamard_mlp.py` bu satiri kosar ve okur;
+    /// Olcum kaydi: `training/hadamard_mlp.py` bu satiri kosar ve okur;
     /// sayilari kendisi uretmez. Olculen: parametre muhasebesi (bloklu ve
     /// bloksuz, tam sayi), gradyanin sonlu farka karsi en kotu bagil sapmasi
     /// ve denetlenen parametre sayisinin sekle bagli oldugu, 40 adimlik inis

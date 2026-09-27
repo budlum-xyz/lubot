@@ -14,14 +14,14 @@
     "olcut_sonucu": true,
     "parametre": 116.0,
     "parametre_bloksuz": 164.0,
-    "sure_saniye": 0.05
+    "sure_saniye": 8.5
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.05
+    "sure_saniye": 8.5
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -35,7 +35,6 @@
     "ifade": "d_model=8, d_r=6, blok=2: denetlenen gradyan sayisi = sekilden turetilen parametre sayisi VE ihlal 0 VE en kotu bagil sapma < 1e-6 VE 40 adimda kayip her adimda duser VE ikinci dal sifirken cikti = b3 (carpim gercek) VE bloklu parametre < bloksuz",
     "sonuc": true
   },
-  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-hadamard-mlp.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum kucuk tohumlu sekilde (8/6/2) yapilir; hicbir egitim kosusuna bagli degil. \"Standart MLP'den iyi\" iddiasi yok: bloksuz Hadamard ayni ic genislikte standart MLP'den pahalidir (ek dusus izdusumu), bu modul testinde yazilidir."
 }

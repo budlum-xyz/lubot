@@ -102,7 +102,7 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       değil crate içindeki sabit dizilere ait, o yüzden burada durabilir.
       CLI artık paketli adımı gerçek korpus verisiyle koşuyor ve maskenin kaç
       konumda devreye girdiğini raporluyor.
-- [x] **Port adaylarının kompozisyonu (tasarım notu 3.8).** Altı tekil aday
+- [x] **Adayların kompozisyonu (tasarım notu 3.8).** Altı tekil aday
       (`mlp_hadamard`, `cok_serit`, `engram`, `yonlendirme`, `normalizasyon`,
       `kesit` ailesi) tek başına yazılmış, ölçülmüş ve kapılanmıştı ama hiçbiri
       birbirine bağlı değildi. `crates/egitim/src/birlesik.rs` altısını tek
@@ -118,29 +118,29 @@ indeksinin ölçülen tarafı. Hangi bileşenin hangi maddede olduğu aşağıda
       değil, bağlama kararı**: hangi bileşenin hangi aileye gireceği
       `docs/MIMARI-TASARIM.md` 5. bölümünde M1/M2/M3 olarak işaretli operatör
       kararıdır; `model_spec.json` değişmedi.
-- [x] **Port envanterinin ürettiği eksikler. KAPANDI (`4451b61`, `fea5269`).**
-      `docs/PORT-ENVANTERI.md` + `port-envanteri-kapisi` direktif 7.4'ün sekiz
+- [x] **Modül envanterinin ürettiği eksikler. KAPANDI (`4451b61`, `fea5269`).**
+      `docs/MODUL-ENVANTERI.md` + `modul-envanteri-kapisi` ana mimarinin sekiz
       modül adını bu ağaçtaki dosya yollarına, kapı adlarına ve ölçüm
       kayıtlarına bağlıyor; kapı her satırın kanıtını denetliyor. Ürettiği iki
       eksiğin ikisi de kapandı ve **ikisini de envanteri yazan ajan
-      kapatmadı**: `modernbert_encoder` kapısızdı → `kodlayici-kapisi` +
+      kapatmadı**: `kodlayici_omurga` kapısızdı → `kodlayici-kapisi` +
       `kodlayici-2026-09-27.json`; `hadamard_mlp` ve alt-bayt nicem kayıtsızdı
       → `hadamard-mlp-2026-09-27.json`, `nicem-2026-09-27.json`. Envanterin
       işi tam olarak buydu: eksiği bir tartışma değil bir kapı kapattı.
 - [x] **Envanter kapısının 6. kanaryası kendi yazarını yakaladı.** Kanarya
-      `modernbert_encoder` satırının **içeriğini** birebir yazıyordu; satıra
+      `kodlayici_omurga` satırının **içeriğini** birebir yazıyordu; satıra
       bir kaynak yolu eklenince eşleşme kayboldu ve kanarya sessizce kırmızı
       vermeyi bıraktı — yani kapı o gün, kaynaksız bir "bağlı" iddiasını artık
       yakalamıyordu. Kanarya satırın **yapısına** bağlandı (satır başına
       çapalı, hücre düzeyinde regex). Bir kanaryanın kendi hedefinin biçimine
       bağlı olması, kapıyı dekorasyona çeviren sessiz yoldur; bu yüzden
       düzeltme değil **sebebi** buraya yazıldı.
-- [ ] **Eşzamanlı ajanlarda dilim çakışması: ilan önce, iş sonra.**
-      2026-09-27'de aynı dilim üç kez iki ayrı ajan tarafından yazıldı
-      (Hadamard MLP kaydı, nicem kaydı, envanter kanaryası). Sebep tek: dilim
-      ChatMD'ye **iş bittikten sonra** yazıldı. Birleşik blok dilimi önceden
+- [ ] **Eşzamanlı çalışmada dilim çakışması: ilan önce, iş sonra.**
+      2026-09-27'de aynı dilim üç kez iki ayrı eşzamanlı yazıcı tarafından yazıldı
+      (Hadamard MLP kaydı, nicem kaydı, envanter kanaryası). Sebep tek: dilim kayıt
+      defterine **iş bittikten sonra** yazıldı. Birleşik blok dilimi önceden
       ilan edilmişti ve çakışmadı — yani çare zaten §2.2'de duruyor, uygulama
-      eksikti. Kalan iş: ChatMD'ye tek satırlık "alıyorum" formatı ve kapatma
+      eksikti. Kalan iş: kayıt defterine tek satırlık "alıyorum" formatı ve kapatma
       satırı; şimdilik yalnız kayıt.
 - [ ] **Eğitim çekirdeğinin korpusla ilk gerçek turu.** Jetonlayıcı ve veri yolu
       ölçümü hazır; eksik olan paketlenmiş pencerelerle koşan tur ve K6

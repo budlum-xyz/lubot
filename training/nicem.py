@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Alt-bayt agirlik nicemleme port kaydi (tasarim 3.5): bit/agirlik, yuvarlak yol hatasi, donusun kazanci, determinizm.
+"""Alt-bayt agirlik nicemleme olcum kaydi (tasarim 3.5): bit/agirlik, yuvarlak yol hatasi, donusun kazanci, determinizm.
 
 Olcum Rust testinin icindedir (`crates/nicem/src/grup.rs`, `grup::tests::olcum_raporu`). Bu betik o satiri
 **kosar ve okur**; sayilari kendisi uretmez.
@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": 'Alt-bayt nicemleme: Walsh-Hadamard donusu + Lloyd-Max kod kitabi + grup olcegi; bit butcesi aritmetik, yuvarlak yol hatasi ve donusun kazanci sentetik tensorde olculdu; servis oncesi nicemleme, egitim yuksek hassasiyette kalir',
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-kuantalama.md",
         "olcut": {
             "ad": 'bit_butcesi_aritmetik_ve_yuvarlak_yol_olculu',
             "sonuc": bool(olcum["olcut_sonucu"]),

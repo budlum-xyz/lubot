@@ -93,7 +93,6 @@ def _kayit(olcum: dict) -> dict:
         ),
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-kademe-egitimi.md",
         "olcut": {
             "ad": "kademe_3_agirlik_bir_taban_fark_sifir_gradyan_esik_alti",
             "sonuc": bool(olcum["olcut_sonucu"]),

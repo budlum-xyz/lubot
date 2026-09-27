@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Omurga dikkat kadansi port kaydi (tam/kayan dikkat tek kod yolunda, rope, kadans yapilandirmadan).
+"""Omurga dikkat kadansi olcum kaydi (tam/kayan dikkat tek kod yolunda, rope, kadans yapilandirmadan).
 
 Olcum Rust testinin icindedir (`crates/kodlayici/src/blok.rs`, `blok::tests::olcum_raporu_dikkat_kadansi`). Bu betik o satiri
 **kosar ve okur**; sayilari kendisi uretmez.
@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": 'Omurga dikkat kadansi: tam ve kayan dikkat tek kod yolunda yalniz maskeyle ayrisir; rope tanim degerleriyle; kadans (her ucuncu katman tam) konfigurasyondan okunur',
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-gruplu-dikkat.md",
         "olcut": {
             "ad": 'sliding_ve_global_dikkat_ayni_kod_yolu_maske_ile_ayrisir',
             "sonuc": bool(olcum["olcut_sonucu"]),

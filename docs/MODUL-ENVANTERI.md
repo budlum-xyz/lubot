@@ -1,15 +1,15 @@
-# Port envanteri: sekiz modul nerede duruyor
+# Modul envanteri: sekiz modul nerede duruyor
 
-Bu belge tek bir soruya cevap verir: **hangi port modulu bu agacta var, kanıti
+Bu belge tek bir soruya cevap verir: **hangi mimari modul bu agacta var, kaniti
 nerede, ve hangisi hala yok.** Cevap iddia degil, dosya yoludur — her satirdaki
-her yol `port-envanteri-kapisi` tarafindan denetlenir: kaynak dosya yoksa,
+her yol `modul-envanteri-kapisi` tarafindan denetlenir: kaynak dosya yoksa,
 kapi adi kayitli degilse ya da olcum kaydi eksikse kapi kirmizi yanar.
 
-Belgenin varlik sebebi sudur: modul adlari calisma direktifinde Ingilizce ve
-kavramsal (`hadamard_mlp`, `sinkhorn_router`), bu agacta ise Turkce ve somut
-(`mlp_hadamard.rs`, `yonlendirme.rs`). Iki isim kumesi arasinda yazili bir
-karsilik olmadigi surece "port bitti mi" sorusu **olculemez** bir sorudur;
-herkes kendi listesine bakar ve farkli cevap verir.
+Belgenin varlik sebebi sudir: mimari moduller iki isim kumesinde yasir —
+kavramsal adlar (`hadamard_mlp`, `sinkhorn_router`) ve bu agacin somut
+dosyalari (`mlp_hadamard.rs`, `yonlendirme.rs`). Iki kume arasinda yazili bir
+karsilik olmadigi surece "mimari tamamlandi mi" sorusu **olculemez** bir
+sorudur; herkes kendi listesine bakar ve farkli cevap verir.
 
 ## Okuma kurallari
 
@@ -23,18 +23,17 @@ herkes kendi listesine bakar ve farkli cevap verir.
   cikarim cagrisindan gerçekten geciliyor), `bagimsiz` (yazildi ve olculdu ama
   hicbir cagri yolundan gecmiyor), `yok`.
 
-## 7.4'un sekiz modulu
+## Ana mimarinin sekiz modulu
 
-| 7.4 modulu | bu depodaki yeri | kapi | olcum kaydi | durum |
+| modul | bu depodaki yeri | kapi | olcum kaydi | durum |
 |---|---|---|---|---|
-| `modernbert_encoder` | `crates/kodlayici/src/lib.rs`, `crates/kodlayici/src/blok.rs`, `crates/transformer/src/lib.rs` | `kodlayici-kapisi` | `kodlayici-2026-09-27.json`, `dikkat-kadansi-2026-09-27.json`, `norm-yeri-2026-09-27.json` | bagli |
+| `kodlayici_omurga` | `crates/kodlayici/src/lib.rs`, `crates/kodlayici/src/blok.rs`, `crates/transformer/src/lib.rs` | `kodlayici-kapisi` | `kodlayici-2026-09-27.json`, `dikkat-kadansi-2026-09-27.json`, `norm-yeri-2026-09-27.json` | bagli |
 | `hadamard_mlp` | `crates/egitim/src/mlp_hadamard.rs` | `hadamard-mlp-kapisi` | `hadamard-mlp-2026-09-27.json` | bagimsiz |
 | `gqa_engram_attention` | `crates/egitim/src/lib.rs`, `crates/egitim/src/engram.rs` | `engram-kapisi` | `engram-2026-09-26.json` | bagli |
 | `hyperconnections` | `crates/egitim/src/cok_serit.rs` | `cok-serit-kapisi` | `cok-serit-2026-09-26.json` | bagimsiz |
 | `sinkhorn_router` | `crates/egitim/src/yonlendirme.rs` | `yonlendirme-kapisi` | `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |
-| `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi`, `omurga-karar-port-kayitlari` | `kalibrasyon-2026-09-26.json`, `tipli-karar-2026-09-27.json` | bagli |
+| `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi`, `omurga-karar-kayitlari` | `kalibrasyon-2026-09-26.json`, `tipli-karar-2026-09-27.json` | bagli |
 | `schema_decoder` | `crates/read/src/output_schema.rs`, `crates/egitim/src/sema_cozucu.rs`, `crates/egitim/src/sema_jeton.rs` | `ai-output-schema-enforced`, `sema-cozucu-reddeder`, `sema-jeton-maskeler` | `sema-kapsam-2026-09-24.json`, `sema-jeton-2026-09-27.json` | bagli |
-
 | `cq2_quant` | `crates/nicem/src/lib.rs`, `crates/nicem/src/grup.rs`, `crates/tasiyici/src/lib.rs` | `bit-budget-is-arithmetic` | `nicem-2026-09-27.json` | bagli |
 
 `gqa_engram_attention` satiri iki parcalidir ve durumu **parca parca** okunur:
@@ -43,9 +42,9 @@ ileri/geri gecisten geciyor), engram tablosu ise bagimsizdi — 3.8 blogu onu bi
 kompozisyon icine aldi ama o blok da hicbir aileye bagli degil. Satirin durumu
 bu yuzden GQA'ya gore `bagli` yazilir; engramin kendi satiri asagidadir.
 
-`schema_decoder` satiri da iki parcalidir ve bir **itiraz** tasiyor. Direktif
-7.3 bu modulden "gecerli cikti uzayini grammar/sema ile daraltarak decode"
-etmesini istiyor; `read::output_schema` bunu yapmaz, **bitmis** bir ciktiyi
+`schema_decoder` satiri da iki parcalidir ve bir **itiraz** tasiyor. Mimari
+bu modulden "gecerli cikti uzayini grammar/sema ile daraltarak decode"
+etmesini bekler; `read::output_schema` bunu yapmaz, **bitmis** bir ciktiyi
 dogrular. Ikisi ayni kuralin iki yarisidir ve biri otekinin yerine gecmez:
 dogrulayici "bu gecerli miydi?" sorusuna cevap verir, cozucunun ihtiyaci olan
 soru "bu hala gecerli olabilir mi?"dir ve o soru her konumda, bir logit
@@ -56,21 +55,21 @@ cagri yolundan gecmez. Bu, envanterin "sekizin sekizi de var" sonucunu
 degistirmez ama onu daha dar okutur: sekizinci modulun iki yarisindan biri
 2026-09-27'de eklendi, oteki zaten duruyordu.
 
-## 7.4'te olmayan, bu agacta olan
+## Ana listede olmayan, bu agacta olan
 
 | modul | bu depodaki yeri | kapi | olcum kaydi | durum |
 |---|---|---|---|---|
 | aile kesitleri | `crates/egitim/src/kesit.rs` | `kesit-kapisi` | `kesit-2026-09-27.json` | bagimsiz |
 | sifir merkezli RMS norm | `crates/egitim/src/normalizasyon.rs` | `normalizasyon-kapisi` | `normalizasyon-2026-09-27.json` | bagimsiz |
 | birlesik blok (3.8) | `crates/egitim/src/birlesik.rs` | `birlesik-kapisi` | `birlesik-2026-09-27.json` | bagimsiz |
-| engram tasima (7.1: tablo model durumunun parcasi) | `crates/egitim/src/engram_tasima.rs` | `omurga-karar-port-kayitlari` | `engram-tasima-2026-09-27.json` | bagimsiz |
+| engram tasima (tablo model durumunun parcasi) | `crates/egitim/src/engram_tasima.rs` | `omurga-karar-kayitlari` | `engram-tasima-2026-09-27.json` | bagimsiz |
 | kademe egitimi (3.5 kalem 1) | `crates/egitim/src/kademe.rs` | `kademe-kapisi` | `kademe-2026-09-27.json` | bagimsiz |
 
 ## Bu envanterin soyledigi
 
-1. Sekiz modulun **sekizi de** bu agacta var. "Port yazilacak" bir is degil;
+1. Sekiz modulun **sekizi de** bu agacta var. Mimari yazilacak bir is degil;
    kalan is **baglama** isidir.
-2. `modernbert_encoder`in deposal kapisi `kodlayici-kapisi`dir (bu belgenin
+2. `kodlayici_omurga`'nin deposal kapisi `kodlayici-kapisi`dir (bu belgenin
    ilk surumunde eksik olarak isaretlenmisti). Kapi pencere kararinin tek
    fonksiyonda kaldigini, sinir/belirlenimcilik/red testlerinin adiyla
    durdugunu, test disi govdede ucuncu taraf adi ve `unwrap` olmadigini
@@ -78,24 +77,19 @@ degistirmez ama onu daha dar okutur: sekizinci modulun iki yarisindan biri
    sayisiyla birebir esler. Kaydi `kodlayici-2026-09-27.json`: 8 konumluk
    dizide 64 (sorgu, degisen) ciftinin tamami olculur, pencere disi etki 0,
    pencere ici etki 15/15.
-3. `hadamard_mlp` ve `cq2_quant` icin karta ozel olcum kayitlari
+3. `hadamard_mlp` ve `cq2_quant` icin ayri olcum kayitlari
    `hadamard-mlp-2026-09-27.json` ve `nicem-2026-09-27.json`; ikisi de
-   `omurga-karar-port-kayitlari` kapisinda her turda yeniden olculur.
+   `omurga-karar-kayitlari` kapisinda her turda yeniden olculur.
 4. Bagimsiz kalan dort aday (`hadamard_mlp`, `hyperconnections`,
    `sinkhorn_router`, ve engram kolu) artik tek bir blokta birlikte kosuyor
    (3.8), ama **o blok da hicbir aileye bagli degil**. Hangisinin hangi aileye
    girecegi `docs/MIMARI-TASARIM.md` 5. bolumunde M1/M2/M3 olarak isaretli
    operator kararidir ve bu envanter onu vermez. `kademe` adayi bu blogun
    disindadir: o bir katman degil egitim hedefidir ve baglanmasi M4 kararidir.
-5. Iki kart dizini yan yana duruyor: eski kayitlar `workspace:port-kartlari/`
-   altini, yeni cerceve `workspace:skills/port-hatti/port-kartlari/` altini
-   isaret ediyor. Ikisi de gercek ve ikisi de yasiyor; tekillestirme ayri bir
-   turun isi ve kart sahipligi baskalarinda. Burada yazili olmasinin sebebi,
-   "kart nerede" sorusunun bu belge disinda cevabi olmamasi.
 
 ## Bu envanterin soylemedigi
 
 - Hicbir modulun **kalitesi** hakkinda bir sey demez. "Var" demek "iyi" demek
   degildir; kalite iddiasi egitilmis bir kontrol noktasi ve sinav seti ister.
-- Satir sayisi ya da ilerleme yuzdesi tasimaz. Bir port modulunun buyuklugu
+- Satir sayisi ya da ilerleme yuzdesi tasimaz. Bir modulun buyuklugu
   onun tamamlanmisligi degildir.

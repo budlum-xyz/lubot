@@ -1,6 +1,6 @@
 //! # `sema_cozucu` - the schema decoder: refusing a byte before it is written
 //!
-//! Directive §7.3 asks for the last of the eight port modules, and it is the
+//! The last of the eight architecture modules, and it is the
 //! one the repository never had: a byte-level, schema-constrained decoder.
 //! `lubot-read::output_schema` already *validates* a finished reply. This
 //! module is the other half of the same rule - it narrows the set of bytes a
@@ -61,7 +61,7 @@
 //!
 //! # Not connected
 //!
-//! Like the other port candidates in this crate, this module changes no spec
+//! Like the other candidates in this crate, this module changes no spec
 //! and no training call. It holds no parameters - the mask is a function of the
 //! bytes already emitted, and a gate checks that parameter count is zero.
 

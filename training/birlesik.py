@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Birlesik port blogunun (tasarim notu 3.8) olcumunu kayda gecirir.
+"""Birlesik blogun (tasarim notu 3.8) olcumunu kayda gecirir.
 
 Olcum Rust modulunun icindedir (`crates/egitim/src/birlesik.rs`,
 `olcum_raporu`): alti bilesen tek blokta kosuyor mu, parametre muhasebesi
@@ -102,13 +102,12 @@ def olc() -> dict:
 def _kayit(olcum: dict) -> dict:
     return {
         "is": (
-            "Birlesik port blogu (tasarim 3.8): serit okuma -> sifir merkezli RMS norm "
+            "Birlesik blok (tasarim 3.8): serit okuma -> sifir merkezli RMS norm "
             "-> rotali Hadamard uzmanlari -> engram deger bellegi -> serit yazma; "
             "elle yazilmis geri gecis dort noktali sonlu farkla denetlendi"
         ),
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:port-kartlari/birlesik-mimari-7-3.md",
         "olcut": {
             "ad": "alti_bilesen_tek_blokta_ve_gradyan_ihlali_sifir",
             "sonuc": bool(olcum["olcut_sonucu"]),

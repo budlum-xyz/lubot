@@ -913,7 +913,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&klasor);
     }
 
-    /// Port kaydi olcumu (dikkat kadansi): `training/dikkat_kadansi.py` bu
+    /// Olcum kaydi (dikkat kadansi): `training/dikkat_kadansi.py` bu
     /// satiri kosar ve okur; sayilari kendisi uretmez.
     ///
     /// Olculen: tek kod yolunda tam ve kayan dikkatin yalniz maskeyle
@@ -1001,7 +1001,7 @@ mod tests {
         );
     }
 
-    /// Port kaydi olcumu (norm yeri): `training/norm_yeri.py` bu satiri kosar
+    /// Olcum kaydi (norm yeri): `training/norm_yeri.py` bu satiri kosar
     /// ve okur.
     ///
     /// Olculen: norm dalin **oncesinde**, artik toplamin **disinda**. Kaniti
@@ -1060,7 +1060,7 @@ mod tests {
         );
     }
 
-    /// Port kaydi olcumu (kodlayici omurgasi): `training/kodlayici.py` bu
+    /// Olcum kaydi (kodlayici omurgasi): `training/kodlayici.py` bu
     /// satiri kosar ve okur.
     ///
     /// Olculen: kayan pencerenin siniri **her konum cifti icin** tutar (pencere

@@ -1,4 +1,4 @@
-//! `lubot-a2-needle` spec'i ile uygulanan bloğun **bağı**.
+//! `lubot-a2` spec'i ile uygulanan bloğun **bağı**.
 //!
 //! `training/model_spec_a2.json` bir şekil beyanı; `crates/egitim/src/*` o
 //! şekli gerçekten kuran kod. İkisi ayrı yerlerde durduğu sürece ayrışırlar ve

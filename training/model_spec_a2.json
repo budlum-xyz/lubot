@@ -17,7 +17,7 @@
     "not": "a1'de 1.94 token/param, a2'de daha dusuk - engram tabani parametre sayisini buyuttugu icin. Chinchilla referansi 20 (olculmedi); iki aile de referansin cok altinda ve bu bilincli asilıyor. Hangi ailenin daha iyi oldugu **olculmedi**; bu spec bir iddia degil, bir sekil beyani.",
     "oran": 1.004449
   },
-  "karar": "Ikinci mimari ailesi: 7.4'un portlanmis modulleri ilk kez tek bir spec'te toplaniyor. a1 duz transformer; a2 FFN yerine Hadamard MLP, tek artik akis yerine 4 serit, ek olarak engram tablosu ve parametresiz Sinkhorn rotasi tasiyor. Bu spec bir egitim kosusu baslatmiyor - portun 'yazildi'dan 'calisiyor'a gectigi ilk adim, ve bir kosuya baglanmasi isaretli bir karardir.",
+  "karar": "Ikinci mimari ailesi: yeni yazilan moduller ilk kez tek bir spec'te toplaniyor. a1 duz transformer; a2 FFN yerine Hadamard MLP, tek artik akis yerine 4 serit, ek olarak engram tablosu ve parametresiz Sinkhorn rotasi tasiyor. Bu spec bir egitim kosusu baslatmiyor - aile 'yazildi'dan 'calisiyor'a gectigi ilk adim, ve bir kosuya baglanmasi isaretli bir karardir.",
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
@@ -26,7 +26,7 @@
     "sure_saniye": 0.0
   },
   "matmul_orani": 0.70608,
-  "name": "lubot-a2-needle",
+  "name": "lubot-a2",
   "olcut": {
     "ad": "a2_param_sayimi_iki_yoldan_ayni_ve_K6_tavani_altinda",
     "ifade": "model_spec_a2.py'nin mimari tanimindan turettigi parametre sayisi Rust'taki BirlesikSpec::parametre_sayisi() ile blok duzeyinde ayni VE toplam K6 tavaninin altinda",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tipli karar basligi port kaydi (uc kapali sekil, uretim yuzeyi yok, esik/k-of-n/kalibrasyon davranisi).
+"""Tipli karar basligi olcum kaydi (uc kapali sekil, uretim yuzeyi yok, esik/k-of-n/kalibrasyon davranisi).
 
 Olcum Rust testinin icindedir (`crates/tomurcuk/src/lib.rs`, `tests::olcum_raporu_tipli_karar`). Bu betik o satiri
 **kosar ve okur**; sayilari kendisi uretmez.
@@ -73,7 +73,6 @@ def _kayit(olcum: dict) -> dict:
         "is": 'Tipli karar basligi: non-autoregressive, tek geciste kapali-sekil karar (secim/puan/evet-hayir); metin yuzeyi yok; esik, k-of-n ve kalibrasyon davranisi olculdu',
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "port_karti": "workspace:skills/port-hatti/port-kartlari/laya-karar-basligi.md",
         "olcut": {
             "ad": 'karar_yuzeyi_uc_kapali_sekil_ve_uretim_yok',
             "sonuc": bool(olcum["olcut_sonucu"]),

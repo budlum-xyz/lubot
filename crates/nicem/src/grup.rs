@@ -860,7 +860,7 @@ mod tests {
         assert_eq!(sirali.len(), adlar.len(), "{adlar:?}");
     }
 
-    /// Port kaydi olcumu: `training/nicem.py` bu satiri kosar ve okur; sayilari
+    /// Olcum kaydi: `training/nicem.py` bu satiri kosar ve okur; sayilari
     /// kendisi uretmez. Olculen: 2 bit + 128'lik grupta agirlik basina bit ve
     /// bayt (tam sayi aritmetigi), yuvarlak yol bagil hatasi ve olculen SNR'in
     /// kod kitabi tahminine uzakligi, donusun agir kuyrukta absmax tabanina
