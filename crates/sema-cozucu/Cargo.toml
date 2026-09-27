@@ -1,0 +1,18 @@
+[package]
+name = "lubot-sema-cozucu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
+license-file.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+# Capraz denetim: otomatin kabul ettigi her belgeyi semann kendi dogrulayicisi da
+# kabul ediyor mu? Bu bagimlilik yalniz testlerde; kosum yolunda crate hicbir
+# sey ithal etmez.
+lubot-read = { path = "../read", version = "0.1.0" }
+
+[lints]
+workspace = true

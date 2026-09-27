@@ -409,6 +409,7 @@ dependencies = [
  "lubot-nicem",
  "lubot-olcek",
  "lubot-read",
+ "lubot-sema-cozucu",
  "lubot-sertlestirme",
  "lubot-sikistir",
  "lubot-sir",
@@ -636,6 +637,13 @@ name = "lubot-read"
 version = "0.1.0"
 dependencies = [
  "sha2",
+]
+
+[[package]]
+name = "lubot-sema-cozucu"
+version = "0.1.0"
+dependencies = [
+ "lubot-read",
 ]
 
 [[package]]

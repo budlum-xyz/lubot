@@ -31,7 +31,10 @@ cross-check tool (`tools/kodlayici_capraz.py`) is not part of the binary.
    `takip` (monotonic progress), `olcek` (flap-resistant scaling), `yetenek`
    (a capability only exists after its own self-test), `jeton` (the frozen
    BPE vocab, applied fail-closed), `sertlestirme` (hardening checks that are
-   measured rather than asserted) and `mimari` itself.
+   measured rather than asserted), `sema-cozucu` (the output contract as a byte
+   automaton: the mask a decode uses and the acceptance verdict come from one
+   place; `lubot-read` is a dev-dependency only, for the cross-check that the
+   automaton never admits what the validator refuses) and `mimari` itself.
 2. **Composed** — crates built on the primitives: `denetim` (append-only
    audit), `usl` (media re-verified byte for byte), `anlama` (classification
    that may decline), `tomurcuk` (the decision head: closed output shapes,

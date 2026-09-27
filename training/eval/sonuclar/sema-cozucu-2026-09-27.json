@@ -1,0 +1,43 @@
+{
+  "is": "Sema cozucu (tasarim 3.7): cikti sozlesmesini bayt otomatina ceviren maske, maskeli decode ve uretilen belgenin cikti dogrulayicisiyla capraz denetimi; maskesiz taban karsilastirmasi ve red yollari",
+  "kanit": {
+    "adim": 637.0,
+    "adim_bitti_red": 1.0,
+    "bayt": 684.0,
+    "belge": 8.0,
+    "cikmaz_red": 1.0,
+    "dogrulayici_kacis": 0.0,
+    "maskelenen": 74646.0,
+    "naif_belge": 8.0,
+    "naif_gecersiz": 8.0,
+    "olcut_sonucu": true,
+    "rastgele_belge": 197.0,
+    "rastgele_kacis": 0.0,
+    "sozluk": 264.0,
+    "sure_saniye": 0.24,
+    "utf8_red": 4.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.24
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "cevap kalitesine etkisi: uzmanli egitim kosusu ve sinav seti ister",
+    "gercek sozlukle (lubot-bpe-v2) maske maliyeti ve red orani",
+    "omurgaya baglandiktan sonraki gecikme: adim basina maske maliyeti sozluk boyutuyla dogrusal, buyuk sozlukte olculmedi",
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "dagitim disi (egitilmemis) logitlerde maskenin pratik etkisi: sentetik karisim yalniz maske mekanigini olcer"
+  ],
+  "olcut": {
+    "ad": "gramer_dogrulayicinin_alt_kumesi_ve_maske_bos_degil",
+    "ifade": "dogrulayici_kacis = 0 VE rastgele_kacis = 0 VE naif_gecersiz > 0 VE cikmaz_red >= 1 VE adim_bitti_red >= 1 VE utf8_red = 4 VE belge > 0 VE bayt > 0",
+    "sonuc": true
+  },
+  "port_karti": "workspace:skills/port-hatti/port-kartlari/sema-cozucu.md",
+  "tarih": "2026-09-27",
+  "uyari": "Logitler deterministik bir karisimdan geliyor: egitilmis bir kontrol noktasi yok, yani bu kayit cevap kalitesi olcmuyor. Sozluk sentetiktir (256 tek bayt + 8 cok baytli jeton); gercek sozluk lubot-bpe-v2'dir ve bu kayitta kosulmadi. Otomat, dogrulayicidan bilerek dardir: satir sonu bosluk/sekme ayrimi, `\\r` reddi ve asiri uzun/vekil UTF-8 reddi dogrulayicinin suskun kaldigi yerlerde karar verir. Otomat cikti uretimini lubot-read'in tek cikisina baglamaz: crate yalniz maske ve decode verir, uretim yuzeyi yoktur."
+}

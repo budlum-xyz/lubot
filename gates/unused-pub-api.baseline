@@ -228,7 +228,6 @@ olcum:OlcumMotoru
 paralel:BatchHesap
 paralel:ParalelConfig
 paralel:SuperComputer
-read:MAX_OUTPUT_BYTES
 read:PerceptionKind
 read:PerceptionRefusal
 read:is_known
