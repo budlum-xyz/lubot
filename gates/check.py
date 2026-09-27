@@ -7573,7 +7573,10 @@ def _normalizasyon_denetle(path: Path) -> list:
     # Degismezlikler ve fark ayri ayri olculur.
     for iz in ("kaydirma_degismezligi", "olcek_degismezligi_eps_tabanina_kadar",
                "klasik_rms_kaydirmadan_etkilenir_fark_olculur",
-               "geri_gecis_sonlu_farkla_uyusur", "sabit_girdi_sifira_gider_patlamaz"):
+               "geri_gecis_sonlu_farkla_uyusur", "sabit_girdi_sifira_gider_patlamaz",
+               "sonlu_olmayan_girdi_tum_yollarda_reddedilir",
+               "katsayi_ve_gradyan_sonlulugu_denetlenir",
+               "sonlu_girdi_ara_hesapta_tasarsa_ret", "sonlu_vektor", "sonlu_ara") :
         if iz not in metin:
             ihlaller.append(f"davranis olcumu eksik: {iz}")
     # eps tabani saklanmaz: tam iliski yazili olmali.
@@ -7655,6 +7658,13 @@ def selftest_normalizasyon_kapisi() -> None:
                          encoding="utf-8")
         if not _normalizasyon_denetle(bozuk):
             raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        for iz in ("sonlu_vektor", "sonlu_ara", "katsayi_ve_gradyan_sonlulugu_denetlenir"):
+            mutant = metin.replace(iz, "sokulen")
+            if mutant == metin:
+                raise SystemExit(f"norm mutanti uretilemedi: {iz}")
+            bozuk.write_text(mutant, encoding="utf-8")
+            if not _normalizasyon_denetle(bozuk):
+                raise SystemExit(f"norm sayisal siniri sokuldu ama yakalanmadi: {iz}")
     kayit = ROOT / "training" / "eval" / "sonuclar" / "normalizasyon-2026-09-27.json"
     if not kayit.is_file():
         raise SystemExit(f"kayit yok: {kayit}")

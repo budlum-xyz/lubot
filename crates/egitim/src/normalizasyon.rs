@@ -31,6 +31,11 @@
 //!
 //! Ogrenilebilir parametresi `s` vektorudur: parametre sayisi **genisliktir**
 //! ve sekle baglidir - bir literal degil.
+//!
+//! Sayisal sinir fail-closed: girdi, katsayi ve gradyan NaN/Inf tasiyamaz.
+//! Sonlu degerler de ara carpimda tasabilir; bu durumda hata doner, sessiz
+//! sifirlama/kirpma yapilmaz. Buyuk degerlerde kararlilik iddiasi yoktur:
+//! kullanilan f64 formulu temsil araligini asarsa adim reddedilir.
 
 /// Sifir merkezli RMS normun sekli.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,6 +57,10 @@ pub enum NormHatasi {
     UzunlukUyusmuyor(usize, usize),
     /// Katsayi vektoru sekle uymuyor.
     OlcekUyusmuyor(usize, usize),
+    /// Vektor NaN/Inf tasiyor; alan ve ilk konum bildirilir.
+    SonluOlmayan { alan: &'static str, konum: usize },
+    /// Sonlu girdiler ara hesapta temsil araligini asti.
+    HesapTasmasi(&'static str),
 }
 
 impl NormSpec {
@@ -84,16 +93,36 @@ pub struct NormCikti {
     pub r: f64,
 }
 
+// Bir egitim adimi NaN'yi checkpoint'e tasimamali. Ret konumu belirgindir;
+// deger kirpma ya da sifirla degistirme yapilmaz.
+fn sonlu_vektor(alan: &'static str, v: &[f64]) -> Result<(), NormHatasi> {
+    if let Some(konum) = v.iter().position(|x| !x.is_finite()) {
+        return Err(NormHatasi::SonluOlmayan { alan, konum });
+    }
+    Ok(())
+}
+
+fn sonlu_ara(islem: &'static str, v: f64) -> Result<f64, NormHatasi> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(NormHatasi::HesapTasmasi(islem))
+    }
+}
+
 fn _cerceve(spec: NormSpec, x: &[f64]) -> Result<(f64, Vec<f64>), NormHatasi> {
     NormSpec::yeni(spec.genislik, spec.eps)?;
     if x.len() != spec.genislik {
         return Err(NormHatasi::UzunlukUyusmuyor(x.len(), spec.genislik));
     }
+    sonlu_vektor("girdi", x)?;
     let n = x.len() as f64;
-    let ortalama = x.iter().sum::<f64>() / n;
+    let ortalama = sonlu_ara("ortalama", x.iter().sum::<f64>() / n)?;
     let c: Vec<f64> = x.iter().map(|v| v - ortalama).collect();
-    let kareler = c.iter().map(|v| v * v).sum::<f64>() / n;
-    Ok(((kareler + spec.eps).sqrt(), c))
+    sonlu_vektor("merkezlenmis", &c)?;
+    let kareler = sonlu_ara("merkez kareleri", c.iter().map(|v| v * v).sum::<f64>() / n)?;
+    let r = sonlu_ara("RMS paydasi", (kareler + spec.eps).sqrt())?;
+    Ok((r, c))
 }
 
 /// Ileri gecis: `y = (1 + s) * (x - ortalama) / r`.
@@ -101,12 +130,14 @@ pub fn norm_ileri(spec: NormSpec, x: &[f64], olcek: &[f64]) -> Result<NormCikti,
     if olcek.len() != spec.genislik {
         return Err(NormHatasi::OlcekUyusmuyor(olcek.len(), spec.genislik));
     }
+    sonlu_vektor("olcek", olcek)?;
     let (r, c) = _cerceve(spec, x)?;
     let y: Vec<f64> = c
         .iter()
         .zip(olcek.iter())
         .map(|(ci, si)| (1.0 + si) * ci / r)
         .collect();
+    sonlu_vektor("cikti", &y)?;
     Ok(NormCikti { y, c, r })
 }
 
@@ -128,6 +159,8 @@ pub fn norm_geri(
     if grad_y.len() != spec.genislik {
         return Err(NormHatasi::UzunlukUyusmuyor(grad_y.len(), spec.genislik));
     }
+    sonlu_vektor("olcek", olcek)?;
+    sonlu_vektor("grad_y", grad_y)?;
     let (r, c) = _cerceve(spec, x)?;
     let n = x.len() as f64;
     let gy: Vec<f64> = grad_y
@@ -135,12 +168,20 @@ pub fn norm_geri(
         .zip(olcek.iter())
         .map(|(g, s)| g * (1.0 + s))
         .collect();
-    let gy_c: f64 = gy.iter().zip(c.iter()).map(|(g, ci)| g * ci).sum();
-    let gy_toplam: f64 = gy.iter().sum();
+    sonlu_vektor("olcekli gradyan", &gy)?;
+    let gy_c = sonlu_ara(
+        "gradyan merkez carpimi",
+        gy.iter().zip(c.iter()).map(|(g, ci)| g * ci).sum(),
+    )?;
+    let gy_toplam = sonlu_ara("gradyan toplami", gy.iter().sum())?;
+    let nr = sonlu_ara("gradyan paydasi", n * r)?;
+    let nr3 = sonlu_ara("gradyan kubik paydasi", n * r * r * r)?;
     let gx: Vec<f64> = (0..c.len())
-        .map(|j| gy[j] / r - gy_c * c[j] / (n * r * r * r) - gy_toplam / (n * r))
+        .map(|j| gy[j] / r - gy_c * c[j] / nr3 - gy_toplam / nr)
         .collect();
     let grad_s: Vec<f64> = (0..c.len()).map(|j| grad_y[j] * c[j] / r).collect();
+    sonlu_vektor("grad_x", &gx)?;
+    sonlu_vektor("grad_s", &grad_s)?;
     Ok((gx, grad_s))
 }
 
@@ -157,9 +198,15 @@ pub fn duz_rms(spec: NormSpec, x: &[f64]) -> Result<Vec<f64>, NormHatasi> {
     if x.len() != spec.genislik {
         return Err(NormHatasi::UzunlukUyusmuyor(x.len(), spec.genislik));
     }
+    sonlu_vektor("girdi", x)?;
     let n = x.len() as f64;
-    let r = (x.iter().map(|v| v * v).sum::<f64>() / n + spec.eps).sqrt();
-    Ok(x.iter().map(|v| v / r).collect())
+    let r = sonlu_ara(
+        "duz RMS paydasi",
+        (x.iter().map(|v| v * v).sum::<f64>() / n + spec.eps).sqrt(),
+    )?;
+    let y: Vec<f64> = x.iter().map(|v| v / r).collect();
+    sonlu_vektor("cikti", &y)?;
+    Ok(y)
 }
 
 #[cfg(test)]
@@ -442,5 +489,131 @@ mod tests {
             sapma,
             s.parametre_sayisi()
         );
+    }
+
+    #[test]
+    fn sonlu_olmayan_girdi_tum_yollarda_reddedilir() {
+        let s = spec();
+        for konum in 0..s.genislik {
+            for deger in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                let mut x = ornek(s.genislik);
+                x[konum] = deger;
+                let beklenen = Err(NormHatasi::SonluOlmayan {
+                    alan: "girdi",
+                    konum,
+                });
+                assert_eq!(norm_ileri(s, &x, &[0.0; 8]), beklenen);
+                assert!(norm_geri(s, &x, &[0.0; 8], &[1.0; 8]).is_err());
+                assert!(duz_rms(s, &x).is_err());
+                assert!(merkezle(s, &x).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn katsayi_ve_gradyan_sonlulugu_denetlenir() {
+        let s = spec();
+        let x = ornek(8);
+        for konum in 0..8 {
+            for deger in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                let mut v = [0.0; 8];
+                v[konum] = deger;
+                assert_eq!(
+                    norm_ileri(s, &x, &v),
+                    Err(NormHatasi::SonluOlmayan {
+                        alan: "olcek",
+                        konum
+                    })
+                );
+                assert_eq!(
+                    norm_geri(s, &x, &v, &[1.0; 8]),
+                    Err(NormHatasi::SonluOlmayan {
+                        alan: "olcek",
+                        konum
+                    })
+                );
+                assert_eq!(
+                    norm_geri(s, &x, &[0.0; 8], &v),
+                    Err(NormHatasi::SonluOlmayan {
+                        alan: "grad_y",
+                        konum
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sonlu_girdi_ara_hesapta_tasarsa_ret() {
+        let s = spec();
+        let x = [f64::MAX; 8];
+        assert!(matches!(
+            norm_ileri(s, &x, &[0.0; 8]),
+            Err(NormHatasi::HesapTasmasi("ortalama"))
+        ));
+        assert!(duz_rms(s, &x).is_err());
+        let z = [1e200, -1e200, 1e200, -1e200, 1e200, -1e200, 1e200, -1e200];
+        assert!(matches!(
+            norm_ileri(s, &z, &[0.0; 8]),
+            Err(NormHatasi::HesapTasmasi("merkez kareleri"))
+        ));
+    }
+
+    #[test]
+    fn sonlu_katsayi_ciktiyi_tasirabilir() {
+        let s = spec();
+        let x = [7.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0];
+        assert!(norm_ileri(s, &x, &[f64::MAX; 8]).is_err());
+        assert!(norm_geri(s, &x, &[f64::MAX; 8], &[2.0; 8]).is_err());
+    }
+
+    #[test]
+    fn geri_gecis_ara_carpim_tasmasini_reddeder() {
+        let s = spec();
+        let x = [1e100, -1e100, 1e100, -1e100, 1e100, -1e100, 1e100, -1e100];
+        assert!(norm_ileri(s, &x, &[0.0; 8]).is_ok());
+        assert!(norm_geri(s, &x, &[0.0; 8], &[f64::MAX; 8]).is_err());
+        let y = [1e110, -1e110, 1e110, -1e110, 1e110, -1e110, 1e110, -1e110];
+        assert!(matches!(
+            norm_geri(s, &y, &[0.0; 8], &[1.0; 8]),
+            Err(NormHatasi::HesapTasmasi("gradyan kubik paydasi"))
+        ));
+    }
+
+    #[test]
+    fn elle_kurulan_gecersiz_norm_spec_tum_yollarda_ret() {
+        for s in [
+            NormSpec {
+                genislik: 0,
+                eps: 1e-6,
+            },
+            NormSpec {
+                genislik: 8,
+                eps: -1.0,
+            },
+            NormSpec {
+                genislik: 8,
+                eps: f64::NAN,
+            },
+        ] {
+            let x = vec![0.0; s.genislik];
+            assert!(norm_ileri(s, &x, &x).is_err());
+            assert!(norm_geri(s, &x, &x, &x).is_err());
+            assert!(duz_rms(s, &x).is_err());
+            assert!(merkezle(s, &x).is_err());
+        }
+    }
+
+    #[test]
+    fn norm_hatasi_girdileri_degistirmez() {
+        let s = spec();
+        let x = ornek(8);
+        let olcek = [f64::MAX; 8];
+        let grad = [2.0; 8];
+        let once = x.clone();
+        assert!(norm_geri(s, &x, &olcek, &grad).is_err());
+        assert_eq!(x, once);
+        assert_eq!(olcek, [f64::MAX; 8]);
+        assert_eq!(grad, [2.0; 8]);
     }
 }
