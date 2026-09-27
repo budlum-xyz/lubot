@@ -763,4 +763,71 @@ mod tests {
         assert_eq!(Secenek::DilTespiti.ad(), "dil-tespiti");
         assert_eq!(Puan::yeni(0.25).unwrap().tumleyen().deger(), 0.75);
     }
+
+    /// Port kaydi olcumu (tipli karar): `training/tipli_karar.py` bu satiri
+    /// kosar ve okur.
+    ///
+    /// Olculen: cikis yuzeyi uc kapali sekil (secim / puan / evet-hayir),
+    /// hicbiri metin tasimaz; olasilik disi degerler kurucuda reddedilir;
+    /// esik altindaki tek bas karar vermez, yukseltir; k-of-n oylama
+    /// anlasmazligi ilk oyu secerek cozmez; kalibre puan sicaklikta monoton.
+    #[test]
+    fn olcum_raporu_tipli_karar() {
+        let politika = Politika::varsayilan();
+        let kararlar = [
+            Karar::Secenek(SecenekKarari {
+                secim: Secenek::AracYonlendirici,
+                guven: Guven(Puan::yeni(0.9).unwrap()),
+            }),
+            Karar::Puan(PuanKarari {
+                deger: Puan::yeni(0.4).unwrap(),
+                guven: Guven(Puan::yeni(0.9).unwrap()),
+            }),
+            evet(0.9),
+        ];
+        let tipler = [KararTipi::Secenek, KararTipi::Puan, KararTipi::EvetHayir];
+        let sekil = tipler
+            .iter()
+            .filter(|t| kararlar.iter().any(|k| k.tipi() == **t))
+            .count();
+        let secenek = Secenek::HEPSI.len();
+        // Olasilik disi degerler: dordu de reddedilmeli.
+        let gecersiz = [-0.1, 1.1, f64::NAN, f64::INFINITY];
+        let gecersiz_red = gecersiz
+            .iter()
+            .filter(|d| Puan::yeni(**d).is_none())
+            .count();
+        // Esik altindaki tek bas yukseltir; esik ustu karar verir.
+        let alt = tek_bas(evet(GUVEN_ESIGI - 0.05), &politika).unwrap();
+        let ust = tek_bas(evet(GUVEN_ESIGI + 0.05), &politika).unwrap();
+        let esik_alti_yukseltir = usize::from(
+            alt == Sonuc::Yukselt(YukseltmeNedeni::GuvenEsikAltinda)
+                && matches!(ust, Sonuc::Kesin(_)),
+        );
+        // k-of-n: 2/3 evet karar verir; karisik tip yukselir.
+        let oylar = [evet(0.9), evet(0.9), hayir(0.9)];
+        let k = konsensus(&oylar, &politika).unwrap();
+        let karisik = konsensus(&kararlar, &politika).unwrap();
+        let k_of_n = usize::from(
+            matches!(k.sonuc, Sonuc::Kesin(_))
+                && k.evet_oyu == 2
+                && karisik.sonuc == Sonuc::Yukselt(YukseltmeNedeni::TipKarisik),
+        );
+        // Kalibre puan: sicaklik > 1 puani 0.5'e ceker, siralamayi bozmaz.
+        let ham = [0.6, 0.7, 0.8, 0.9];
+        let kalibre: Vec<f64> = ham
+            .iter()
+            .map(|p| kalibrasyon::kalibre_puan(*p, 2.0).unwrap())
+            .collect();
+        let monoton = usize::from(
+            kalibre.windows(2).all(|w| w[0] < w[1])
+                && kalibre
+                    .iter()
+                    .zip(ham.iter())
+                    .all(|(k, h)| k < h && *k > 0.5),
+        );
+        println!(
+            "tipli-karar | sekil={sekil} secenek={secenek} gecersiz_red={gecersiz_red} esik_alti_yukseltir={esik_alti_yukseltir} k_of_n={k_of_n} kalibre_monoton={monoton} konsensus_k={KONSENSUS_K} konsensus_n={KONSENSUS_N}"
+        );
+    }
 }

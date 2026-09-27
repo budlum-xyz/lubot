@@ -8349,6 +8349,144 @@ def selftest_gecis_hatti_kapisi() -> None:
     assert "tesisat" in (_gecis_kayit_bulgu(dict(kayit, tesisat_uyumlu=False), taze) or "")
 
 
+
+PORT_KAYITLARI = (
+    # (betik, kaynak dosya, olcum testi, kayit)
+    ("training/dikkat_kadansi.py", "crates/kodlayici/src/blok.rs",
+     "fn olcum_raporu_dikkat_kadansi", "training/eval/sonuclar/dikkat-kadansi-2026-09-27.json"),
+    ("training/norm_yeri.py", "crates/kodlayici/src/blok.rs",
+     "fn olcum_raporu_norm_yeri", "training/eval/sonuclar/norm-yeri-2026-09-27.json"),
+    ("training/tipli_karar.py", "crates/tomurcuk/src/lib.rs",
+     "fn olcum_raporu_tipli_karar", "training/eval/sonuclar/tipli-karar-2026-09-27.json"),
+)
+PORT_UCUNCU_TARAF = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
+                     "torch", "huggingface", "transformers", "candle")
+
+
+def _port_kayit_denetle(kayit: Path) -> list:
+    """Omurga/karar port kayitlarinin ortak sozlesmesi: olcut mantiksal ve
+    tutuyor, olculmeyen bos degil, port karti isaret ediyor, kanit sayisal.
+    Metin denetimidir; ihlal listesi doner."""
+    ihlaller: list[str] = []
+    if not kayit.is_file():
+        return [f"{kayit} yok"]
+    try:
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        return [f"{kayit.name}: json bozuk: {err}"]
+    olcut = veri.get("olcut")
+    if not isinstance(olcut, dict) or not isinstance(olcut.get("sonuc"), bool):
+        ihlaller.append(f"{kayit.name}: olcut.sonuc mantiksal degil")
+    elif not olcut["sonuc"]:
+        ihlaller.append(f"{kayit.name}: olcut tutmuyor")
+    if not isinstance(veri.get("olculmeyen"), list) or not veri["olculmeyen"]:
+        ihlaller.append(f"{kayit.name}: olculmeyen listesi bos")
+    if not str(veri.get("port_karti", "")).startswith("workspace:skills/port-hatti/port-kartlari/"):
+        ihlaller.append(f"{kayit.name}: port karti isareti yok")
+    kanit = veri.get("kanit")
+    if not isinstance(kanit, dict) or not kanit:
+        ihlaller.append(f"{kayit.name}: kanit bos")
+    elif any(not isinstance(v, (int, float)) or isinstance(v, bool) for a, v in kanit.items() if a != "olcut_sonucu"):
+        ihlaller.append(f"{kayit.name}: kanit sayisal degil")
+    return ihlaller
+
+
+def _port_kaynak_denetle(kaynak: Path, test_adi: str) -> list:
+    """Olcum testi kaynakta durur ve test disindaki govde ucuncu taraf adi
+    tasimaz (K1: ust kaynak adi yalniz port kartinda gecer)."""
+    ihlaller: list[str] = []
+    if not kaynak.is_file():
+        return [f"{kaynak} yok"]
+    metin = kaynak.read_text(encoding="utf-8")
+    if test_adi not in metin:
+        ihlaller.append(f"{kaynak.name}: olcum testi yok: {test_adi}")
+    test_oneki = metin.find("mod tests")
+    govde = metin if test_oneki == -1 else metin[:test_oneki]
+    kucuk = "\n".join(s for s in govde.lower().splitlines() if not s.lstrip().startswith("//"))
+    for ad in PORT_UCUNCU_TARAF:
+        if re.search(rf"\b{ad}\b", kucuk):
+            ihlaller.append(f"{kaynak.name}: ucuncu taraf adi test disinda gecti: {ad}")
+    return ihlaller
+
+
+def gate_omurga_karar_port_kayitlari() -> str:
+    """Omurga (dikkat kadansi, norm yeri) ve tipli karar port kartlarinin
+    karta-ozel kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
+    kendi betiginin `--dogrula` adimindan gecer, olcum testi kaynakta var,
+    K1 siniri (ust kaynak adi test disinda gecmez) tutuyor."""
+    ihlaller: list[str] = []
+    for betik, kaynak, test_adi, kayit in PORT_KAYITLARI:
+        ihlaller += _port_kaynak_denetle(ROOT / kaynak, test_adi)
+        ihlaller += _port_kayit_denetle(ROOT / kayit)
+    if ihlaller:
+        raise SystemExit("port kaydi sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    ozet = []
+    for betik, _kaynak, _test, _kayit in PORT_KAYITLARI:
+        kosu = subprocess.run(
+            [sys.executable, betik, "--dogrula"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode != 0:
+            raise SystemExit(f"{betik} kaydi dogrulanmadi:\n" + (kosu.stdout + kosu.stderr)[-800:])
+        ozet.append(Path(betik).stem)
+    return "uc port kaydi taze ve yeniden olculdu: " + ", ".join(ozet)
+
+
+def selftest_omurga_karar_port_kayitlari() -> None:
+    """Kanaryalar: olcutu dusurulmus kayit, bos olculmeyen, karta isaret
+    etmeyen kayit ve test disinda ucuncu taraf adi tasiyan kaynak yakalanmali;
+    gercek kayit ve kaynak gecmeli."""
+    import tempfile
+
+    for _betik, kaynak, test_adi, kayit in PORT_KAYITLARI:
+        if _port_kayit_denetle(ROOT / kayit):
+            raise SystemExit(f"saglam kayit denetimden gecmedi: {kayit}")
+        if _port_kaynak_denetle(ROOT / kaynak, test_adi):
+            raise SystemExit(f"saglam kaynak denetimden gecmedi: {kaynak}")
+    gercek = json.loads((ROOT / PORT_KAYITLARI[0][3]).read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "kayit.json"
+        # 1) olcut dusurulmus
+        k = json.loads(json.dumps(gercek)); k["olcut"]["sonuc"] = False
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _port_kayit_denetle(bozuk):
+            raise SystemExit("olcutu tutmayan kayit yakalanmadi")
+        # 2) olculmeyen bos
+        k = json.loads(json.dumps(gercek)); k["olculmeyen"] = []
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _port_kayit_denetle(bozuk):
+            raise SystemExit("bos olculmeyen yakalanmadi")
+        # 3) karta isaret yok
+        k = json.loads(json.dumps(gercek)); k["port_karti"] = "(yok)"
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _port_kayit_denetle(bozuk):
+            raise SystemExit("kartsiz kayit yakalanmadi")
+        # 4) kanit metne donmus
+        k = json.loads(json.dumps(gercek)); k["kanit"]["uzunluk"] = "sekiz"
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        if not _port_kayit_denetle(bozuk):
+            raise SystemExit("sayisal olmayan kanit yakalanmadi")
+        # 5) kaynakta test disinda ucuncu taraf adi
+        kaynak_metin = (ROOT / PORT_KAYITLARI[0][1]).read_text(encoding="utf-8")
+        kirli = Path(td) / "blok.rs"
+        kirli.write_text("pub fn kaynak() {} // modernbert\npub struct Modernbert;\n" + kaynak_metin, encoding="utf-8")
+        if not _port_kaynak_denetle(kirli, PORT_KAYITLARI[0][2]):
+            raise SystemExit("ucuncu taraf adi tasiyan kaynak yakalanmadi")
+        # 6) olcum testi sokulmus
+        kirli.write_text(kaynak_metin.replace(PORT_KAYITLARI[0][2], "fn x"), encoding="utf-8")
+        if not _port_kaynak_denetle(kirli, PORT_KAYITLARI[0][2]):
+            raise SystemExit("olcum testi sokulmus kaynak yakalanmadi")
+        # 7) degistirilmis kayit `--dogrula`da yakalanmali (sayi kayittan farkli)
+        k = json.loads(json.dumps(gercek)); k["kanit"]["uzunluk"] = 9
+        bozuk.write_text(json.dumps(k), encoding="utf-8")
+        kosu = subprocess.run(
+            [sys.executable, PORT_KAYITLARI[0][0], "--dogrula", "--kayit", str(bozuk)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("degistirilmis kayit dogrulamadan gecti")
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -8477,6 +8615,7 @@ GATES_EXTRA = {
     "yonlendirme-kapisi": (gate_yonlendirme_kapisi, selftest_yonlendirme_kapisi),
     "kesit-kapisi": (gate_kesit_kapisi, selftest_kesit_kapisi),
     "normalizasyon-kapisi": (gate_normalizasyon_kapisi, selftest_normalizasyon_kapisi),
+    "omurga-karar-port-kayitlari": (gate_omurga_karar_port_kayitlari, selftest_omurga_karar_port_kayitlari),
 }
 
 
