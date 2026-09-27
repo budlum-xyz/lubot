@@ -100,7 +100,7 @@ components), `nicem` (sub-byte quantization), `tasiyici` (the in-place
 weight container and its depth ladder) and `omurga` (the encoder backbone:
 rotary positions, the alternating local/global attention schedule,
 grouped-query attention, bias-free blocks, and the flat weight directory
-that makes averaging two checkpoints a defined operation). They are workspace members with
+that makes averaging two checkpoints a defined operation) and `otonom` (the autonomous data-triggered training loop of section 6, written as nine refusals rather than a schedule: an empty batch is not trained even when the window elapses, an unrecognised label is not demoted to the backbone, a training number is never written in place of a serving one, the ratchet is read before the loss, a checkpoint whose lineage cannot be verified is not published, one validator is not a majority, equal scores are reported equal, contribution is recorded and not rewarded, and models without a common ancestor are not averaged). They are workspace members with
 their own tests; the ones the binary does not reach yet are named in
 `gates/unwired.baseline`, a list that may only shrink. This is stated so a
 reader sees the stack as it is - built, not yet fully wired - rather than
