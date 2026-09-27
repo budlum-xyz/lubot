@@ -1,0 +1,10 @@
+{
+  "durdu": true,
+  "kanit": "spec parametre sayisi okunamadi: donanim butcesi denetlenemez",
+  "kosul": "S3",
+  "onay": {
+    "gerekce": "S3 kanaryasi: parametre okuma yolu duzeltildi (spec.params.toplam + parca toplami denetimi)",
+    "tarih": "2026-09-24T14:27:49"
+  },
+  "tarih": "2026-09-24T14:27:42"
+}

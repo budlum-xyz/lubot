@@ -1,0 +1,25 @@
+{
+  "agac_ozeti": "f2700c61eaeabdea8765e44e9b12da7d99fd09815024126037b61d8a3a792a6f",
+  "dosya_sayisi": 5,
+  "modul_sayisi": 2,
+  "test_amaci": 5,
+  "modul_kapsami": 0.5,
+  "bekleyen": [
+    "katman-rope"
+  ],
+  "tesisat_uyumlu": true,
+  "uyari": "olcumler deterministiktir; duvar saati yoktur, bu yuzden ratchet disi degil",
+  "uretici": "lubot gecis sayim|plan|durum + gates/check.py::gate_gecis_hatti_kapisi",
+  "kosucu": "betik",
+  "olcut": {
+    "ad": "sablon_sayimi_kayit_ozetiyle_esit",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 0.1,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  }
+}

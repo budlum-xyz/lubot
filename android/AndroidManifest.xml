@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  APK'nin sozlesmesi burada, tek dosyada duruyor.
+
+  **Paket adi `dev.budlum.lubot`, cunku Java kaynagi oyle diyor.** Bu dosyada
+  bir kez `xyz.budlum.lubot` yazilmisti ve `aapt2` uretilen `R` sinifini
+  `xyz.budlum.lubot.R` yapti; `android/src/dev/budlum/lubot/AnaEtkinlik.java`
+  ise `package dev.budlum.lubot;` bildiriyor ve `R.layout.ana` aradigi icin
+  derleme "package R does not exist" ile dustu. Manifest ile kaynak ayni seyi
+  soylemek zorunda; bu satir o yuzden aciklamali.
+
+  Izin listesi tek satirdir ve bilincli olarak tek satirdir: uygulama cihazdaki
+  korpusa bakar, gerekirse bir dugume sorar (INTERNET), ve baska hicbir sey
+  istemez. Depolama izni yok (kendi dosyasina yalnizca uygulama yazar), kamera
+  yok, konum yok. `gates/check.py` icindeki `apk-sozlesmesi` kapisi bu listeyi
+  okur ve listede olmayan bir izin eklendiginde duser.
+
+  `usesCleartextTraffic="false"`: dugumle konusma sifresiz olamaz. Gelistirme
+  sirasinda yerel bir dugume baglanmak gerekirse bu satir bilincli olarak
+  degistirilir; sessizce acilmasi, localhost disindaki bir agda da acik olmasi
+  demektir.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.budlum.lubot"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-sdk
+        android:minSdkVersion="24"
+        android:targetSdkVersion="34" />
+
+    <application
+        android:label="Lubot"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:supportsRtl="true">
+
+        <activity
+            android:name="dev.budlum.lubot.AnaEtkinlik"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

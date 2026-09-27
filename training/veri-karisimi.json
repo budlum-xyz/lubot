@@ -1,0 +1,34 @@
+{
+  "surum": 1,
+  "aciklama": "Egitim karisiminin beyani (NN §8 adim 4). Her katmanin bir asamasi ve bir pay bandi vardir; bant disi olcen bir karisim kurulmaz. Bant iki yonde de isir: tavan bir kaynagin seti bogmasini, taban bir kaynagin kimse karar vermeden silinmesini engeller. 2026-09-26 sahip karari: egitim verisi repoda tutulmaz; kamu-mali katmani bu beyandan cikarildi (veri gecmiste PR ref'lerinde durur, yeni veri BUD akisiyla ve validator'den gecerek gelecek). Tabanlar 2026-09-26'da yalniz-agac korpusta olculen kompozisyonun hemen altinda durur: gercek 0.779, derleyici-hakem 0.2049, mufredat 0.0161, sentetik 0.0.",
+  "katmanlar": {
+    "mufredat": {
+      "asama": 1,
+      "taban_pay": 0.01,
+      "tavan_pay": 0.2,
+      "kaynak": "training/curriculum/*.jsonl",
+      "ne_ogretir": "Cevabin bicimi: arac cagir, izinsiz reddet, olculmemis sayi yazma."
+    },
+    "derleyici-hakem": {
+      "asama": 2,
+      "taban_pay": 0.15,
+      "tavan_pay": 0.4,
+      "kaynak": "cargo test --workspace -- --list (KK)",
+      "ne_ogretir": "Bir davranisin kanitinin nerede oldugu. Cevabin dogrulugu okuyucunun yargisina degil test kosucusunun kendi ciktisina dayanir."
+    },
+    "gercek": {
+      "asama": 3,
+      "taban_pay": 0.7,
+      "tavan_pay": 0.95,
+      "kaynak": "corpus/knowledge-self.jsonl.gz",
+      "ne_ogretir": "Agaclarin kendi icerigi, alintili."
+    },
+    "sentetik": {
+      "asama": 4,
+      "taban_pay": 0.0,
+      "tavan_pay": 0.3,
+      "kaynak": "olculmedi: self-instruct (C) egitilmis kontrol noktasi gerektirir, henuz yok",
+      "ne_ogretir": "Beyan edildi, bos olculdu. Koltuk duruyor; icine sablon metni koyup 'sentetik' demek olcum olmazdi."
+    }
+  }
+}

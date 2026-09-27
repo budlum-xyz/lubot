@@ -1,0 +1,17 @@
+{
+  "is": "egitim-turu",
+  "kanit": "adim 0 -> 140; kayip 9.047749 -> 5.634027; dogrulama 6.117361; ckpt sha256 ad03c2b7c43b59f740631e2e3f17cffcf15d44129ef33676354bc757c69ecb97",
+  "kaynaklar": {
+    "cikti_jetonlari": 35560,
+    "girdi_jetonlari": 35560,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 97.051
+  },
+  "kosucu": "model",
+  "olcut": {
+    "ad": "kosunun_son_egitim_kaybi_baslangic_kaybindan_dusuk",
+    "sonuc": true
+  },
+  "tarih": "2026-09-26"
+}

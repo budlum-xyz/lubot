@@ -20,72 +20,68 @@ pub struct Hit {
 }
 
 /// A GitHub classic token (`ghp_`/`gho_`/`ghu_`/`ghs_` + 36 alphanumerics).
+///
+/// The prefixes come from [`lubot_sir::taninan_onekler_sinifli`], never from
+/// literals here. Two tables would be two truths - one updated, one forgotten,
+/// and one of the two scanners quietly blind - and the list is built from hidden
+/// constants, so no prefix of it appears in `strings`.
 fn github_classic(line: &str) -> bool {
-    for prefix in ["ghp_", "gho_", "ghu_", "ghs_"] {
-        if exact_alnum_tail(line, prefix, 36) {
-            return true;
-        }
-    }
-    false
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::GitHub)
+        .any(|(onek, _)| exact_alnum_tail(line, onek, 36))
 }
 
 /// A GitHub fine-grained token (`github_pat_` + 20+ of `[A-Za-z0-9_]`).
 fn github_fine(line: &str) -> bool {
-    const PREFIX: &str = "github_pat_";
-    let Some(at) = line.find(PREFIX) else {
-        return false;
-    };
-    let rest = &line[at + PREFIX.len()..];
     const MIN: usize = 20;
-    rest.len() >= MIN
-        && rest[..MIN]
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::GitHub)
+        .any(|(onek, _)| {
+            onek.len() > 10
+                && head_after(line, onek, MIN)
+                    .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        })
 }
 
 /// A model-API key (`sk-` + 20+ alphanumerics).
 fn model_api_style(line: &str) -> bool {
-    const PREFIX: &str = "sk-";
-    let Some(at) = line.find(PREFIX) else {
-        return false;
-    };
-    let rest = &line[at + PREFIX.len()..];
     const MIN: usize = 20;
-    rest.len() >= MIN && rest[..MIN].chars().all(|c| c.is_ascii_alphanumeric())
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::ModelApi)
+        .any(|(onek, _)| {
+            head_after(line, onek, MIN)
+                .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric()))
+        })
 }
 
 /// An AWS access key id (`AKIA` + 16 uppercase alphanumerics).
 fn aws_access(line: &str) -> bool {
-    const PREFIX: &str = "AKIA";
-    let Some(at) = line.find(PREFIX) else {
-        return false;
-    };
-    let rest = &line[at + PREFIX.len()..];
     const COUNT: usize = 16;
-    rest.len() >= COUNT
-        && rest[..COUNT]
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::Aws)
+        .any(|(onek, _)| {
+            head_after(line, onek, COUNT).is_some_and(|head| {
+                head.chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            })
+        })
 }
 
 /// A Slack token (`xoxb-`/`xoxp-`/`xoxa-`/`xoxr-`/`xoxs-` + 10+ of
 /// `[A-Za-z0-9-]`).
 fn slack_token(line: &str) -> bool {
-    for prefix in ["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-"] {
-        let Some(at) = line.find(prefix) else {
-            continue;
-        };
-        let rest = &line[at + prefix.len()..];
-        const MIN: usize = 10;
-        if rest.len() >= MIN
-            && rest[..MIN]
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-')
-        {
-            return true;
-        }
-    }
-    false
+    const MIN: usize = 10;
+    lubot_sir::taninan_onekler_sinifli()
+        .iter()
+        .filter(|(_, sinif)| *sinif == lubot_sir::OnekSinifi::Slack)
+        .any(|(onek, _)| {
+            head_after(line, onek, MIN)
+                .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        })
 }
 
 /// A private key block (`-----BEGIN ... PRIVATE KEY-----`).
@@ -93,16 +89,32 @@ fn pem_block(line: &str) -> bool {
     let Some(at) = line.find("-----BEGIN ") else {
         return false;
     };
-    line[at..].contains("PRIVATE KEY")
+    line.get(at..)
+        .is_some_and(|tail| tail.contains("PRIVATE KEY"))
+}
+
+/// The first `n` characters after `prefix`, or `None` when the prefix is
+/// absent or fewer than `n` characters follow it.
+///
+/// Never `rest[..n]`: a corpus line may carry any UTF-8 - Turkish `ü` is two
+/// bytes - and slicing at a *byte* offset lands inside a character and panics.
+/// A scanner that panics on Turkish prose cannot run over its own corpus, and
+/// a panic does not fail closed, it fails silent: it takes the whole run down
+/// instead of reporting a verdict.
+fn head_after<'a>(line: &'a str, prefix: &str, n: usize) -> Option<&'a str> {
+    let at = line.find(prefix)?;
+    let rest = &line[at + prefix.len()..];
+    match rest.char_indices().nth(n) {
+        Some((byte, _)) => Some(&rest[..byte]),
+        None if rest.chars().count() == n => Some(rest),
+        None => None,
+    }
 }
 
 /// Exact prefix with an exact-length alphanumeric tail: the strictest shape.
 fn exact_alnum_tail(line: &str, prefix: &str, count: usize) -> bool {
-    let Some(at) = line.find(prefix) else {
-        return false;
-    };
-    let rest = &line[at + prefix.len()..];
-    rest.len() >= count && rest[..count].chars().all(|c| c.is_ascii_alphanumeric())
+    head_after(line, prefix, count)
+        .is_some_and(|head| head.chars().all(|c| c.is_ascii_alphanumeric()))
 }
 
 /// Scan one line; the first shape found wins, with its name.
@@ -176,6 +188,40 @@ mod tests {
         );
         let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n";
         assert_eq!(scan_line(pem), Some(("private key block", "pem")));
+    }
+
+    /// The corpus is Turkish; the scanner must survive it. A byte slice at a
+    /// fixed offset used to panic here ("byte index 20 is not a char boundary")
+    /// the moment a multi-byte character sat inside the probe window.
+    #[test]
+    fn multibyte_text_does_not_panic_the_scanner() {
+        let bos = "üığşçöİĞÜŞÇÖ";
+        assert_eq!(scan_line(&format!("sk-{bos}")), None);
+        assert_eq!(
+            scan_line(&format!("sk-{}ü{}", "a".repeat(19), "b".repeat(30))),
+            None
+        );
+        assert_eq!(
+            scan_line(&format!("AKIA{}ü{}", "D".repeat(15), "D".repeat(10))),
+            None
+        );
+        assert_eq!(
+            scan_line(&format!("github_pat_{}ü{}", "B".repeat(19), "B".repeat(9))),
+            None
+        );
+        assert_eq!(
+            scan_line(&format!("xoxb-{}ü{}", "E".repeat(9), "E".repeat(9))),
+            None
+        );
+        assert_eq!(
+            scan_line(&format!("ghp_{}ü{}", "A".repeat(35), "A".repeat(9))),
+            None
+        );
+        // Ve gercek bir kimlik, cok baytli gurultunun yaninda yine yakalanir.
+        assert_eq!(
+            scan_line(&format!("üğü {bos} {}", classic())),
+            Some(("github token", "github"))
+        );
     }
 
     #[test]

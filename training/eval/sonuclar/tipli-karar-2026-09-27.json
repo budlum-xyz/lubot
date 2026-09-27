@@ -1,0 +1,36 @@
+{
+  "is": "Tipli karar basligi: non-autoregressive, tek geciste kapali-sekil karar (secim/puan/evet-hayir); metin yuzeyi yok; esik, k-of-n ve kalibrasyon davranisi olculdu",
+  "kanit": {
+    "esik_alti_yukseltir": 1.0,
+    "gecersiz_red": 4.0,
+    "k_of_n": 1.0,
+    "kalibre_monoton": 1.0,
+    "konsensus_k": 2.0,
+    "konsensus_n": 3.0,
+    "olcut_sonucu": true,
+    "secenek": 6.0,
+    "sekil": 3.0,
+    "sure_saniye": 1.31
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 1.31
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (ornek: tipli karar dogrulugu) bu kayitla dogrulanmis sayilmaz",
+    "etiketli karar kumesinde bu basligin dogrulugu (egitilmis baslik yok)",
+    "cok dilli omurga uzerinde karar davranisi (agirlik indirilmedi, olculmedi)",
+    "omurga temsili ile karar basliginin baglanmasi (kodlayici -> tomurcuk): ayri artim"
+  ],
+  "olcut": {
+    "ad": "karar_yuzeyi_uc_kapali_sekil_ve_uretim_yok",
+    "ifade": "cikis yuzeyi tam uc kapali sekil (secim/puan/evet-hayir) VE 6 kapali karar noktasi VE olasilik disi 4 deger 4/4 reddedilir VE esik altinda tek bas yukseltir VE 2/3 oy karar verir, karisik tip yukselir VE kalibre puan sicaklikta monoton VE k=2, n=3",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "Olcum yapisal ve davranissaldir: egitilmis bir karar basligi yok, etiketli karar kumesi uzerinde dogruluk olculmedi. Uretim yuzeyinin yoklugu ayrica decision-head-has-no-generation-surface kapisiyla denetlenir."
+}

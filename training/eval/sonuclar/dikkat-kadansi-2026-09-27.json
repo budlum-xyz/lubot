@@ -1,0 +1,38 @@
+{
+  "is": "Omurga dikkat kadansi: tam ve kayan dikkat tek kod yolunda yalniz maskeyle ayrisir; rope tanim degerleriyle; kadans (her ucuncu katman tam) konfigurasyondan okunur",
+  "kanit": {
+    "global_uzak_etki": 0.02658165,
+    "katman": 6.0,
+    "kayan_katman": 4.0,
+    "kayan_uzak_etki": 0.0,
+    "olcut_sonucu": true,
+    "pencere": 2.0,
+    "rope_norm_sapma": 0.0,
+    "rope_sifir_sapma": 0.0,
+    "sonlu": 1.0,
+    "sure_saniye": 9.9,
+    "tam_katman": 2.0,
+    "uzunluk": 8.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 9.9
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "8192 jeton baglamda kayan pencere maliyeti (olculmedi)",
+    "kadans oraninin (kac katmanda bir tam) model kalitesine etkisi: egitim kosusu ister",
+    "sifirdan egitilen cekirdekte (egitim crate) ayni kadansin uygulanmasi: ayri artim, bu kayit kodlayici omurgasini olcer"
+  ],
+  "olcut": {
+    "ad": "sliding_ve_global_dikkat_ayni_kod_yolu_maske_ile_ayrisir",
+    "ifade": "uzunluk=8, sol pencere=2: tam dikkatte son konum ilk konumu etkiler (> 1e-6) VE kayan dikkatte etkilemez (< 1e-9) VE rope(konum 0) birim (sapma 0) VE rope normu korur (< 1e-5) VE 6 katmanli kadans yapilandirmadan okunur (2 tam, 4 kayan) VE cikti sonlu",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "Olcum kucuk, tohumlu agirliklarla yapilir; egitilmis bir omurga yok. 8192 baglam ve kaynaktaki kadans orani bu makinede olculmedi; KatmanTuru mekanizmasi kadansi tasir, oran yapilandirmaya baglidir."
+}

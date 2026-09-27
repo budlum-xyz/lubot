@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Metinler tek yerde durur: bir dizeyi iki yerde yazmak, ikisinin ayrisacagi
+  anlamina gelir. Bu dosyadaki her satir, Activity'nin gercekten gosterdigi
+  bir metindir; kullanilmayan dize birakmak, olu kodun metin halidir.
+-->
+<resources>
+    <string name="uygulama_adi">Lubot</string>
+    <string name="baslik">Lubot \u00b7 okuyan istemci</string>
+    <string name="bos_cevap">Merhaba. Ben Lubot \u2014 uretmem, okurum: cevabim ya kaynaklarin satirlarina baglanir ya da reddedilir. Sorunu yaz.</string>
+    <string name="soru_ipucu">Lubot\u0027a sor\u2026</string>
+    <string name="dugme_sor">Gonder</string>
+    <string name="dugme_belge">Belge</string>
+    <string name="bekleniyor">Soruluyor\u2026</string>
+    <string name="bos_soru">Once bir soru yaz.</string>
+    <string name="not_basligi">Not:</string>
+    <string name="cevap_alinamadi">Cevap alinamadi</string>
+    <string name="cevap_buyuk">cevap cok buyuk</string>
+    <string name="belge_okunamadi">Belge okunamadi</string>
+    <string name="belge_eklendi">Belge soruya eklendi (%1$d karakter).</string>
+    <string name="belge_buyuk">Belge cok buyuk (ust sinir %1$d bayt)</string>
+    <string name="kopru_yok">Kopru yuklenemedi</string>
+    <string name="dugum_yok">dugum secilmedi</string>
+    <string name="dugum_baslik">Dugum adresi</string>
+    <string name="dugum_ipucu">https://\u2026</string>
+    <string name="dugum_yok_govde">Dugum adresi secilmedi. Basligi uzun basip adresi gir; gonderilecek govde asagida.</string>
+</resources>

@@ -1,0 +1,13 @@
+[package]
+name = "lubot-karar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
+license-file.workspace = true
+
+[dependencies]
+sha2 = "0.10"
+
+[lints]
+workspace = true

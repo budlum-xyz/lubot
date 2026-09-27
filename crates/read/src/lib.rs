@@ -127,6 +127,13 @@ pub trait Corpus {
     fn get(&self, id: &str) -> Option<&Item>;
     /// Every id the corpus holds, in insertion order.
     fn ids(&self) -> Vec<String>;
+    /// The ids the answer surface may use: every id except the ones whose
+    /// record was stamped not-served at corpus build time (process and
+    /// planning documents stay in the archive but never enter an answer).
+    /// Defaults to `ids()` so fixture implementors change nothing.
+    fn served_ids(&self) -> Vec<String> {
+        self.ids()
+    }
 }
 
 /// A corpus held in memory.

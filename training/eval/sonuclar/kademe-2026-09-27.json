@@ -1,0 +1,35 @@
+{
+  "is": "Kademe egitimi adayi (tasarim 3.5 kalem 1): her derinlik dagitilabilir - ara kademeler kayip tasir, taban kayip modulun icinde bit-ozdes tasinir, gradyanlar elle yazildi ve sonlu farkla denetlendi",
+  "kanit": {
+    "agirlik_toplam": 1.0,
+    "derinlik": 6.0,
+    "gradyan_sapma": 5.244655258045475e-07,
+    "kademe": 3.0,
+    "kayip": 4.758671172408139,
+    "olcut_sonucu": true,
+    "parametre": 0.0,
+    "sure_saniye": 0.06,
+    "taban_fark": 0.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.06
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kademe kaybinin gercek egitim kosusunda model kalitesine etkisi (uzmanli kosu ister; M4 isaretli karar)",
+    "agirlik semasinin secimi (uniform/azalan/harmonik: olcum izgarasi ister, kodda sabit deger yok)",
+    "ara kademelerin hangi derinliklere dusacagi ile bellek merdiveni basamaklarinin eslenmesi (olculmedi)",
+    "kademe kaybinin gradyan girisimi ve unutma etkisi (olculmedi)"
+  ],
+  "olcut": {
+    "ad": "kademe_3_agirlik_bir_taban_fark_sifir_gradyan_esik_alti",
+    "ifade": "derinlik=6, ara kademeler=[2,4], agirliklar [0.25,0.25,0.5]: kademe=3 VE agirlik toplami 1e-12 icinde 1 VE taban farki tam 0 VE gradyan sapmasi < 1e-6 VE parametre=0",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "Olcum sentetik kademe cikislaridir: uzmanli bir yigina baglanmadi, egitim kosusu yok. Modul adaydir ve bagli degildir; egitim hedefine baglanmasi M4 damgasi bekler (model_spec.json degismedi)."
+}

@@ -1,0 +1,1048 @@
+{
+  "surum": 1,
+  "tarih": "2026-09-25T01:15:27",
+  "kosucu": "betik",
+  "is": "Kamu mali (CC0) veri alimi: kaynak lisansi kanaldan dogrulandi, dosyalar indirildi, metin blok blok korpus kaydina cevrildi; kaynak adi ne kayitta ne betikte gecer.",
+  "olcut": {
+    "ad": "her_kayit_kapali_lisans_sinifinda_ve_ozetli",
+    "sonuc": true
+  },
+  "kaynaklar": {
+    "sure_saniye": 48.435,
+    "girdi_jetonlari": 0,
+    "onbellekli_jetonlari": 0,
+    "cikti_jetonlari": 0,
+    "maliyet": 0.0
+  },
+  "kaynak_ozetleri": [
+    {
+      "kimlik_ozeti": "e3eb6d2dd2e359bf",
+      "revizyon": "e6988033",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 28559891,
+      "kayit": 8491,
+      "karakter": 3333325,
+      "dosya": [
+        {
+          "dosya_ozeti": "700bd6ee9f438709",
+          "bayt": 395187,
+          "kayit": 5000
+        },
+        {
+          "dosya_ozeti": "84cc347ae7261f7a",
+          "bayt": 396924,
+          "kayit": 3490
+        },
+        {
+          "dosya_ozeti": "119dd365b07b7044",
+          "bayt": 8630496,
+          "kayit": 1
+        },
+        {
+          "dosya_ozeti": "9593c2f697ef5e12",
+          "bayt": 9568412,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "62f3ec0fc795db85",
+          "bayt": 9568872,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "3cfab68acfb1bc70",
+      "revizyon": "fcbb30d3",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 27651723,
+      "kayit": 0,
+      "karakter": 0,
+      "dosya": [
+        {
+          "dosya_ozeti": "3545e4e5d159b360",
+          "bayt": 392450,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "cd880b8433529615",
+          "bayt": 392794,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "5726ce20bd649b6d",
+          "bayt": 8351678,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "7ce61a220f97e9cb",
+          "bayt": 9257288,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "91e54156aebc82aa",
+          "bayt": 9257513,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "31a73bd21e5a9043",
+      "revizyon": "df5d926b",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 19992872,
+      "kayit": 14609,
+      "karakter": 3809390,
+      "dosya": [
+        {
+          "dosya_ozeti": "2bab52b739dbd0b8",
+          "bayt": 305993,
+          "kayit": 5000
+        },
+        {
+          "dosya_ozeti": "94904854fe0ca13b",
+          "bayt": 306634,
+          "kayit": 5000
+        },
+        {
+          "dosya_ozeti": "34f9b456bfd29283",
+          "bayt": 6021491,
+          "kayit": 4609
+        },
+        {
+          "dosya_ozeti": "513ef3cd19b69c50",
+          "bayt": 6679065,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "0d842885ca6032a8",
+          "bayt": 6679689,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "e4c3cf24c5f05c87",
+      "revizyon": "fdec892e",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 18624759,
+      "kayit": 0,
+      "karakter": 0,
+      "dosya": [
+        {
+          "dosya_ozeti": "7e429f12e80d1275",
+          "bayt": 482581,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "1fab5a2ea0f5ad01",
+          "bayt": 482597,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3e5d4616edf4c82a",
+          "bayt": 3716096,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "66841ccfd6a16800",
+          "bayt": 4646402,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "820d86ec1c462f93",
+          "bayt": 4647975,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "8909cfe40a9b6f40",
+          "bayt": 4649108,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "ee7bc98f09db19b7",
+      "revizyon": "3eed6336",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 28916443,
+      "kayit": 19890,
+      "karakter": 4571423,
+      "dosya": [
+        {
+          "dosya_ozeti": "4dc1ad256a65c192",
+          "bayt": 613663,
+          "kayit": 10000
+        },
+        {
+          "dosya_ozeti": "98b1bb36b0e92763",
+          "bayt": 618080,
+          "kayit": 9890
+        },
+        {
+          "dosya_ozeti": "d03333c2803fae32",
+          "bayt": 5829892,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "ee2ab8bf2b9c0cd0",
+          "bayt": 7284642,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "1a9c2ed65df2a0df",
+          "bayt": 7284938,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "7d6a441ba77303cb",
+          "bayt": 7285228,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "50c2d0297ca9eb1c",
+      "revizyon": "8d1453c6",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 30222884,
+      "kayit": 17176,
+      "karakter": 4571434,
+      "dosya": [
+        {
+          "dosya_ozeti": "65351b71f40d9122",
+          "bayt": 916319,
+          "kayit": 15000
+        },
+        {
+          "dosya_ozeti": "b623ce36f4b73951",
+          "bayt": 928924,
+          "kayit": 2176
+        },
+        {
+          "dosya_ozeti": "282edb9e3fb659c8",
+          "bayt": 5381416,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "fb05310fef43e057",
+          "bayt": 7665269,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "a21e531233535604",
+          "bayt": 7665403,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "f8f2d90d096963a7",
+          "bayt": 7665553,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "20a571df662403bd",
+      "revizyon": "8a3abeb9",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 35314397,
+      "kayit": 11107,
+      "karakter": 4571441,
+      "dosya": [
+        {
+          "dosya_ozeti": "c896adf216f08673",
+          "bayt": 1047327,
+          "kayit": 11107
+        },
+        {
+          "dosya_ozeti": "10f920434815ee50",
+          "bayt": 1050442,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "e7ef780ae7dbed6a",
+          "bayt": 6301850,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "2786190276edee7e",
+          "bayt": 8971501,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "34631388817301a0",
+          "bayt": 8971541,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "453940fbbd5b90d5",
+          "bayt": 8971736,
+          "kayit": 0
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "73aa6f1d3876826a",
+      "revizyon": "fbea17f2",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 5769655,
+      "kayit": 2138,
+      "karakter": 3257100,
+      "dosya": [
+        {
+          "dosya_ozeti": "c506bbf29106058a",
+          "bayt": 5769655,
+          "kayit": 2138
+        }
+      ]
+    },
+    {
+      "kimlik_ozeti": "9263f99b4676cd14",
+      "revizyon": "2728ed347f13143f836b56332055651b77890d69",
+      "lisans_dogrulandi": true,
+      "lisans_sinifi": "kamu-mali",
+      "bayt": 40294739,
+      "kayit": 4692,
+      "karakter": 5885518,
+      "dosya": [
+        {
+          "dosya_ozeti": "c78c8775ba21ea8e",
+          "bayt": 732655,
+          "kayit": 581
+        },
+        {
+          "dosya_ozeti": "cfe73068e1f61daa",
+          "bayt": 87594,
+          "kayit": 71
+        },
+        {
+          "dosya_ozeti": "f88d93cd1823b73b",
+          "bayt": 27628,
+          "kayit": 23
+        },
+        {
+          "dosya_ozeti": "b1717ad2989bff57",
+          "bayt": 22472,
+          "kayit": 19
+        },
+        {
+          "dosya_ozeti": "f8fb499a33fa301f",
+          "bayt": 831866,
+          "kayit": 659
+        },
+        {
+          "dosya_ozeti": "f85841af499b0cd8",
+          "bayt": 108110,
+          "kayit": 86
+        },
+        {
+          "dosya_ozeti": "2ea4dc2dabb87bc1",
+          "bayt": 28674,
+          "kayit": 23
+        },
+        {
+          "dosya_ozeti": "3c079d344c75adb9",
+          "bayt": 26959,
+          "kayit": 22
+        },
+        {
+          "dosya_ozeti": "32bef846d5a14de4",
+          "bayt": 911940,
+          "kayit": 726
+        },
+        {
+          "dosya_ozeti": "c6315979d271b2f3",
+          "bayt": 126377,
+          "kayit": 102
+        },
+        {
+          "dosya_ozeti": "b7977f6c3e56d62a",
+          "bayt": 35302,
+          "kayit": 29
+        },
+        {
+          "dosya_ozeti": "2a6ef4d6550dc298",
+          "bayt": 32190,
+          "kayit": 26
+        },
+        {
+          "dosya_ozeti": "cbc0969731307c5c",
+          "bayt": 919278,
+          "kayit": 729
+        },
+        {
+          "dosya_ozeti": "6920d604e5ccefef",
+          "bayt": 153274,
+          "kayit": 123
+        },
+        {
+          "dosya_ozeti": "110222387c7baecb",
+          "bayt": 51670,
+          "kayit": 42
+        },
+        {
+          "dosya_ozeti": "0d9b6f7a9d6c02e6",
+          "bayt": 41427,
+          "kayit": 34
+        },
+        {
+          "dosya_ozeti": "fff43db85e35b6f3",
+          "bayt": 889476,
+          "kayit": 706
+        },
+        {
+          "dosya_ozeti": "1ea9813151080e93",
+          "bayt": 192864,
+          "kayit": 154
+        },
+        {
+          "dosya_ozeti": "0f699e4ef37af011",
+          "bayt": 63819,
+          "kayit": 51
+        },
+        {
+          "dosya_ozeti": "598cf6684302320f",
+          "bayt": 60652,
+          "kayit": 49
+        },
+        {
+          "dosya_ozeti": "bc1a274c441bc911",
+          "bayt": 881197,
+          "kayit": 437
+        },
+        {
+          "dosya_ozeti": "e5fb024cf8fe3089",
+          "bayt": 128971,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "bfb0088526b60021",
+          "bayt": 74389,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "67138c312f1042e5",
+          "bayt": 65670,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "da7a7ff59c067d32",
+          "bayt": 841056,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "14fcfbcf1f0b3047",
+          "bayt": 224836,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "7b0b1b1b96fe653f",
+          "bayt": 117333,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "24a3ca11eac3ad64",
+          "bayt": 70824,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "76bcde33510ec34d",
+          "bayt": 903471,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "78c7316b42ab6699",
+          "bayt": 216568,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "1bb9d8777988b988",
+          "bayt": 81006,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "870e79ffb21f59db",
+          "bayt": 73541,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "70fc569b1e390255",
+          "bayt": 848201,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "d3787789c38488f5",
+          "bayt": 147151,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "8dac140ee56c2ecd",
+          "bayt": 63911,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "55af83a9ac929f1b",
+          "bayt": 63219,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "02c2569cd8b11541",
+          "bayt": 811668,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "42a0b6bbae0a4266",
+          "bayt": 87429,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "67f6b7eb9c9dae9f",
+          "bayt": 42298,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "9691f0f6739f95cb",
+          "bayt": 33459,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "ee68e05553547338",
+          "bayt": 858122,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "b028c84ae81790ee",
+          "bayt": 118105,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "a290a3692eb62f3b",
+          "bayt": 54204,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "4dcd88aec3852ac3",
+          "bayt": 48470,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "4ca74d6f74f0c084",
+          "bayt": 796006,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "68e0d1aa0d652a03",
+          "bayt": 159369,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "31dbe379c9e028a1",
+          "bayt": 77146,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "e24644128eeedf84",
+          "bayt": 58374,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "4a6c4a30e40edf46",
+          "bayt": 845589,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "cb2881bf7927221a",
+          "bayt": 142831,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "58bacbc3147e7977",
+          "bayt": 86642,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "286de2688203531c",
+          "bayt": 82641,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "6fda2a9f06ed4a40",
+          "bayt": 817142,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "46b70b6cdb991f49",
+          "bayt": 192973,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "6531fa182e47e126",
+          "bayt": 91590,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "832bb71cebea6a85",
+          "bayt": 78288,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "de2513c79357ff55",
+          "bayt": 742860,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "e62e616ef8ea237b",
+          "bayt": 219622,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "7e0cfcc55a5b784b",
+          "bayt": 113092,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "adcaa3e7786122e5",
+          "bayt": 56475,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "1fd3e6417cc6d98b",
+          "bayt": 887419,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3f8031680c23d317",
+          "bayt": 160919,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "c0136e969b073eb1",
+          "bayt": 72201,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "825f345e945318bd",
+          "bayt": 59379,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "6eef89cfbee9fe5f",
+          "bayt": 889302,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "b38604c9669c15e7",
+          "bayt": 178443,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "bb550eff26536bf8",
+          "bayt": 73304,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "04915ea2eb13a26e",
+          "bayt": 57688,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "37f0604ab4ba1867",
+          "bayt": 902602,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "906feb59f7509b72",
+          "bayt": 160601,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "12bf5211f50c7154",
+          "bayt": 60768,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "73362066da17f8ca",
+          "bayt": 32950,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "d85afa17b2c42321",
+          "bayt": 816325,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "323ac3347dbdb79c",
+          "bayt": 163599,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "49221dc989a23ce0",
+          "bayt": 98542,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "aa11718b7ddd0403",
+          "bayt": 78994,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3a0194facc9c73bb",
+          "bayt": 747613,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "6d701d8b16e73925",
+          "bayt": 128015,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "40a37ad167f243e4",
+          "bayt": 69675,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "099a825dd2757a9e",
+          "bayt": 63567,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "f60dde159cbcc1a5",
+          "bayt": 806668,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "790af4b02eefe4e8",
+          "bayt": 174295,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "538a8ad2b1d97ec0",
+          "bayt": 84752,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "2eb17ee04f520471",
+          "bayt": 83775,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "17db7aaa15498477",
+          "bayt": 743457,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "f8f6631629cd0798",
+          "bayt": 139954,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "45272eb11beeef3d",
+          "bayt": 92123,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "66bfcdf2155935b2",
+          "bayt": 67664,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3dcfa38a3bc8344c",
+          "bayt": 803218,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "0391c4860a48b524",
+          "bayt": 115544,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "720df8f117fb9716",
+          "bayt": 92571,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "71923313aff6591e",
+          "bayt": 82663,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "6e863f6c4d341e8e",
+          "bayt": 840339,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "84129f7205c39383",
+          "bayt": 153534,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "b2be093042326923",
+          "bayt": 57022,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "5aa618d3bae00e5e",
+          "bayt": 51738,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "9e323c5ba9066666",
+          "bayt": 832048,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "375cda77d496d437",
+          "bayt": 186220,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "d2f7fa24573ed542",
+          "bayt": 53437,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "acaa44247b166f60",
+          "bayt": 46332,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "acfcadb5dd67e637",
+          "bayt": 749532,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "2e741f38f325f54d",
+          "bayt": 190890,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "50a3abd28ecbb4f9",
+          "bayt": 81374,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "1f78cfcd39c3091d",
+          "bayt": 57475,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "f96d7b5fc16315b5",
+          "bayt": 728516,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3795cdd4d7dcba45",
+          "bayt": 210723,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "faa4df23f8c7d387",
+          "bayt": 104104,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "17d0337ffcd33dfb",
+          "bayt": 101024,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "fbc4bf7628aa01d7",
+          "bayt": 745566,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "41a261b596ced681",
+          "bayt": 283227,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "8c7c133a85e2c719",
+          "bayt": 102881,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "424cf20a17481e14",
+          "bayt": 92403,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "85f6630fc398dc98",
+          "bayt": 793106,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "81a3fd0c6971f4e3",
+          "bayt": 259853,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "77091237c2f9cd92",
+          "bayt": 84518,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "1619c20826e0791f",
+          "bayt": 66700,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "af497bdaf76e461b",
+          "bayt": 747083,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "7b997c7f521f14a9",
+          "bayt": 237462,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "9d4e5449fc11498c",
+          "bayt": 72731,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "fcfffa66d51e3b1e",
+          "bayt": 64829,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3955cecbcd41a000",
+          "bayt": 813052,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "641d12ac49828a12",
+          "bayt": 198733,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "75afc90670b1e2e1",
+          "bayt": 61562,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "4f74e6b2eb674b63",
+          "bayt": 43284,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "ba38b7dfee1e3d5d",
+          "bayt": 833245,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "7a33946714f60e39",
+          "bayt": 70980,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "2f201a5ebf3fee24",
+          "bayt": 69744,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "6a05f9aac198dc1f",
+          "bayt": 52856,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "b7345ac1ddac99d3",
+          "bayt": 781935,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "d0b17baf9a5718ad",
+          "bayt": 70640,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "44c04224120dfaef",
+          "bayt": 69077,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "b87da16fe8e19710",
+          "bayt": 68582,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "8ded99e40fcef6cb",
+          "bayt": 819613,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3958eec5aa76c5a5",
+          "bayt": 136543,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "ed8a248b3b28f7b1",
+          "bayt": 52122,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "08d151ba991bb87a",
+          "bayt": 51811,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "750ecbd9e31d0060",
+          "bayt": 646993,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "0e18dd509f656a98",
+          "bayt": 70349,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "03e2ba5c335038d1",
+          "bayt": 38784,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "2ac7985a20e5547b",
+          "bayt": 37746,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "8bebe45f8b304932",
+          "bayt": 654918,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "3dcbb53779d73a38",
+          "bayt": 72389,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "71974a58f70913a1",
+          "bayt": 51575,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "20f83c692f178f8c",
+          "bayt": 44959,
+          "kayit": 0
+        },
+        {
+          "dosya_ozeti": "a9664ca1d6446d43",
+          "bayt": 740024,
+          "kayit": 0
+        }
+      ]
+    }
+  ],
+  "kayit": 78103,
+  "karakter": 29999631,
+  "tekrar_elenen": 1,
+  "cikti": "/var/tmp/kamu-beyaz.jsonl.gz",
+  "manifest_ozeti": "e3e60642de71426d"
+}

@@ -1,0 +1,37 @@
+{
+  "is": "Engram bellegi adayi (tasarim 3.3): n-gram karmasiyla adreslenen KV tablosu; kayit siniri okumalara uygulandi, cakisma olculdu, seyrek geri gecis sonlu farkla denetlendi",
+  "kanit": {
+    "atlanan_gecmis": 2.0,
+    "atlanan_kayit_siniri": 0.0,
+    "cakisan_hucre": 44.0,
+    "dolu_hucre": 200.0,
+    "doluluk": 0.390625,
+    "grad_sapma": 3.19e-10,
+    "okuma": 254.0,
+    "olcut_sonucu": true,
+    "parametre": 16384.0,
+    "sure_saniye": 0.23,
+    "tablo": 512.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.23
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "cakismanin model kalitesine etkisi (egitim kosusu ister)",
+    "tablo boyutu aday izgarasi (isaretli karar; K6 butcesinden yer)",
+    "kontrol noktasi bicimi (LUBOTCKPT'e yeni alan) ve dikkat cagrisina baglanma",
+    "cok is parcacikli kosuda geri gecis determinizmi (tek is parcasinda olculdu)"
+  ],
+  "olcut": {
+    "ad": "cakisan_hucre_var_ve_gradyan_sapmasi_esik_altinda",
+    "ifade": "n=3, tablo=512, d_kv=16, 256 jeton: cakisan_hucre > 0 VE orneklenen tablo gradyanlarinin sonlu fark sapmasi < 1e-6",
+    "sonuc": true
+  },
+  "tarih": "2026-09-27",
+  "uyari": "olcum tek bir sentetik dizidir: korpus yok, dikkat cagrisi yok, spec baglanmadi. Cakisma sayisi bir kayip olarak **olculdu**, yasaklanmadi."
+}
