@@ -68,6 +68,17 @@ egitim:SeritSekilHatasi
 egitim:kimlik_doldur
 egitim:rms_profili
 egitim:tohumlu_doldur
+# yonlendirme (tasarim 3.5): uzman rotasi adayi;
+# skorlama cagrisini bekler. Cagri yazilinca bu satirlar silinir.
+egitim:RotaHatasi
+egitim:RotaSonucu
+egitim:RotaSpec
+egitim:TabSonucu
+egitim:UZMAN_UST_SINIRI
+egitim:YINELEME_UST_SINIRI
+egitim:ornek_puanlar
+egitim:rota_hesapla
+egitim:taban_olc
 # engram (tasarim 3.3): n-gram karmasiyla adreslenen KV tablosu adayi;
 # skorlama cagrisini bekler. Cagri yazilinca bu satirlar silinir.
 egitim:CakismaOlcumu
