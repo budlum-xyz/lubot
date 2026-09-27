@@ -9270,6 +9270,24 @@ _OMURGA_SOZLESME = [
         ],
     ),
     (
+        "crates/omurga/src/servis.rs",
+        [
+            ("lubot_nicem", "the serving path re-implements quantisation instead of calling the crate that owns it"),
+            ("fn her_tensor_ayri_olculur", "the per-tensor error is never separated from the whole-buffer error"),
+            ("fn kucuk_tensor_reddedilir", "a tensor smaller than the group is quantised instead of refused"),
+            ("fn sekil_imzasi_degismez", "quantisation is never checked to leave the shape signature alone"),
+        ],
+    ),
+    (
+        "crates/omurga/src/hiz.rs",
+        [
+            ("fn kapali_form_saymayla_uzlasir", "the closed-form visibility count has no second opinion"),
+            ("fn yerel_kat_genelden_ucuz", "the local layer is never measured to be cheaper"),
+            ("fn sayim_toplamsal", "the stack's count is never checked against the sum of its layers"),
+            ("fn uzun_dizide_dikkat_baskin", "the crossover length is asserted rather than searched"),
+        ],
+    ),
+    (
         "crates/omurga/src/merdiven.rs",
         [
             ("fn son_seviye_ileri_ile_bit_ozdes", "the top rung is never pinned against the ordinary forward pass"),

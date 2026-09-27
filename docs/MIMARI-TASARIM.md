@@ -406,6 +406,66 @@ pencere dikkatinin üçte ikisini hiçbir şeye harcar.
 **Yeri:** `crates/omurga/src/dizi.rs`, CLI `lubot omurga paket`. Tokenleştirici
 ve kayıt kaynağı burada değil: paket, başkasının ölçtüğü uzunluklardan kurulur.
 
+### 3.13 Servis yolu: omurganın ağırlıkları, sahibi olan crate ile
+
+**Ne:** servis küçük dosya ister, eğitim geniş kayan nokta. Bu bölüm ikisini
+bağlar ve **bağlamaktan ibarettir**: nicemleme aritmetiği `lubot-nicem`'de
+durur ve buradan **çağrılır**, kopyalanmaz. Bu crate'te ikinci bir nicemleyici,
+aynı yuvarlamanın yanlış olabileceği ikinci bir yer olurdu ve biri düzeltildiği
+gün ikisi ayrışırdı.
+
+**Bu modülün eklediği şey** `lubot-nicem`'in bilemeyeceği tek şeydir: omurganın
+**tensör dizini**. Tek uzun vektör olarak nicemlenen düz bir tampon, gömme
+tablosuyla dikkat izdüşümünü aynı gruba koyar ve iki tensörü kesen bir grup
+hiçbirine uymayan bir ölçek alır. Burada her tensör kendi son ekseniyle ayrı
+nicemlenir ve hata **tensör başına** raporlanır.
+
+**Neden tensör başına bir ayrıntı değil:** taze bir omurgada en kötü tensörün
+bağıl hatası en iyisinin birkaç katı. Toplam tek sayı, servis arızasının
+geleceği tensörü tam olarak gizlerdi; "model 2.5 bit'e 0.3 bağıl hatayla iniyor"
+cümlesi hem doğru hem işe yaramaz olurdu. `yayilim()` (en kötü / en iyi) bu
+soruyu tek sayıyla cevaplar.
+
+**Ölçülen:** daha çok bit → daha az hata ve daha çok bayt (ikisi de test);
+büyük grup → daha ucuz **ama** daha hatalı (takasın iki yarısı da ölçülür,
+çünkü yalnız birincisini yazmak bir sıkıştırma oranının nasıl reklam edildiğidir);
+üçdeğer alfabesi de koşar; nicemleme **şekil imzasına dokunmaz** (dokunsaydı
+ortalanabilir iki kontrol noktası sessizce ortalanamaz olurdu).
+
+**Reddettiği yer:** grubundan kısa tensör. Grubu doldurmak için ağırlık
+uydurmak, bu deponun karşısına kurulduğu hatanın ta kendisidir.
+
+**Olmayan:** paketli ağırlıklarla ileri geçiş ve diske yazma; kalite iddiası.
+**Yeri:** `crates/omurga/src/servis.rs`, CLI `lubot omurga servis`.
+
+### 3.14 Maliyet: saat okumak yerine iş saymak
+
+**Ne:** "hızlı" bir makinenin, bir derleyicinin ve bir öğleden sonranın
+özelliğidir. Sayılan çarpma-toplama ise **modelin** özelliğidir: iki makinede
+iki kişi aynı sayıyı bulur. Bu modülde hiçbir yerde saat okunmaz.
+
+**Sayılan:** izdüşümler (dizide doğrusal, genişlikte karesel), skorlar ve
+karıştırma (bir jetonun **görebildiği** kadarında karesel — çizelge burada
+kazanır), kapılı ileri besleme. Sayaç `u128`: sarmalanmış bir maliyet modeli,
+model olmamasından kötüdür.
+
+**Ölçülen (6 katman, periyot 3, yarıçap 32, 512 jeton, d=768):**
+
+| ne | çarpım |
+|---|---|
+| izdüşüm | 150.994.944 |
+| dikkat | 167.215.104 |
+| ileri besleme | 301.989.888 |
+| dikkat payı | 0.2696 |
+| tek katman: yerel / genel dikkat | 8.249.344 / 67.108.864 = **0.1229** |
+| dikkatin baskın olduğu uzunluk | **1600 jeton** |
+
+"Dikkat darboğazdır" cümlesi ancak bu eşiğin üstünde doğru; eşik iddia
+edilmiyor, **ikili aramayla bulunuyor** ve iki yanı testte doğrulanıyor.
+Görünürlük sayısının kapalı formu, yavaş ve apaçık sayma yoluyla ayrıca
+denetleniyor — kenarlardaki kırpma, aritmetik kestirmenin birer birer yanıldığı
+yerdir. **Yeri:** `crates/omurga/src/hiz.rs`, CLI `lubot omurga hiz`.
+
 ## 4. Birleşik taslak: lubot-a2 adayı (yön, değil taahhüt)
 
 Sıra, ölçüm disiplinine göre kurulur; her satır ayrı artım, kendi self-test'i ve
