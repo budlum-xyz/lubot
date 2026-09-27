@@ -8554,6 +8554,8 @@ PORT_KAYITLARI = (
      "fn olcum_raporu", "training/eval/sonuclar/nicem-2026-09-27.json"),
     ("training/kodlayici.py", "crates/kodlayici/src/blok.rs",
      "fn olcum_raporu_kodlayici", "training/eval/sonuclar/kodlayici-2026-09-27.json"),
+    ("training/engram_tasima.py", "crates/egitim/src/engram_tasima.rs",
+     "fn olcum_raporu_engram_tasima", "training/eval/sonuclar/engram-tasima-2026-09-27.json"),
 )
 PORT_UCUNCU_TARAF = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
                      "torch", "huggingface", "transformers", "candle")

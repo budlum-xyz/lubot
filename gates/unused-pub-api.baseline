@@ -290,3 +290,11 @@ veri:KayitTuru
 veri:SentetikUretim
 yetenek:CapabilityError
 yetenek:Handle
+# engram tasima (direktif 7.1: tablo model durumunun parcasi) bagli degil:
+# engram hicbir aileye bagli olmadigi icin (M1/M2/M3) kontrol noktasi
+# yazicisi henuz cagirmiyor. Aile karari verilince bu satirlar silinir.
+egitim:ENGRAM_BLOK_ADI
+egitim:ENGRAM_SIHIR
+egitim:ENGRAM_SURUM
+egitim:EngramTasimaHatasi
+egitim:EngramTasiyici
