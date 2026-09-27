@@ -494,6 +494,7 @@ name = "lubot-egitim"
 version = "0.1.0"
 dependencies = [
  "lubot-grant",
+ "lubot-read",
  "serde_json",
  "sha2",
 ]
