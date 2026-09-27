@@ -3,8 +3,10 @@
 
 Olcum Rust modulunun icindedir (`crates/egitim/src/kesit.rs`, `olcum_raporu`):
 her derinlik ve genislik icin bir kesit turetildi mi, **kosuyor** mu (ileri+geri
-adim, sonlu pozitif kayip), parametre sayisi derinlik/genislik ile monoton mu ve
-tam kesit girdi spec'inin kendisi mi. Bu betik o satiri kosar ve okur.
+adim, sonlu pozitif kayip), kayda giren referans ailede parametre sayisi
+derinlik/genislik ile monoton mu ve tam kesit girdi spec'inin kendisi mi. Bu
+monotonluk butun gecerli spec'lere genellenmez; Rust regresyonu dar MLP + K/V
+kafa boleni karsi ornegini korur. Bu betik referans ailenin satirini kosar ve okur.
 
 Hedef olcut (kayittan once yazilir, sonuc kayitta olculur):
 
@@ -81,14 +83,15 @@ def olc() -> dict:
 def _kayit(olcum: dict) -> dict:
     return {
         "is": (
-            "Aile kesiti (derinlik/genislik dilimleri): spec'ten her derinlik ve genislik "
-            "icin kosan alt-modeller; tamlik, monotonluk ve kafa silme olculdu"
+            "Aile kesiti (derinlik/genislik dilimleri): referans spec'ten her derinlik ve "
+            "genislik icin kosan alt-modeller; tamlik, referans-aile monotonlugu ve kafa "
+            "silme olculdu"
         ),
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
         "port_karti": "workspace:port-kartlari/needle-derinlik-genislik.md",
         "olcut": {
-            "ad": "her_derinlikte_kesit_kosar_ve_parametre_monoton",
+            "ad": "referans_ailede_her_derinlikte_kesit_kosar_ve_parametre_monoton",
             "sonuc": bool(olcum["olcut_sonucu"]),
             "ifade": (
                 "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, "
@@ -106,14 +109,17 @@ def _kayit(olcum: dict) -> dict:
         "kanit": olcum,
         "uyari": (
             "Kesit ayni kaynak agirliklardan koordinatla kirpilir. Olculen sey "
-            "'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis "
-            "model kaliteyi koruyor' degil."
+            "'bu referans spec ile bir adim kosuyor' ve 'bu referans ailede parametre "
+            "sayisi monoton' - 'butun gecerli spec'lerde monoton' veya 'kesilmis model "
+            "kaliteyi koruyor' degil. Dar MLP karsi orneginde genislik 8 -> 10 iken "
+            "K/V kafasi 4 -> 1 ve parametre 377 -> 375 olur."
         ),
         "olculmeyen": [
             "kesilmis modelin sinav/kalite davranisi (egitim ve sinav kosusu ister)",
             "optimizer momentlerini alt-modele tasima ve ortak agirlik egitimi olculmedi",
             "ortadan katman cikarma (sadece bastan kisaltma olculdu)",
             "K/V grup orani degisebilir: dar kesitin kaynakla fonksiyonel esdegerligi iddia edilmez",
+            "genislik-parametre monotonlugu tum gecerli Spec'lere genellenmez; dar MLP karsi ornegi Rust regresyonunda korunur",
         ],
     }
 
