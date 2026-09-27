@@ -32,6 +32,7 @@ pub mod birlesik;
 pub mod cok_serit;
 pub mod dongu;
 pub mod engram;
+pub mod kademe;
 pub mod kernel32;
 pub mod kesit;
 pub mod kontrol;

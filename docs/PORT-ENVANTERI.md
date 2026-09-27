@@ -49,6 +49,7 @@ bu yuzden GQA'ya gore `bagli` yazilir; engramin kendi satiri asagidadir.
 | aile kesitleri | `crates/egitim/src/kesit.rs` | `kesit-kapisi` | `kesit-2026-09-27.json` | bagimsiz |
 | sifir merkezli RMS norm | `crates/egitim/src/normalizasyon.rs` | `normalizasyon-kapisi` | `normalizasyon-2026-09-27.json` | bagimsiz |
 | birlesik blok (3.8) | `crates/egitim/src/birlesik.rs` | `birlesik-kapisi` | `birlesik-2026-09-27.json` | bagimsiz |
+| kademe egitimi (3.5 kalem 1) | `crates/egitim/src/kademe.rs` | `kademe-kapisi` | `kademe-2026-09-27.json` | bagimsiz |
 
 ## Bu envanterin soyledigi
 
@@ -64,7 +65,8 @@ bu yuzden GQA'ya gore `bagli` yazilir; engramin kendi satiri asagidadir.
    `sinkhorn_router`, ve engram kolu) artik tek bir blokta birlikte kosuyor
    (3.8), ama **o blok da hicbir aileye bagli degil**. Hangisinin hangi aileye
    girecegi `docs/MIMARI-TASARIM.md` 5. bolumunde M1/M2/M3 olarak isaretli
-   operator kararidir ve bu envanter onu vermez.
+   operator kararidir ve bu envanter onu vermez. `kademe` adayi bu blogun
+   disindadir: o bir katman degil egitim hedefidir ve baglanmasi M4 kararidir.
 
 ## Bu envanterin soylemedigi
 
