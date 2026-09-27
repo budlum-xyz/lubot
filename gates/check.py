@@ -8361,6 +8361,10 @@ PORT_KAYITLARI = (
      "fn olcum_raporu_norm_yeri", "training/eval/sonuclar/norm-yeri-2026-09-27.json"),
     ("training/tipli_karar.py", "crates/tomurcuk/src/lib.rs",
      "fn olcum_raporu_tipli_karar", "training/eval/sonuclar/tipli-karar-2026-09-27.json"),
+    ("training/hadamard_mlp.py", "crates/egitim/src/mlp_hadamard.rs",
+     "fn olcum_raporu", "training/eval/sonuclar/hadamard-mlp-2026-09-27.json"),
+    ("training/nicem.py", "crates/nicem/src/grup.rs",
+     "fn olcum_raporu", "training/eval/sonuclar/nicem-2026-09-27.json"),
 )
 PORT_UCUNCU_TARAF = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
                      "torch", "huggingface", "transformers", "candle")
@@ -8413,8 +8417,8 @@ def _port_kaynak_denetle(kaynak: Path, test_adi: str) -> list:
 
 
 def gate_omurga_karar_port_kayitlari() -> str:
-    """Omurga (dikkat kadansi, norm yeri) ve tipli karar port kartlarinin
-    karta-ozel kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
+    """Omurga (dikkat kadansi, norm yeri), tipli karar, Hadamard MLP ve
+    alt-bayt nicem port kartlarinin karta-ozel kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
     kendi betiginin `--dogrula` adimindan gecer, olcum testi kaynakta var,
     K1 siniri (ust kaynak adi test disinda gecmez) tutuyor."""
     ihlaller: list[str] = []
@@ -8432,7 +8436,7 @@ def gate_omurga_karar_port_kayitlari() -> str:
         if kosu.returncode != 0:
             raise SystemExit(f"{betik} kaydi dogrulanmadi:\n" + (kosu.stdout + kosu.stderr)[-800:])
         ozet.append(Path(betik).stem)
-    return "uc port kaydi taze ve yeniden olculdu: " + ", ".join(ozet)
+    return f"{len(PORT_KAYITLARI)} port kaydi taze ve yeniden olculdu: " + ", ".join(ozet)
 
 
 def selftest_omurga_karar_port_kayitlari() -> None:
