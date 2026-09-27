@@ -1,0 +1,114 @@
+{
+  "is": "Cok-seritli artik baglanti adayi (tasarim 3.4): serit sayisinin derinlik boyunca katman-girdisi RMS profiline etkisi olculdu; gradyan sonlu farkla, ins gercek kosuyla",
+  "kanit": {
+    "kazanclar": [
+      1.15,
+      4.0
+    ],
+    "olcut_sonucu": true,
+    "oranlar": {
+      "1.15": {
+        "1": 0.208886,
+        "2": 0.262674,
+        "4": 0.28175
+      },
+      "4.00": {
+        "1": 0.207241,
+        "2": 0.339518,
+        "4": 0.502578
+      }
+    },
+    "profiller": {
+      "1.15": {
+        "1": [
+          0.0005873308211,
+          0.0001226853886,
+          2.562730242e-05,
+          5.353193537e-06,
+          1.118209033e-06,
+          2.335785979e-07,
+          4.879137961e-08,
+          1.019185296e-08
+        ],
+        "2": [
+          0.04019423665,
+          0.01261580747,
+          0.003889828248,
+          0.0008818988899,
+          0.0001577313531,
+          4.102471837e-05,
+          1.367680844e-05,
+          3.467988765e-06
+        ],
+        "4": [
+          0.07980453844,
+          0.03980915874,
+          0.009406592152,
+          0.00276847534,
+          0.0008284170167,
+          0.000175060899,
+          4.858460551e-05,
+          1.124799545e-05
+        ]
+      },
+      "4.00": {
+        "1": [
+          0.0005873308211,
+          0.0001217188063,
+          2.522508145e-05,
+          5.227661639e-06,
+          1.083383864e-06,
+          2.245211487e-07,
+          4.652990313e-08,
+          9.642886192e-09
+        ],
+        "2": [
+          0.04019423665,
+          0.01634214948,
+          0.006528576649,
+          0.002311800105,
+          0.0007574041899,
+          0.0002360670014,
+          7.111331343e-05,
+          2.09028892e-05
+        ],
+        "4": [
+          0.07980453844,
+          0.05110379904,
+          0.02033157359,
+          0.01074998558,
+          0.005309304169,
+          0.002570292803,
+          0.001310137417,
+          0.0006463293554
+        ]
+      }
+    },
+    "serit_sayilari": [
+      1,
+      2,
+      4
+    ],
+    "sure_saniye": 0.07
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.07
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "egitilmis bir yiginda serit etkisi (spec baglanmadi, K6)",
+    "muP/transfer tarafi (proxy genislik olcegi ayri is)",
+    "serit sayisinin bellek/maliyet etkisi gercek cihazda (K6 tavani disinda)"
+  ],
+  "olcut": {
+    "ad": "serit_sayisi_ile_adim_basina_geometrik_oran_monoton_artar",
+    "ifade": "her katman kazanci icin: oran(serit=1) < oran(serit=2) < oran(serit=4), oran = (son/ilk)^(1/(n-1))",
+    "sonuc": true
+  },
+  "tarih": "2026-09-26",
+  "uyari": "Olcum bir PROXY'dir: 16 genislik, 8 derinlik, tohumlu agirliklar ve kasten buyuten/azaltan dogrusal 'katman'. Gercek yiginin (spec) serit sayisi karari bu olcumle verilmez; isaretli karar M3'tur."
+}

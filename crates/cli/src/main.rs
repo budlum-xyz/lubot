@@ -91,6 +91,7 @@ fn usage() -> String {
         "  lubot nicem dondur --dosya <ham.f32> [--grup G] [--matris N]  |  nicem yarim [--deger X]",
         "  lubot alim dogrula --manifest <f.json> --veri <dir> --defter <f.jsonl> [--adim n]",
         "  lubot alim defter --defter <f.jsonl> [--limit n]",
+        "  lubot kalibrasyon --girdi <kayitlar.jsonl> [--hedef 0.9]",
     ]
     .join("\n")
 }
@@ -152,6 +153,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "alim" => cmd_alim(rest),
         "sikistir" => lubot::sikistir::cmd_sikistir(rest),
         "karar" => lubot::karar::cmd_karar(rest),
+        "kalibrasyon" => lubot::kalibrasyon::cmd_kalibrasyon(rest),
         "kanaat" => lubot::kanaat::cmd_kanaat(rest),
         "kodlayici" => lubot::kodlayici::cmd_kodlayici(rest),
         "sozluk" => lubot::sozluk::cmd_sozluk(rest),

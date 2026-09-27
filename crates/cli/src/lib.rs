@@ -34,6 +34,7 @@ pub mod activation;
 pub mod egitim_kosu;
 pub mod graph;
 pub mod gunluk;
+pub mod kalibrasyon;
 pub mod kanaat;
 pub mod karar;
 pub mod kodlayici;

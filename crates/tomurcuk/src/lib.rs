@@ -47,6 +47,8 @@
 //! other's number even by accident. `model_consensus_is_not_the_chain_threshold`
 //! checks that the manifest still says so.
 
+pub mod kalibrasyon;
+
 use lubot_anlama::{BucketReport, Calibration, Outcome};
 
 /// Bottom of the effort band the chain states (`0.5x-10.0x`).

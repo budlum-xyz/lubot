@@ -7256,6 +7256,322 @@ def selftest_alim_hatti_kapali() -> None:
     except SystemExit as err:
         assert "must refuse" in str(err)
 
+
+def _cok_serit_denetle(path: Path) -> list:
+    """Cok-seritli artik baglanti adayinin (bilesen 5) olculebilir sozlesmesi.
+    Metin denetimidir - ihlal listesi doner, bos liste gecer demektir. Kaynak
+    yolu disaridan verilir ki self-test ayni denetimi kasitli bozuk kopyalarda
+    kosturabilsin."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Gradyan iddiasi olculur: deponun toleranslari + iki ayri sonlu fark.
+    for iz in (
+        "gradyan_sonlu_farkla_uyusur",
+        "durum_gradyani_da_sonlu_farkla_uyusur",
+        "GRADIENT_CHECK_MUTLAK_TABAN",
+        "GRADIENT_CHECK_TOLERANCE",
+    ):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    # 2) Sayim bagi: denetlenen gradyan sayisi seklin parametre sayisina bagli.
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 3) Parametre muhasebesi sekilden turetilir; karsilastirma da yazili.
+    if "fn parametre_sayisi(&self) -> usize" not in metin:
+        ihlaller.append("parametre sayisi sekilden turetilmiyor")
+    if "tek_serit_parametre_sayisi" not in metin:
+        ihlaller.append("tek serit karsilastirmasi yok")
+    # 4) No-op baslangic: taze serit kumesi agin sayisini degistirmemeli.
+    if "pub fn kimlik_doldur" not in metin:
+        ihlaller.append("kimlik (no-op) baslangici yok")
+    # 5) Olcumler: theta-1 icin RMS profili, karisim davranisi ve inis.
+    for iz in ("rms_profili_raporu", "serit_karisimi_gercekten_karistirir", "inis_olculur"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # 6) Ust sinir: modul kendi basina serit tavani buyutmez.
+    if "SERIT_UST_SINIRI" not in metin:
+        ihlaller.append("serit ust siniri yok")
+    # 7) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 8) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_cok_serit_kapisi() -> str:
+    """Bilesen 5 (cok-seritli artik baglanti) olculur halde duruyor: gradyan
+    sonlu farkla (sayim sekle bagli), no-op baslangic, parametre muhasebesi
+    sekilden, RMS profili (theta-1 sorusu) ve inis ayri ayri olculur. Kayit
+    tazeligi betigin kendi --dogrula yoluyla denetlenir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "cok_serit.rs"
+    ihlaller = _cok_serit_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("cok-serit sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "cok_serit"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/cok_serit.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("cok-serit kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"cok-serit adayi olculur: {gecen} test, gradyan sonlu farkla (okuma + yazma yolu), "
+        f"no-op baslangic, RMS profili ve inis ayri ayri kayitli"
+    )
+
+
+def selftest_cok_serit_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme yakalanmali ve kayit koru korune
+    guvenilmemeli (sayisi degistirilmis kayit reddedilmeli)."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "cok_serit.rs"
+    if _cok_serit_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "cok_serit.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) sayim bagi sokulursa yakalanmali
+        bozuk.write_text(metin.replace("denetlenen != spec.parametre_sayisi()", "false", 1),
+                         encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("sayim bagi sokulmus kopya yakalanmadi")
+        # 2) no-op baslangici sokulursa yakalanmali
+        bozuk.write_text(metin.replace("pub fn kimlik_doldur", "fn kimlik_doldur_x", 1),
+                         encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("no-op baslangici sokulmus kopya yakalanmadi")
+        # 3) olcum satiri sokulursa yakalanmali
+        bozuk.write_text(metin.replace("rms_profili_raporu", "x", 1), encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("RMS olcumu sokulmus kopya yakalanmadi")
+        # 4) panik yolu sokulursa yakalanmali
+        bozuk.write_text(metin.replace("    let girdi = okuma(",
+                                       "    let _ = vec![0].first().unwrap();\n    let girdi = okuma(", 1),
+                         encoding="utf-8")
+        if not _cok_serit_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 5) Kayit koru korune guvenilmemeli: bir sayi degistirilirse --dogrula kirmizi.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "cok-serit-2026-09-26.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        profiller = veri["kanit"]["profiller"]
+        ilk_kazanc = sorted(profiller)[0]
+        ilk_serit = sorted(profiller[ilk_kazanc])[0]
+        profiller[ilk_kazanc][ilk_serit][0] *= 1.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/cok_serit.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("degistirilmis kayit kabul edildi: tazelik denetimi sahte")
+
+
+
+def _kalibrasyon_metin_denetle(path: Path) -> list:
+    """Kalibre guven bandi sozlesmesi: bant sinirlari olcumden gelir, kodda
+    sabit durmaz; karar yolu bantlari okur; red yollari (fail-closed) vardir.
+    Metin denetimidir - ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    test_oneki = metin.find("mod tests")
+    gövde = metin if test_oneki == -1 else metin[:test_oneki]
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok: olcumun kendisi denetlenmiyor")
+    # 1) Tek kova sayaci: kova genisligi anlama'nin sabitinden gelir.
+    if "CALIBRATION_BUCKETS" not in gövde:
+        ihlaller.append("kova sayisi crate disindan (CALIBRATION_BUCKETS) gelmiyor")
+    if "kova_genisligi" not in gövde:
+        ihlaller.append("kova genisligi yardimcisi yok")
+    # 2) Bant sinirlari olculen kovalardan cikar.
+    for iz in ("rapor.observed", "rapor.low", "rapor.samples"):
+        if iz not in gövde:
+            ihlaller.append(f"bant olcumu kova raporunu okumuyor: {iz}")
+    # 3) Karar yolu bantlari okur, sabit esik kullanmaz.
+    if "bantlar.yesil_alt" not in gövde or "bantlar.kirmizi_ust" not in gövde:
+        ihlaller.append("basamak karari bant sinirlarini okumuyor")
+    # 4) Red yollari: olculemeyen bantta fail-closed.
+    for iz in ("YesilBantYok", "KirmiziBantYok", "YetersizKayit", "BantlarKesisiyor"):
+        if iz not in gövde:
+            ihlaller.append(f"fail-closed red yolu yok: {iz}")
+    # 5) Test disinda panik yolu yok.
+    for desen in (".unwrap()", ".expect("):
+        if desen in gövde:
+            ihlaller.append(f"test disinda panik yolu: {desen}")
+    # 6) Bant siniri kodda sabit yazilmaz: test disinda 0.7/0.8 gibi bir esik
+    #    atamasi gorunmemeli (hedef isabet bir istek, bant siniri bir olcumdur).
+    import re as _re
+    for eslesme in _re.finditer(r"(yesil_alt|kirmizi_ust)\s*:\s*([0-9.]+)", gövde):
+        ihlaller.append(
+            f"bant siniri kodda sabit: {eslesme.group(1)} = {eslesme.group(2)}"
+        )
+    return ihlaller
+
+
+def _kalibrasyon_fixture_denetle(path: Path) -> list:
+    """Beyan edilmis kanarya dosyasi: her satir (puan, dogru), puan uc noktada
+    degil. Yarim okunan bir kayitla olculen bant, olculmemis bir banddir."""
+    import json
+
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    satirlar = [s for s in path.read_text(encoding="utf-8").splitlines() if s.strip()]
+    if len(satirlar) < 100:
+        ihlaller.append(f"kanarya dosyasi {len(satirlar)} satir (en az 100 gerekir)")
+    for i, satir in enumerate(satirlar, start=1):
+        try:
+            kayit = json.loads(satir)
+        except json.JSONDecodeError as e:
+            ihlaller.append(f"satir {i}: JSON degil ({e})")
+            continue
+        puan = kayit.get("puan")
+        if not isinstance(puan, (int, float)) or not 0.0 < float(puan) < 1.0:
+            ihlaller.append(f"satir {i}: puan uc noktada ya da sayi degil")
+        if not isinstance(kayit.get("dogru"), bool):
+            ihlaller.append(f"satir {i}: dogru boolean degil")
+    return ihlaller
+
+
+def gate_kalibrasyon_bandi_kapisi() -> str:
+    """Kalibre guven bandi olculur halde duruyor: sicaklik uydurmasi egitim
+    hatasini ve ECE'yi gercekten dusuruyor, bantlar kayitlardan cikiyor, hedef
+    isabet olculemedigi yerde komut reddediyor (fail-closed) ve kayit
+    `training/eval/sonuclar/` altinda taze duruyor.
+
+    Ayrica karar basinin komuta bagli oldugu ve red yolunun gercek bir olcum
+    oldugu denetlenir: kanarya dosyasi her kaydi dogru isaretlerse hedef 0.9
+    kosusu artik reddetmez (self-test bunu kosturur)."""
+    ihlaller = _kalibrasyon_metin_denetle(ROOT / "crates" / "tomurcuk" / "src" / "kalibrasyon.rs")
+    ihlaller += _kalibrasyon_fixture_denetle(ROOT / "training" / "kalibrasyon-fixture.jsonl")
+    if ihlaller:
+        raise SystemExit("kalibrasyon sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    # Komutun kendi kaydi denetlemesi: sema + tazelik + hedef 0.9 reddi.
+    dogrula = subprocess.run(
+        [sys.executable, "training/kalibrasyon.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("kalibrasyon kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    # Komut var mi ve verilen dosyayi okuyor mu (bos bir dosya reddedilmeli).
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        bos = Path(td) / "bos.jsonl"
+        bos.write_text("", encoding="utf-8")
+        red = _cli("kalibrasyon", "--girdi", str(bos))
+        if red.returncode == 0:
+            raise SystemExit("bos kayit dosyasi kabul edildi: fail-closed degil")
+        if "yetersiz-kayit" not in (red.stdout + red.stderr):
+            raise SystemExit("bos dosya reddi beklenen gerekceyle gelmedi")
+    return (
+        "kalibre guven bandi olculur: sicaklik uydurmasi + ECE + olcumden cikan bantlar; "
+        "hedef 0.9 kanaryada reddediliyor, kayit taze"
+    )
+
+
+def selftest_kalibrasyon_bandi_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme yakalanmali ve reddin kendisi veriye bagli
+    olmali (dosya her kaydi dogru derse hedef 0.9 artik reddetmez)."""
+    import json
+    import tempfile
+
+    gercek = ROOT / "crates" / "tomurcuk" / "src" / "kalibrasyon.rs"
+    if _kalibrasyon_metin_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    fixture = ROOT / "training" / "kalibrasyon-fixture.jsonl"
+    if _kalibrasyon_fixture_denetle(fixture):
+        raise SystemExit("saglam kanarya dosyasi denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        # 1) bant olcumu kova raporunu okumuyorsa yakalanmali
+        bozuk = Path(td) / "kalibrasyon.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        bozuk.write_text(metin.replace("rapor.observed", "0.0", 4), encoding="utf-8")
+        if not _kalibrasyon_metin_denetle(bozuk):
+            raise SystemExit("kovayi okumayan kopya yakalanmadi")
+        # 2) bant siniri kodda sabitlenirse yakalanmali
+        bozuk.write_text(
+            metin.replace("pub yesil_alt: f64,", "pub yesil_alt: f64, // yesil_alt: 0.8\n")
+            .replace("    pub yesil_alt: f64,", "    pub yesil_alt: f64, // yesil_alt: 0.8"),
+            encoding="utf-8",
+        )
+        kirpik = metin[: metin.find("mod tests")] + "\n// yesil_alt: 0.8\n" + metin[metin.find("mod tests"):]
+        bozuk.write_text(kirpik, encoding="utf-8")
+        if not _kalibrasyon_metin_denetle(bozuk):
+            raise SystemExit("koda sabitlenmis bant siniri yakalanmadi")
+        # 3) panik yolu sokulursa yakalanmali
+        bozuk.write_text(metin.replace("    let fit = ", "    let fit = ", 1).replace(
+            "        return Err(KalibrasyonHatasi::YetersizKayit);",
+            "        let _ = vec![0].first().unwrap();\n        return Err(KalibrasyonHatasi::YetersizKayit);", 1),
+            encoding="utf-8")
+        if not _kalibrasyon_metin_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        satirlar = [
+            s for s in fixture.read_text(encoding="utf-8").splitlines() if s.strip()
+        ]
+        # 4) Reddin veriye bagli oldugu: esik etiketli (puan >= 0.9 -> dogru)
+        #    deterministik bir kanarya ile hedef 0.9 GECMELI. Boylece gercek
+        #    kanaryadaki reddin sabit bir yanit degil, verinin sonucu oldugu
+        #    gosterilir.
+        esikli = Path(td) / "esik-etiketli.jsonl"
+        esikli.write_text(
+            "\n".join(
+                json.dumps({"puan": json.loads(s)["puan"],
+                            "dogru": json.loads(s)["puan"] >= 0.9})
+                for s in satirlar
+            ) + "\n",
+            encoding="utf-8",
+        )
+        gecti = _cli("kalibrasyon", "--girdi", str(esikli))
+        if gecti.returncode != 0:
+            raise SystemExit(
+                "esik etiketli kanaryada hedef 0.9 hala reddediliyor: reddin kendisi "
+                "veriye bagli degil, sabit olabilir\n" + (gecti.stdout + gecti.stderr)[-400:]
+            )
+        # Ve o kosuda yesil band gercekten olculmus olmali.
+        if "yesil_alt=" not in (gecti.stdout + gecti.stderr):
+            raise SystemExit("gecen kosuda bant ozeti yok")
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -7379,6 +7695,8 @@ GATES_EXTRA = {
     "bit-budget-is-arithmetic": (gate_bit_budget_is_arithmetic, selftest_bit_budget_is_arithmetic),
     "device-ceiling-is-declared": (gate_device_ceiling_is_declared, selftest_device_ceiling_is_declared),
     "alim-hatti-kapali": (gate_alim_hatti_kapali, selftest_alim_hatti_kapali),
+    "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
+    "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
 }
 
 
