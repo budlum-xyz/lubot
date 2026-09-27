@@ -32,8 +32,9 @@ herkes kendi listesine bakar ve farkli cevap verir.
 | `gqa_engram_attention` | `crates/egitim/src/lib.rs`, `crates/egitim/src/engram.rs` | `engram-kapisi` | `engram-2026-09-26.json` | bagli |
 | `hyperconnections` | `crates/egitim/src/cok_serit.rs` | `cok-serit-kapisi` | `cok-serit-2026-09-26.json` | bagimsiz |
 | `sinkhorn_router` | `crates/egitim/src/yonlendirme.rs` | `yonlendirme-kapisi` | `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |
-| `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi` | `kalibrasyon-2026-09-26.json` | bagli |
+| `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi`, `omurga-karar-port-kayitlari` | `kalibrasyon-2026-09-26.json`, `tipli-karar-2026-09-27.json` | bagli |
 | `schema_decoder` | `crates/read/src/output_schema.rs`, `crates/egitim/src/sema_cozucu.rs` | `ai-output-schema-enforced`, `sema-cozucu-reddeder` | `sema-kapsam-2026-09-24.json` | bagli |
+
 | `cq2_quant` | `crates/nicem/src/lib.rs`, `crates/nicem/src/grup.rs`, `crates/tasiyici/src/lib.rs` | `bit-budget-is-arithmetic` | `nicem-2026-09-27.json` | bagli |
 
 `gqa_engram_attention` satiri iki parcalidir ve durumu **parca parca** okunur:
@@ -86,6 +87,11 @@ degistirmez ama onu daha dar okutur: sekizinci modulun iki yarisindan biri
    girecegi `docs/MIMARI-TASARIM.md` 5. bolumunde M1/M2/M3 olarak isaretli
    operator kararidir ve bu envanter onu vermez. `kademe` adayi bu blogun
    disindadir: o bir katman degil egitim hedefidir ve baglanmasi M4 kararidir.
+5. Iki kart dizini yan yana duruyor: eski kayitlar `workspace:port-kartlari/`
+   altini, yeni cerceve `workspace:skills/port-hatti/port-kartlari/` altini
+   isaret ediyor. Ikisi de gercek ve ikisi de yasiyor; tekillestirme ayri bir
+   turun isi ve kart sahipligi baskalarinda. Burada yazili olmasinin sebebi,
+   "kart nerede" sorusunun bu belge disinda cevabi olmamasi.
 
 ## Bu envanterin soylemedigi
 

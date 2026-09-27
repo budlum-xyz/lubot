@@ -8983,7 +8983,11 @@ def selftest_port_envanteri_kapisi() -> None:
                           "| `sinkhorn-yonlendirme-2026-09-27.json` | neredeyse |", 1)
     if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
         raise SystemExit("tanimsiz durum yakalanmadi")
-    # 6) Kaynaksiz "bagli" iddiasi
+    # 6) Kaynaksiz "bagli" iddiasi. Kanarya satirin **icerigine** degil
+    #    yapisina baglanir. Sebebi olculdu: ilk surum hucreleri birebir
+    #    yaziyordu ve satira bir kaynak yolu eklenince esleşme kayboldu -
+    #    kanarya kirmizi vermeyi sessizce birakti, yani kapi o gun kaynaksiz
+    #    bir durum iddiasini yakalamiyordu.
     bozuk = re.sub(r"^\| `modernbert_encoder` \|[^|]*\|",
                    "| `modernbert_encoder` | yok |", metin, count=1, flags=re.M)
     if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
