@@ -10,7 +10,7 @@
     "okuma": 254.0,
     "olcut_sonucu": true,
     "parametre": 16384.0,
-    "sure_saniye": 8.27,
+    "sure_saniye": 0.23,
     "tablo": 512.0
   },
   "kaynaklar": {
@@ -18,7 +18,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 8.27
+    "sure_saniye": 0.23
   },
   "kosucu": "betik",
   "olculmeyen": [
