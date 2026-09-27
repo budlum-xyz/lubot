@@ -89,14 +89,14 @@
       2,
       4
     ],
-    "sure_saniye": 0.07
+    "sure_saniye": 0.11
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.07
+    "sure_saniye": 0.11
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -109,6 +109,6 @@
     "ifade": "her katman kazanci icin: oran(serit=1) < oran(serit=2) < oran(serit=4), oran = (son/ilk)^(1/(n-1))",
     "sonuc": true
   },
-  "tarih": "2026-09-26",
+  "tarih": "2026-09-27",
   "uyari": "Olcum bir PROXY'dir: 16 genislik, 8 derinlik, tohumlu agirliklar ve kasten buyuten/azaltan dogrusal 'katman'. Gercek yiginin (spec) serit sayisi karari bu olcumle verilmez; isaretli karar M3'tur."
 }

@@ -150,6 +150,31 @@ def bos_durum() -> dict:
     }
 
 
+def onayla(gerekce: str) -> dict:
+    """Acik DURUS'u insan onayi ile kapatir.
+
+    Iki dosya birlikte guncellenir: `DURUS.json` (durmanin kendisi, tarihcesi
+    korunur) ve `durum.json` icindeki `durus` alani (`durdu: false`). Aksi halde
+    bir kez duran bir kosu, onaydan sonra da `--durum` raporunda "durdu"
+    gorunur - yani durum dosyasi kapali bir durmayi acik gibi gosterir. Bu,
+    olculen bir karisiklikti (2026-09-26): DURUS.json onayliyken durum.json
+    hala durmus goruntusunu tasiyordu."""
+    acik = durus_acik_mi()
+    if not acik:
+        raise SystemExit("acik bir DURUS yok: onaylanacak bir durma yok")
+    acik["onay"] = {"gerekce": gerekce, "tarih": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    guvenli_yaz(DURUS, json.dumps(acik, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    durum = durum_oku()
+    durum["durus"] = {**acik, "durdu": False}
+    durum_yaz(durum)
+    hafiza_yaz("ideation.jsonl", {
+        "tur": "insan-onayi", "tarih": time.strftime("%Y-%m-%d"),
+        "kosul": acik["kosul"], "gerekce": gerekce,
+    })
+    gunluk_yaz(f"- ONAYLANDI [{acik['kosul']}]: {gerekce}")
+    return acik
+
+
 def durum_oku() -> dict:
     if not DURUM.is_file():
         return bos_durum()
@@ -845,16 +870,7 @@ def main(argv: list[str]) -> int:
             print("profil:", json.dumps(durum.get("profil", {}), ensure_ascii=False, sort_keys=True))
         return 0
     if args.onayla:
-        acik = durus_acik_mi()
-        if not acik:
-            raise SystemExit("acik bir DURUS yok: onaylanacak bir durma yok")
-        acik["onay"] = {"gerekce": args.onayla, "tarih": time.strftime("%Y-%m-%dT%H:%M:%S")}
-        guvenli_yaz(DURUS, json.dumps(acik, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-        hafiza_yaz("ideation.jsonl", {
-            "tur": "insan-onayi", "tarih": time.strftime("%Y-%m-%d"),
-            "kosul": acik["kosul"], "gerekce": args.onayla,
-        })
-        gunluk_yaz(f"- ONAYLANDI [{acik['kosul']}]: {args.onayla}")
+        onayla(args.onayla)
         return 0
     if args.ci_onayla:
         kayitlar = hafiza_oku("experimentation.jsonl")
@@ -959,6 +975,15 @@ def kendini_test(uzun: bool = False) -> int:
         else:
             raise AssertionError("acik DURUS varken oturum basladi")
         bulgular.append("onaysiz baslatma reddi")
+
+        # Onay, durum dosyasindaki durus alanini da kapatir: bir kez duran kosu
+        # onaydan sonra "durdu" gorunmeye devam ederse durum raporu yanlis olur.
+        onayla("kanarya onayi")
+        assert durus_acik_mi() is None, "onaydan sonra DURUS hala acik"
+        durum_onay = durum_oku()
+        assert durum_onay["durus"]["durdu"] is False, "onay durum dosyasindaki durusu kapatmadi"
+        assert durum_onay["durus"]["onay"]["gerekce"] == "kanarya onayi", "onay gerekcesi yazilmadi"
+        bulgular.append("onay durumu da kapatir")
 
         # S5: art arda kotulestiren strateji degisikligi sayaci siniri gorur.
         ayar = json.loads(AYARLAR.read_text(encoding="utf-8"))

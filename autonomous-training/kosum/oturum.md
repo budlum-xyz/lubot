@@ -58,3 +58,9 @@
 ## Deney 7 (2026-09-26T23:09:30) - kaynak: dugme-uzayi
 - oneri: --ogrenme-orani 0.01 -> 0.013062500000000001 (aile optimizasyon)
 - adim butcesi: 140
+
+# Oturum 2026-09-26T23:48:01 - adim butcesi 140
+
+## Deney 7 (2026-09-26T23:48:01) - kaynak: dugme-uzayi
+- oneri: --ogrenme-orani 0.01 -> 0.013062500000000001 (aile optimizasyon)
+- adim butcesi: 140

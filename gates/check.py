@@ -7256,7 +7256,6 @@ def selftest_alim_hatti_kapali() -> None:
     except SystemExit as err:
         assert "must refuse" in str(err)
 
-
 def _cok_serit_denetle(path: Path) -> list:
     """Cok-seritli artik baglanti adayinin (bilesen 5) olculebilir sozlesmesi.
     Metin denetimidir - ihlal listesi doner, bos liste gecer demektir. Kaynak
@@ -7572,6 +7571,161 @@ def selftest_kalibrasyon_bandi_kapisi() -> None:
         if "yesil_alt=" not in (gecti.stdout + gecti.stderr):
             raise SystemExit("gecen kosuda bant ozeti yok")
 
+
+def _engram_denetle(path: Path) -> list:
+    """Engram adayinin (tasarim 3.3) olculebilir sozlesmesi. Metin denetimidir -
+    ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Karma tohumsuz ve tam sayi: float ya da rastgelelik karmaya girmemeli.
+    for iz in ("pub fn ngram_karmasi", "wrapping_mul", "u64"):
+        if iz not in metin:
+            ihlaller.append(f"karma sozlesmesi eksik: {iz}")
+    # 2) Kayit siniri okumalara uygulanir ve ayri sayilir.
+    for iz in ("kayit_siniri", "gecmis_yok"):
+        if iz not in metin:
+            ihlaller.append(f"kayit siniri olcumu eksik: {iz}")
+    # 3) Seyrek geri gecis + hucre sirasinda toplama.
+    if "sort_by_key" not in metin:
+        ihlaller.append("seyrek toplama sirasi (hucre sirasi) yok")
+    # 4) Cakisma olculur, yasaklanmaz.
+    for iz in ("CakismaOlcumu", "cakisan_hucre", "doluluk"):
+        if iz not in metin:
+            ihlaller.append(f"cakisma olcumu eksik: {iz}")
+    # 5) Gradyan iddiasi olculur + sayim bagi.
+    for iz in ("gradyan_sonlu_farkla_uyusur", "GRADIENT_CHECK_MUTLAK_TABAN",
+               "GRADIENT_CHECK_TOLERANCE"):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi eksik: {iz}")
+    if "denetlenen != spec.parametre_sayisi()" not in metin:
+        ihlaller.append("denetlenen gradyan sayisi seklin parametre sayisina bagli degil")
+    # 6) Parametre muhasebesi sekilden turetilir.
+    if "fn parametre_sayisi(&self) -> usize" not in metin:
+        ihlaller.append("parametre sayisi sekilden turetilmiyor")
+    # 7) Davranis olcumleri.
+    for iz in ("seyrek_toplam_hucre_sirasinda", "kayit_sinirinda_komsu_jetonlar_okumayi_degistirmez",
+               "olcum_raporu"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # 8) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 9) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        gövde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in gövde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_engram_kapisi() -> str:
+    """Engram adayi olculur halde duruyor: karma tohumsuz/tam sayi, kayit siniri
+    okumalara uygulanir, seyrek geri gecis hucre sirasinda toplanir, cakisma
+    olculur (yasaklanmaz) ve tablo gradyani sonlu farkla denetlenir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "engram.rs"
+    ihlaller = _engram_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("engram sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "engram"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/engram.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("engram kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"engram adayi olculur: {gecen} test, tohumsuz tam sayi karma, kayit siniri "
+        f"okumalara uygulanmis, cakisma olculuyor, gradyan sonlu farkla"
+    )
+
+
+def selftest_engram_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme ve degistirilmis kayit yakalanmali."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "engram.rs"
+    if _engram_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "engram.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) kayit siniri sayimi sokulursa
+        bozuk.write_text(metin.replace("kayit_siniri", "x"), encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("kayit siniri sayimi sokulmus kopya yakalanmadi")
+        # 2) seyrek toplama sirasi sokulursa
+        bozuk.write_text(metin.replace("sort_by_key", "// sirasiz"), encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("seyrek toplama sirasi sokulmus kopya yakalanmadi")
+        # 3) cakisma olcumu sokulursa
+        bozuk.write_text(metin.replace("cakisan_hucre", "y"), encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("cakisma olcumu sokulmus kopya yakalanmadi")
+        # 4) panik yolu sokulursa
+        bozuk.write_text(metin.replace("    let mut g = vec![0.0f64; 2 * spec.tablo * spec.d_kv];",
+                                       "    let _ = vec![0].first().unwrap();\n    let mut g = vec![0.0f64; 2 * spec.tablo * spec.d_kv];", 1),
+                         encoding="utf-8")
+        if not _engram_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 5) Kayit koru korune guvenilmemeli + sayim tutmalidir.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "engram-2026-09-26.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["okuma"] = veri["kanit"]["okuma"] + 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/engram.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("degistirilmis kayit kabul edildi: tazelik denetimi sahte")
+        # Sayim bagi: okuma + atlananlar jeton sayisini tutmali.
+        veri2 = json.loads(kayit.read_text(encoding="utf-8"))
+        veri2["kanit"]["okuma"] = veri2["kanit"]["okuma"] + 5.0
+        sahte.write_text(json.dumps(veri2, ensure_ascii=False), encoding="utf-8")
+        kosu2 = subprocess.run(
+            ["python3", "training/engram.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu2.returncode == 0:
+            raise SystemExit("sayimi tutmayan kayit kabul edildi")
+
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -7697,6 +7851,8 @@ GATES_EXTRA = {
     "alim-hatti-kapali": (gate_alim_hatti_kapali, selftest_alim_hatti_kapali),
     "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
     "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
+    "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
+    "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
 }
 
 
