@@ -188,6 +188,53 @@ yeşil → tek geçiş. Bant sınırları ölçümle oturur, varsayılan değer 
 **K-çapraz:** U (gecikme: başlık ölçümü tek ileri geçişe ek bir vektör — maliyet
 ölçülür); W ile uyum (önbellek anahtarına güven bandı da girer).
 
+### 3.8 Birleşik blok: altı adayın kompozisyonu
+
+**Neden ayrı bir bileşen:** 3.1–3.7 bileşen bileşen yazıldı, bileşen bileşen
+ölçüldü ve bileşen bileşen kapılandı; `docs/CRATES.md` her birinin yanına aynı
+cümleyi koyuyordu: *bağlı değil*. Altı modülün her biri tek başına doğru olup
+birleşik hâlleri yine de çalışmayabilir — şekiller tutmayabilir, gradyan bir
+yerde kopabilir, parametre muhasebesi çift sayabilir. Bu bileşen o boşluktur:
+bileşeni değil **birleşimi** ölçer.
+
+**Sıra:** şerit durumu → okuma → sıfır merkezli RMS norm → rotalı Hadamard
+uzmanları → engram değer belleği → şerit yazma → yeni şerit durumu. Her ok
+gerçek bir alt modül çağrısıdır; hiçbir adım yeniden yazılmadı ve kapı bunu
+denetler. Kompozisyonun kendi aritmetiği yalnız üç yerdedir: uzman çıktılarının
+ağırlıklı toplamı, engram katkısının blok çıkışına eklenmesi, ve yazma
+yolundan gelen `dL/dy = Σ_l beta_l · g_yeni[l]`.
+
+**Engram bu blokta değer belleğidir.** Anahtar, parametresiz bir kapı olarak
+kullanılır (`s = <anahtar, h[:d_kv]> / sqrt(d_kv)`), böylece tablonun iki yarısı
+da gradyan alır; dikkat tarafındaki kullanım (3.3) ayrı bir bağlamadır ve bu
+blokta yoktur.
+
+**Rota gradyanı yazılmadı ve iddia edilmiyor.** Rota puanları bloğun *dışından*
+gelir ve rota parametre tutmaz; bunun somut sonucu, buradaki bütün parametre
+gradyanlarının rota açıkken de **tam** olmasıdır. Yazılmayan tek şey
+`dL/dpuanlar`'dır.
+
+**Kapalı bileşen = yokluğu.** `serit = 1` klasik tek akış, `rota = None` tek
+uzman, `engram = None` bellek terimi hiç hesaplanmaz — üçü de `f64::to_bits`
+ile ölçülür.
+
+**Ölçülen:** 544 parametrenin tamamı dört noktalı (Richardson) sonlu farkla
+denetlendi, ihlal 0, en kötü oran 7.93e-3; iniş gerçek bir 40 adımlık koşuda
+29.44711861 → 4.93556415; engram okuması kayıt sınırını geçmiyor. İki noktalı
+fark bu kompozisyonda toleransı **geçemiyordu** (en kötü oran 1.233): tolerans
+gevşetilmedi, ölçüm aleti düzeltildi ve adım taraması U eğrisini kayda geçirdi
+(`1.2e0, 1.0e-2, 7.9e-3, 3.2e-2, 8.9e-2, 1.6e0`).
+
+**Bu bileşenin vermediği karar:** hangi bileşenin hangi aileye gireceği M1/M2/M3
+olarak işaretli kalır. Blok bir aile değil, bir **kompozisyon yüzeyidir**;
+`training/model_spec.json` ve `lubot-a1` değişmedi, hiçbir eğitim çağrısı
+buradan geçmiyor.
+
+**K-çapraz:** K1 (her satır bu ağaçta yazıldı, hiçbir üçüncü taraf adı geçmez),
+K5/K6 (yeni bir çıktı yüzeyi yok), ve 4. bölümün sırası: bu blok 4–6. satırların
+*ön koşuludur*, yerine geçmez — hangi bileşenin aileye gireceği hâlâ ölçümle ve
+damgayla karara bağlanır.
+
 ## 4. Birleşik taslak: lubot-a2 adayı (yön, değil taahhüt)
 
 Sıra, ölçüm disiplinine göre kurulur; her satır ayrı artım, kendi self-test'i ve

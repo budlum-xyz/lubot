@@ -8150,7 +8150,10 @@ def gate_engram_kapisi() -> str:
     if beklenen == 0:
         raise SystemExit("modulde hic test yok")
     kosu = subprocess.run(
-        ["cargo", "test", "-q", "-p", "lubot-egitim", "engram"],
+        # Filtre modul yoluyla sinirli: cıplak "engram" kelimesi baska bir
+        # modulun test adinda da gecebilir (gecti: `birlesik` blogunun engram
+        # kollari) ve o zaman sayim bagi, olculmeyen bir sebeple kirilir.
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "engram::"],
         cwd=ROOT, capture_output=True, text=True,
     )
     cikti = kosu.stdout + kosu.stderr
@@ -8485,6 +8488,312 @@ def selftest_omurga_karar_port_kayitlari() -> None:
         )
         if kosu.returncode == 0:
             raise SystemExit("degistirilmis kayit dogrulamadan gecti")
+def _birlesik_denetle(path: Path) -> list:
+    """Birlesik port blogunun (tasarim notu 3.8) olculebilir sozlesmesi."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Kompozisyon gercekten alt modulleri cagirmali: bu modul hicbirini
+    #    yeniden yazmaz. Ikinci bir kopya, ikinci bir yanlis olma yeridir.
+    for cagri in ("cok_serit::okuma(", "cok_serit::ileri(", "cok_serit::geri(",
+                  "normalizasyon::norm_ileri(", "normalizasyon::norm_geri(",
+                  "mlp_hadamard::ileri(", "mlp_hadamard::geri(",
+                  "yonlendirme::rota_hesapla(", "engram::oku(", "engram::geri("):
+        if cagri not in metin:
+            ihlaller.append(f"alt modul cagrisi eksik: {cagri}")
+    # 2) Parametre muhasebesi sekilden turetilmeli ve rota terimi yazili
+    #    kalmali: sifiri toplamdan dusurmek, rotanin agirlik tutmadigi
+    #    bilgisini gorunmez yapar.
+    for iz in ("pub fn parametre_sayisi", "pub fn parametre_yollari",
+               "RotaSpec::parametre_sayisi"):
+        if iz not in metin:
+            ihlaller.append(f"parametre muhasebesi izi eksik: {iz}")
+    # 3) Kapali bilesen = yoklugu: uc anahtarin da bit-ozdeslik olcumu olmali.
+    for iz in ("engram_kapali_hal_bit_ozdes", "tek_serit_klasik_artik_akis",
+               "rota_kapali_hal_tek_uzman", "serit_okumasi_ileri_ile_bit_ozdes"):
+        if iz not in metin:
+            ihlaller.append(f"kapali-bilesen olcumu eksik: {iz}")
+    if "to_bits()" not in metin:
+        ihlaller.append("bit-ozdeslik olcumu to_bits kullanmiyor")
+    # 4) Gradyan: sayim sekle bagli olmali, olcut gevsetilmemeli ve adim
+    #    taramasi (U egrisi) olculmeli.
+    for iz in ("GRADIENT_CHECK_MUTLAK_TABAN", "GRADIENT_CHECK_TOLERANCE",
+               "denetim.denetlenen, spec.parametre_sayisi()",
+               "adim_taramasi_u_egrisi_cizer"):
+        if iz not in metin:
+            ihlaller.append(f"gradyan denetimi izi eksik: {iz}")
+    # 5) Kayit siniri engram okumalarina da uygulanmali (provenance bagimsizligi).
+    if "engram_kayit_sinirini_gecmez" not in metin:
+        ihlaller.append("kayit siniri olcumu eksik")
+    # 6) Model ailesi degistirilmemeli: bu modul bir kompozisyon yuzeyidir.
+    #    Aciklama satirlarinda `model_spec.json` gecebilir (ve gecmeli: kural
+    #    yazili olmali); yasak olan **kodun** aileye dokunmasidir. Bu yuzden
+    #    once aciklamalar soyulur, sonra kod taranir.
+    kod = "\n".join(
+        satir for satir in metin.splitlines() if not satir.lstrip().startswith("//")
+    )
+    for iz in ("model_spec", "Parametreler", "lubot_a1()"):
+        if iz in kod:
+            ihlaller.append(f"kod model ailesine dokunuyor: {iz} (damga ister)")
+    aciklama = "\n".join(
+        satir for satir in metin.splitlines() if satir.lstrip().startswith("//")
+    )
+    if "model_spec.json" not in aciklama or "ailesi degismez" not in aciklama:
+        ihlaller.append("aile degismezligi belgede yazili degil")
+    # 7) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 8) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        govde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in govde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_birlesik_kapisi() -> str:
+    """Bilesen 3.8 (birlesik port blogu) olculur halde duruyor: alti tekil aday
+    tek blokta kosuyor, her parametre dort noktali sonlu farkla denetleniyor
+    (sayim sekilden turetilir), kapatilan her bilesen yoklugu ile bit-ozdes,
+    ve engram okumasi kayit sinirini gecmiyor. Kayit tazeligi betigin kendi
+    --dogrula yoluyla denetlenir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "birlesik.rs"
+    ihlaller = _birlesik_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("birlesik blok sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "birlesik"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/birlesik.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("birlesik kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"birlesik blok olculur: {gecen} test, alti bilesen tek blokta, her parametre "
+        f"dort noktali sonlu farkla, kapali bilesen bit-ozdes, kayit siniri engrama da uygulanir"
+    )
+
+
+def selftest_birlesik_kapisi() -> None:
+    """Kanaryalar: sokulmus her sozlesme izi yakalanmali ve kayit koru korune
+    guvenilmemeli."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "birlesik.rs"
+    if _birlesik_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    metin = gercek.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "birlesik.rs"
+        # 1) Alt modul cagrisi sokulursa (kompozisyon kendi kopyasini yazmis olur)
+        bozuk.write_text(metin.replace("mlp_hadamard::geri(", "x(", 1), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("alt modul cagrisi sokulmus kopya yakalanmadi")
+        # 2) Sayim bagi sokulursa (yeni bir tensor denetimin disinda kalabilir)
+        bozuk.write_text(
+            metin.replace("denetim.denetlenen, spec.parametre_sayisi()", "1, 1"),
+            encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("sayim bagi sokulmus kopya yakalanmadi")
+        # 3) Bit-ozdeslik olcumu sokulursa
+        bozuk.write_text(metin.replace("engram_kapali_hal_bit_ozdes", "x"), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("kapali-bilesen olcumu sokulmus kopya yakalanmadi")
+        # 4) Adim taramasi (U egrisi) sokulursa: gevsetilmis tolerans gorunmez kalirdi
+        bozuk.write_text(metin.replace("adim_taramasi_u_egrisi_cizer", "x"), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("adim taramasi sokulmus kopya yakalanmadi")
+        # 5) Kayit siniri olcumu sokulursa
+        bozuk.write_text(metin.replace("engram_kayit_sinirini_gecmez", "x"), encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("kayit siniri olcumu sokulmus kopya yakalanmadi")
+        # 6) Aile degisikligi sokulursa (spec'e dokunmak damga ister)
+        bozuk.write_text(metin.replace("pub fn kucuk_aday", "pub fn model_spec_yaz", 1),
+                         encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("model_spec'e dokunan kopya yakalanmadi")
+        # 7) Panik yolu sokulursa. rustfmt'in bicimden bagimsiz tekil hedefi:
+        hedef = "    sekil_denetle(spec, w, durumlar)?;"
+        if metin.count(hedef) != 2:
+            raise SystemExit("panik mutantinin hedefi tekil degil")
+        mutant = metin.replace(hedef, "    let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
+        if not _birlesik_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    # 8) Kayit koru korune guvenilmemeli.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "birlesik-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        for alan, deger in (("ihlal", 3.0), ("denetlenen", 1.0), ("son_kayip", 1e9)):
+            veri = json.loads(kayit.read_text(encoding="utf-8"))
+            veri["kanit"][alan] = deger
+            sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+            kosu = subprocess.run(
+                ["python3", "training/birlesik.py", "--dogrula", "--kayit", str(sahte)],
+                cwd=ROOT, capture_output=True, text=True,
+            )
+            if kosu.returncode == 0:
+                raise SystemExit(f"{alan} degistirilmis kayit kabul edildi")
+
+
+# Direktif 7.4'un modul adlari. Liste burada sabittir cunku envanterin isi tam
+# olarak sudur: **disaridan verilen** ad kumesini bu agacin gercegine
+# baglamak. Tablodan turetilseydi, unutulan bir modul envanterden de eksik
+# olur ve kapi hicbir sey soylemezdi.
+PORT_MODULLERI = (
+    "modernbert_encoder",
+    "hadamard_mlp",
+    "gqa_engram_attention",
+    "hyperconnections",
+    "sinkhorn_router",
+    "decision_head",
+    "schema_decoder",
+    "cq2_quant",
+)
+PORT_DURUMLARI = ("bagli", "bagimsiz", "yok")
+
+
+def _port_envanteri_oku(metin: str) -> list:
+    """Tablo satirlarini `(modul, yollar, kapilar, kayitlar, durum)` olarak coz."""
+    satirlar = []
+    for ham in metin.splitlines():
+        satir = ham.strip()
+        if not satir.startswith("|") or not satir.endswith("|"):
+            continue
+        hucreler = [h.strip() for h in satir.strip("|").split("|")]
+        if len(hucreler) != 5:
+            continue
+        if hucreler[0].startswith("---") or hucreler[0] in ("7.4 modulu", "modul"):
+            continue
+        ad = hucreler[0].strip("`")
+        tirnakli = lambda h: re.findall(r"`([^`]+)`", h)  # noqa: E731
+        satirlar.append((ad, tirnakli(hucreler[1]), tirnakli(hucreler[2]),
+                         tirnakli(hucreler[3]), hucreler[4]))
+    return satirlar
+
+
+def _port_envanteri_denetle(metin: str, kapi_adlari) -> list:
+    ihlaller: list[str] = []
+    satirlar = _port_envanteri_oku(metin)
+    if not satirlar:
+        return ["envanterde hic tablo satiri yok"]
+    adlar = {s[0] for s in satirlar}
+    for modul in PORT_MODULLERI:
+        if modul not in adlar:
+            ihlaller.append(f"7.4 modulu envanterde yok: {modul}")
+    for ad, yollar, kapilar, kayitlar, durum in satirlar:
+        if durum not in PORT_DURUMLARI:
+            ihlaller.append(f"{ad}: durum {PORT_DURUMLARI} disinda: {durum!r}")
+        if durum != "yok" and not yollar:
+            ihlaller.append(f"{ad}: durum {durum} ama kaynak yolu verilmemis")
+        for yol in yollar:
+            if not (ROOT / yol).is_file():
+                ihlaller.append(f"{ad}: kaynak yok: {yol}")
+        for kapi in kapilar:
+            if kapi not in kapi_adlari:
+                ihlaller.append(f"{ad}: kayitli olmayan kapi: {kapi}")
+        for kayit in kayitlar:
+            if not (ROOT / "training" / "eval" / "sonuclar" / kayit).is_file():
+                ihlaller.append(f"{ad}: olcum kaydi yok: {kayit}")
+    return ihlaller
+
+
+def gate_port_envanteri_kapisi() -> str:
+    """`docs/PORT-ENVANTERI.md`, direktif 7.4'un sekiz modulunu bu agactaki
+    gercek dosyalara baglar ve her satirin kaniti denetlenir: kaynak dosya var
+    mi, adi gecen kapi gercekten kayitli mi, olcum kaydi duruyor mu. Bir modul
+    "var" diye yaziliyorsa, bunu gosteren yol da vardir."""
+    import re as _re  # noqa: F401 - _port_envanteri_oku icin global `re` yeterli
+
+    belge = ROOT / "docs" / "PORT-ENVANTERI.md"
+    if not belge.is_file():
+        raise SystemExit(f"envanter yok: {belge}")
+    metin = belge.read_text(encoding="utf-8")
+    ihlaller = _port_envanteri_denetle(metin, set(GATES))
+    if ihlaller:
+        raise SystemExit("port envanteri tutmuyor:\n  " + "\n  ".join(ihlaller))
+    satirlar = _port_envanteri_oku(metin)
+    bagli = sum(1 for s in satirlar if s[4] == "bagli")
+    bagimsiz = sum(1 for s in satirlar if s[4] == "bagimsiz")
+    yok = sum(1 for s in satirlar if s[4] == "yok")
+    return (
+        f"port envanteri denetlendi: {len(PORT_MODULLERI)} modulun hepsi tabloda, "
+        f"{len(satirlar)} satir ({bagli} bagli, {bagimsiz} bagimsiz, {yok} yok), "
+        f"her kaynak yolu ve her olcum kaydi yerinde"
+    )
+
+
+def selftest_port_envanteri_kapisi() -> None:
+    """Kanaryalar: envanter yalan soylerse kapi bunu yakalamali."""
+    belge = ROOT / "docs" / "PORT-ENVANTERI.md"
+    if not belge.is_file():
+        raise SystemExit(f"envanter yok: {belge}")
+    metin = belge.read_text(encoding="utf-8")
+    kapilar = set(GATES)
+    if _port_envanteri_denetle(metin, kapilar):
+        raise SystemExit("saglam envanter kendi denetiminden gecmedi")
+    # 1) Var olmayan bir kaynak yolu yazilirsa
+    bozuk = metin.replace("`crates/egitim/src/yonlendirme.rs`",
+                          "`crates/egitim/src/olmayan_dosya.rs`", 1)
+    if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("olmayan kaynak yolu yakalanmadi")
+    # 2) Kayitli olmayan bir kapi adi yazilirsa
+    bozuk = metin.replace("`yonlendirme-kapisi`", "`olmayan-kapi`", 1)
+    if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("kayitli olmayan kapi adi yakalanmadi")
+    # 3) Olmayan bir olcum kaydi yazilirsa
+    bozuk = metin.replace("`engram-2026-09-26.json`", "`olmayan-kayit.json`", 1)
+    if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("olmayan olcum kaydi yakalanmadi")
+    # 4) Bir 7.4 modulu tablodan dusurulurse
+    bozuk = metin.replace("| `sinkhorn_router` |", "| `baska_bir_ad` |", 1)
+    if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("eksik 7.4 modulu yakalanmadi")
+    # 5) Tanimsiz bir durum yazilirsa ("neredeyse bitti" bir durum degildir)
+    bozuk = metin.replace("| `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |",
+                          "| `sinkhorn-yonlendirme-2026-09-27.json` | neredeyse |", 1)
+    if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("tanimsiz durum yakalanmadi")
+    # 6) Kaynaksiz "bagli" iddiasi
+    bozuk = metin.replace("| `modernbert_encoder` | `crates/kodlayici/src/lib.rs`, "
+                          "`crates/transformer/src/lib.rs` |",
+                          "| `modernbert_encoder` | yok |", 1)
+    if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
+        raise SystemExit("kaynaksiz durum iddiasi yakalanmadi")
 
 
 GATES_EXTRA = {
@@ -8611,6 +8920,8 @@ GATES_EXTRA = {
     "gecis-hatti-kapisi": (gate_gecis_hatti_kapisi, selftest_gecis_hatti_kapisi),
     "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
     "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
+    "birlesik-kapisi": (gate_birlesik_kapisi, selftest_birlesik_kapisi),
+    "port-envanteri-kapisi": (gate_port_envanteri_kapisi, selftest_port_envanteri_kapisi),
     "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
     "yonlendirme-kapisi": (gate_yonlendirme_kapisi, selftest_yonlendirme_kapisi),
     "kesit-kapisi": (gate_kesit_kapisi, selftest_kesit_kapisi),
