@@ -394,6 +394,7 @@ dependencies = [
  "lubot-egitim",
  "lubot-erisim",
  "lubot-esik",
+ "lubot-gecis",
  "lubot-grant",
  "lubot-gunluk",
  "lubot-index",
@@ -507,6 +508,16 @@ dependencies = [
 [[package]]
 name = "lubot-esik"
 version = "0.1.0"
+
+[[package]]
+name = "lubot-gecis"
+version = "0.1.0"
+dependencies = [
+ "lubot-alim",
+ "serde",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "lubot-grant"

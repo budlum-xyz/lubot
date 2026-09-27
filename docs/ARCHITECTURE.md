@@ -46,7 +46,10 @@ cross-check tool (`tools/kodlayici_capraz.py`) is not part of the binary.
    the decision head, with a tokenizer still to come), `sir` (secrets masked
    on the write path, before storage), `alim` (the intake line: a manifest
    admitted whole or refused by name, one provenance row per admitted record,
-   and the weight manifest's content address with its erasure plan) and
+   and the weight manifest's content address with its erasure plan) and `gecis` (the
+   transition line: a source tree censused into one digest, a realization
+   plan whose plumbing lines are the repository's own, and measured coverage
+   of the realized crate) and
    `gunluk` (operator logs parsed
    into records, passed through `sir` first).
 3. **Reading** — `read` (three channels, digest-verified), `index` (BM25
