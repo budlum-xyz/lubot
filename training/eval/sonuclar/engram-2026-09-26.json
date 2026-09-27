@@ -10,7 +10,7 @@
     "okuma": 254.0,
     "olcut_sonucu": true,
     "parametre": 16384.0,
-    "sure_saniye": 0.32,
+    "sure_saniye": 0.3,
     "tablo": 512.0
   },
   "kaynaklar": {
@@ -18,7 +18,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.32
+    "sure_saniye": 0.3
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -32,6 +32,6 @@
     "ifade": "n=3, tablo=512, d_kv=16, 256 jeton: cakisan_hucre > 0 VE orneklenen tablo gradyanlarinin sonlu fark sapmasi < 1e-6",
     "sonuc": true
   },
-  "tarih": "2026-09-26",
-  "uyari": "Olcum tek bir sentetik dizidir: korpus yok, dikkat cagrisi yok, spec baglanmadi. Cakisma sayisi bir kayip olarak **olculdu**, yasaklanmadi."
+  "tarih": "2026-09-27",
+  "uyari": "olcum tek bir sentetik dizidir: korpus yok, dikkat cagrisi yok, spec baglanmadi. Cakisma sayisi bir kayip olarak **olculdu**, yasaklanmadi."
 }
