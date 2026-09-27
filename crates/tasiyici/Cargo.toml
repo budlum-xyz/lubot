@@ -12,4 +12,4 @@ workspace = true
 
 [dependencies]
 lubot-nicem = { path = "../nicem", version = "0.1.0" }
-sha2 = "0.10"
+sha2 = "0.11"
