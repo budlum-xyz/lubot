@@ -119,6 +119,8 @@ pub enum Refusal {
     },
     /// A weight artefact with no bytes.
     EmptyArtefact,
+    /// Bytes whose length differs from the artefact used to plan the shards.
+    ArtefactLengthMismatch { expected: u64, measured: u64 },
     /// Erasure-coding parameters outside the addressable range.
     BadErasureParams { data: u32, parity: u32 },
     /// A shard index outside the data shards.
@@ -149,7 +151,8 @@ impl Refusal {
             Self::MissingProvenancePair(_)
             | Self::BadManifestId(_)
             | Self::BadDigest { .. }
-            | Self::DigestMismatch { .. } => "O",
+            | Self::DigestMismatch { .. }
+            | Self::ArtefactLengthMismatch { .. } => "O",
             _ => "-",
         }
     }
@@ -192,6 +195,9 @@ impl Refusal {
                 measured,
             } => format!("`{path}`: digest mismatch, expected {expected}, measured {measured}"),
             Self::EmptyArtefact => "the artefact carries no bytes".to_string(),
+            Self::ArtefactLengthMismatch { expected, measured } => {
+                format!("artefact length mismatch: expected {expected} bytes, measured {measured}")
+            }
             Self::BadErasureParams { data, parity } => format!(
                 "erasure parameters data={data} parity={parity} are outside the \
                  addressable range (data>=1, parity>=1, data+parity<=255)"
