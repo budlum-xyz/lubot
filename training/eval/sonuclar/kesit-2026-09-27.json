@@ -1,0 +1,37 @@
+{
+  "is": "Aile kesiti (derinlik/genislik dilimleri): spec'ten her derinlik ve genislik icin kosan alt-modeller; tamlik, monotonluk ve kafa silme olculdu",
+  "kanit": {
+    "d_k": 16.0,
+    "derinlik": 4.0,
+    "genislik": 64.0,
+    "izgara": 4.0,
+    "kosan": 12.0,
+    "olcut_sonucu": true,
+    "parametre_en_az": 78720.0,
+    "parametre_genislik_en_az": 21344.0,
+    "parametre_tam": 216192.0,
+    "sure_saniye": 0.89
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.89
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kesilmis modelin sinav/kalite davranisi (egitim ve sinav kosusu ister)",
+    "agirlik kirpma: kesit yalnizca spec uretir; agirliklardan dilim alma ayri is",
+    "ortadan katman cikarma (sadece bastan kisaltma olculdu)",
+    "K/V kafa gruplarinin kesitte yeniden hizalanmasi (grup orani korunuyor)"
+  ],
+  "olcut": {
+    "ad": "her_derinlikte_kesit_kosar_ve_parametre_monoton",
+    "ifade": "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, sonlu pozitif kayip) VE tam kesitin parametresi girdi spec'ine esit VE en dar genislik kesitinin parametresi tam kesitten kucuk",
+    "sonuc": true
+  },
+  "port_karti": "workspace:port-kartlari/needle-derinlik-genislik.md",
+  "tarih": "2026-09-27",
+  "uyari": "Kesit bir **spec** islemidir: agirlik tasimaz, agirlik kirpmaz. Olculen sey 'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis model kaliteyi koruyor' degil."
+}

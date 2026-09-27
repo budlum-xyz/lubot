@@ -7,7 +7,7 @@
     "parametre": 0.0,
     "satir_sapma": 2.22e-16,
     "secim": 256.0,
-    "sure_saniye": 0.18,
+    "sure_saniye": 0.07,
     "taban_orani": 1.141525,
     "uzman": 8.0,
     "yineleme": 8.0,
@@ -18,7 +18,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.18
+    "sure_saniye": 0.07
   },
   "kosucu": "betik",
   "olculmeyen": [

@@ -89,14 +89,14 @@
       2,
       4
     ],
-    "sure_saniye": 0.06
+    "sure_saniye": 0.05
   },
   "kaynaklar": {
     "cikti_jetonlari": 0,
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.06
+    "sure_saniye": 0.05
   },
   "kosucu": "betik",
   "olculmeyen": [

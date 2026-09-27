@@ -1,0 +1,37 @@
+{
+  "is": "Sifir merkezli RMS norm adayi (tasarim 3.2 norm yolu): kaydirma degismezligi, klasik RMS ile olculen fark, eps tabanli cikti iliskisi ve elle turetilen geri gecisin sonlu farkla uyumu",
+  "kanit": {
+    "cikti_ort": 8.327e-17,
+    "cikti_rms2": 0.999999,
+    "denetlenen": 8.0,
+    "duz_rms_fark": 2.19,
+    "genislik": 8.0,
+    "gradyan_sapma": 3.048e-09,
+    "merkez_fark": 8.882e-16,
+    "olcut_sonucu": true,
+    "parametre": 8.0,
+    "sure_saniye": 0.07
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.07
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "norm seciminin egitim kaybina etkisi (karsilastirmali kosu ister)",
+    "cekirdekteki QK-norm ile degistirilebilirlik (q/k yoluna baglanmadi)",
+    "derin yiginlarda karisik hassasiyet davranisi",
+    "eps secimi izgarasi (yalniz 1e-6 ve 1e-18 karsilastirildi)"
+  ],
+  "olcut": {
+    "ad": "kaydirma_degismez_klasik_rms_degisken_ve_gradyan_fd_ile_uyumlu",
+    "ifade": "genislik=8, eps=1e-6: merkez_fark < 1e-12 VE duz_rms_fark > 1.0 VE gradyan_sapma < 1e-6 VE denetlenen girdi sayisi = genislik",
+    "sonuc": true
+  },
+  "port_karti": "workspace:port-kartlari/needle-normalizasyon.md",
+  "tarih": "2026-09-27",
+  "uyari": "Olcum sentetik bir vektordur; hicbir katmana baglanmadi ve hicbir egitim kosusunda kullanilmadi. Olcekleme degismezligi **yaklasiktir**: sapma eps tabanindan gelir ve eps kuculdukce kuculur (testte iki eps degeri ile olculur)."
+}
