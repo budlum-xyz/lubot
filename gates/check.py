@@ -5449,6 +5449,17 @@ def _gp_eksikler(kok: pathlib.Path) -> list[str]:
     )
     kapilar = [s.strip() for s in liste.stdout.splitlines() if s.strip()]
     sorunlar: list[str] = []
+    # Kopya kayit: iki ayni anahtar sozlukte tek kapiya erir, yani registry'ye
+    # eklenen satir sayisi ile kosan kapi sayisi ayrisir ve kimse gormez
+    # (2026-09-27'de uc anahtar boyle iki kez kayitliydi: bit-budget,
+    # device-ceiling, engram - dordu de ayni fonksiyonlari gosteriyordu).
+    kaynak = (kok / "gates" / "check.py").read_text(encoding="utf-8")
+    kopyalar = sorted(
+        a for a in set(re.findall(r'^\s*"([a-z0-9-]+)": \(gate_', kaynak, re.M))
+        if len(re.findall(r'^\s*"' + re.escape(a) + r'": \(gate_', kaynak, re.M)) > 1
+    )
+    if kopyalar:
+        sorunlar.append("registry'de kopya anahtar: " + ", ".join(kopyalar))
     if len(ciftler) != len(kapilar):
         sorunlar.append(f"kapi {len(kapilar)}, hakem cifti {len(ciftler)}: eslesmiyor")
     for metin in ciftler:
@@ -7846,12 +7857,9 @@ GATES_EXTRA = {
     "apk-sozlesmesi": (gate_apk_sozlesmesi, selftest_apk_sozlesmesi),
     "elf-sertlestirme": (gate_elf_sertlestirme, selftest_elf_sertlestirme),
     "hadamard-mlp-kapisi": (gate_hadamard_mlp_kapisi, selftest_hadamard_mlp_kapisi),
-    "bit-budget-is-arithmetic": (gate_bit_budget_is_arithmetic, selftest_bit_budget_is_arithmetic),
-    "device-ceiling-is-declared": (gate_device_ceiling_is_declared, selftest_device_ceiling_is_declared),
     "alim-hatti-kapali": (gate_alim_hatti_kapali, selftest_alim_hatti_kapali),
     "kalibrasyon-bandi-kapisi": (gate_kalibrasyon_bandi_kapisi, selftest_kalibrasyon_bandi_kapisi),
     "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
-    "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
     "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
 }
 
