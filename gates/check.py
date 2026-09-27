@@ -7390,10 +7390,17 @@ def selftest_yonlendirme_kapisi() -> None:
                          encoding="utf-8")
         if not _yonlendirme_denetle(bozuk):
             raise SystemExit("parametre tutan kopya yakalanmadi")
-        # 5) panik yolu sokulursa
-        bozuk.write_text(metin.replace("    let taban_spec = RotaSpec { yineleme: 0, ..spec.clone() };",
-                                       "    let _ = vec![1].first().unwrap();\n    let taban_spec = RotaSpec { yineleme: 0, ..spec.clone() };", 1),
-                         encoding="utf-8")
+        # 5) rustfmt struct literalini birden cok satira yayabilir. Tam
+        # literal yerine tekil atama baslangici kullan; degismeyen mutant
+        # kanit degildir, onu ayrica reddet.
+        hedef = "    let taban_spec = RotaSpec {"
+        if metin.count(hedef) != 1:
+            raise SystemExit("panik mutantinin tekil hedefi bulunamadi")
+        mutant = metin.replace(hedef,
+            "    let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
         if not _yonlendirme_denetle(bozuk):
             raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
     # 6) Kayit tazeligi ve sayim bagi.
@@ -7435,7 +7442,11 @@ def _kesit_denetle(path: Path) -> list:
     # Tamlik, gecerlilik, kosma ve monotonluk ayri ayri olculmeli.
     for iz in ("tamlik_girdinin_kendisi", "her_kesit_kendi_dogrulamasindan_gecer",
                "kesit_kosumdan_gecer", "derinlik_arttikca_parametre_azalmaz",
-               "genislik_arttikca_parametre_azalmaz", "kafa_silinir_kafa_daraltilmaz"):
+               "genislik_arttikca_parametre_azalmaz", "kafa_silinir_kafa_daraltilmaz",
+               "agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
+               "tam_agirlik_kesiti_bit_ozdes", "agirlik_bellek_tavani_tam_sinirda",
+               "her_blok_bozuk_sekli_tahsisten_once_reddeder",
+               "mevcut_agirlik_kesitleri_ileri_geri_kosar") :
         if iz not in metin:
             ihlaller.append(f"davranis olcumu eksik: {iz}")
     # Sessiz yuvarlama yok: hedef kafa kati degilse reddedilir.
@@ -7524,6 +7535,11 @@ def selftest_kesit_kapisi() -> None:
                          encoding="utf-8")
         if not _kesit_denetle(bozuk):
             raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        for iz in ("agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
+                   "agirlik_bellek_tavani_tam_sinirda"):
+            bozuk.write_text(metin.replace(iz, "sokulen"), encoding="utf-8")
+            if not _kesit_denetle(bozuk):
+                raise SystemExit(f"agirlik sozlesmesi sokuldu ama yakalanmadi: {iz}")
     kayit = ROOT / "training" / "eval" / "sonuclar" / "kesit-2026-09-27.json"
     if not kayit.is_file():
         raise SystemExit(f"kayit yok: {kayit}")
