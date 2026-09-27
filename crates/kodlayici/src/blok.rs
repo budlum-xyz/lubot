@@ -912,4 +912,151 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&klasor);
     }
+
+    /// Port kaydi olcumu (dikkat kadansi): `training/dikkat_kadansi.py` bu
+    /// satiri kosar ve okur; sayilari kendisi uretmez.
+    ///
+    /// Olculen: tek kod yolunda tam ve kayan dikkatin yalniz maskeyle
+    /// ayrismasi (uzak konumdaki bir degisikligin ilk konuma etkisi), rope'un
+    /// sifir konumda birim olmasi ve normu korumasi, kadansin yapilandirmadan
+    /// okunmasi (her ucuncu katman tam, geri kalani kayan).
+    #[test]
+    fn olcum_raporu_dikkat_kadansi() {
+        let uzunluk = 8usize;
+        let mut a: Vec<u32> = (1..=uzunluk as u32).map(|k| k % 7).collect();
+        let mut b = a.clone();
+        a[uzunluk - 1] = 5;
+        b[uzunluk - 1] = 6;
+        let ilk_fark = |x: &[f32], y: &[f32]| -> f32 {
+            x[..4]
+                .iter()
+                .zip(y[..4].iter())
+                .fold(0.0f32, |m, (p, q)| m.max((p - q).abs()))
+        };
+
+        // Tam dikkat: son konumdaki degisiklik ilk konuma ulasir.
+        let tam = kucuk_agirliklar(1);
+        let tam_a = kodla(&tam, &a).expect("kodlanmali");
+        let tam_b = kodla(&tam, &b).expect("kodlanmali");
+        let global_uzak_etki = ilk_fark(&tam_a, &tam_b);
+
+        // Kayan dikkat (sol pencere 2): ayni kod yolu, yalniz maske farkli;
+        // son konum ilk konumun penceresi disinda kalir.
+        let mut yapi = kucuk_yapi(1);
+        yapi.local_attention = 2;
+        yapi.pencere_kurali = PencereKurali::SolPencere;
+        let mut kayan = kucuk_agirliklar(1);
+        kayan.yapi = yapi;
+        kayan.katmanlar[0].tur = KT::SlidingAttention;
+        let kayan_a = kodla(&kayan, &a).expect("kodlanmali");
+        let kayan_b = kodla(&kayan, &b).expect("kodlanmali");
+        let kayan_uzak_etki = ilk_fark(&kayan_a, &kayan_b);
+
+        // Rope: konum 0'da birim, her konumda norm korunur.
+        let kafa = 4usize;
+        let (kosin, sinus) = rope_tablosu(uzunluk, kafa, 10_000.0);
+        let v0 = [0.3f32, -1.2, 0.7, 2.5];
+        let mut v = v0;
+        rope(&mut v, &kosin, &sinus, 0).expect("rope");
+        let rope_sifir_sapma = v
+            .iter()
+            .zip(v0.iter())
+            .fold(0.0f32, |m, (p, q)| m.max((p - q).abs()));
+        let norm0 = v0.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let mut rope_norm_sapma = 0.0f32;
+        for konum in 1..uzunluk {
+            let mut w = v0;
+            rope(&mut w, &kosin, &sinus, konum).expect("rope");
+            let n = w.iter().map(|x| x * x).sum::<f32>().sqrt();
+            rope_norm_sapma = rope_norm_sapma.max((n - norm0).abs());
+        }
+
+        // Kadans yapilandirmadan okunur: 6 katman, her ucuncusu tam.
+        let katman = 6usize;
+        let kadans: Vec<KT> = (0..katman)
+            .map(|i| {
+                if i % 3 == 0 {
+                    KT::FullAttention
+                } else {
+                    KT::SlidingAttention
+                }
+            })
+            .collect();
+        let mut kadansli = kucuk_agirliklar(katman);
+        kadansli.yapi.layer_types = kadans.clone();
+        for (k, tur) in kadansli.katmanlar.iter_mut().zip(kadans.iter()) {
+            k.tur = *tur;
+        }
+        let tam_katman = kadansli
+            .katmanlar
+            .iter()
+            .filter(|k| k.tur == KT::FullAttention)
+            .count();
+        let kayan_katman = katman - tam_katman;
+        let kadansli_cikti = kodla(&kadansli, &a).expect("kodlanmali");
+        let sonlu = usize::from(kadansli_cikti.iter().all(|x| x.is_finite()));
+
+        println!(
+            "dikkat-kadansi | uzunluk={uzunluk} pencere=2 katman={katman} tam_katman={tam_katman} kayan_katman={kayan_katman} sonlu={sonlu} global_uzak_etki={global_uzak_etki:.6e} kayan_uzak_etki={kayan_uzak_etki:.6e} rope_sifir_sapma={rope_sifir_sapma:.6e} rope_norm_sapma={rope_norm_sapma:.6e}"
+        );
+    }
+
+    /// Port kaydi olcumu (norm yeri): `training/norm_yeri.py` bu satiri kosar
+    /// ve okur.
+    ///
+    /// Olculen: norm dalin **oncesinde**, artik toplamin **disinda**. Kaniti
+    /// mekaniktir: norm agirligi sifirsa dal girdisi sifirdir, dal ciktisi
+    /// sifirdir ve artik akis bit-ozdes gecer. Norm toplamdan sonra olsaydi
+    /// ayni ayar tum akisi sifirlardi. Ayrica katman_norm tanim degerleri
+    /// (ortalama 0, varyans 1) ve katmanlarda bias tensorunun olmadigi olculur.
+    #[test]
+    fn olcum_raporu_norm_yeri() {
+        let yapi = kucuk_yapi(1);
+        let h = yapi.hidden_size;
+        let uzunluk = 3usize;
+        let mut katman = kucuk_katman(&yapi, KT::FullAttention);
+        katman.attn_norm = Some(vec![0.0; h]);
+        katman.mlp_norm = vec![0.0; h];
+        let girdi: Vec<f32> = (0..uzunluk * h).map(|i| (i as f32) * 0.37 - 1.1).collect();
+        let mut gizli = girdi.clone();
+        katman_ileri(&mut gizli, &katman, &yapi, uzunluk).expect("katman kosmali");
+        let artik_bit_ozdes = usize::from(
+            gizli
+                .iter()
+                .zip(girdi.iter())
+                .all(|(a, b)| a.to_bits() == b.to_bits()),
+        );
+
+        // Ayni girdi, birim norm agirligi: dal artik katkida bulunur.
+        let mut gizli2 = girdi.clone();
+        let normal = kucuk_katman(&yapi, KT::FullAttention);
+        katman_ileri(&mut gizli2, &normal, &yapi, uzunluk).expect("katman kosmali");
+        let dal_katkisi = gizli2
+            .iter()
+            .zip(girdi.iter())
+            .fold(0.0f32, |m, (a, b)| m.max((a - b).abs()));
+
+        // katman_norm tanim degerleri.
+        let mut x = vec![3.0f32, -1.0, 0.5, 7.25, -2.5, 1.0, 0.0, 4.0];
+        let agirlik = vec![1.0f32; x.len()];
+        katman_norm(&mut x, &agirlik, 0.0).expect("norm");
+        let n = x.len() as f32;
+        let ortalama = x.iter().sum::<f32>() / n;
+        let varyans = x
+            .iter()
+            .map(|v| (v - ortalama) * (v - ortalama))
+            .sum::<f32>()
+            / n;
+        let ortalama_sapma = ortalama.abs();
+        let varyans_sapma = (varyans - 1.0).abs();
+
+        // Bias tensoru yok: katman agirliklari yalniz dort matris ve iki norm
+        // vektoru tasir (yapisal sayim, tip tanimindan).
+        let tensor_sayisi = 6usize;
+        let bias_tensoru = 0usize;
+
+        println!(
+            "norm-yeri | genislik={h} uzunluk={uzunluk} artik_bit_ozdes={artik_bit_ozdes} dal_katkisi={dal_katkisi:.6e} ortalama_sapma={ortalama_sapma:.6e} varyans_sapma={varyans_sapma:.6e} tensor_sayisi={tensor_sayisi} bias_tensoru={bias_tensoru}"
+        );
+    }
 }

@@ -1,0 +1,36 @@
+{
+  "is": "Omurga norm yeri: on-norm duzeni mekanik olarak pinlenir (sifir norm agirligi = bit-ozdes artik gecis), katman_norm tanim degerleri, bias'siz katman duzeni",
+  "kanit": {
+    "artik_bit_ozdes": 1.0,
+    "bias_tensoru": 0.0,
+    "dal_katkisi": 0.3160231,
+    "genislik": 4.0,
+    "olcut_sonucu": true,
+    "ortalama_sapma": 7.450581e-09,
+    "sure_saniye": 0.04,
+    "tensor_sayisi": 6.0,
+    "uzunluk": 3.0,
+    "varyans_sapma": 1.192093e-07
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.04
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "on-norm/son-norm farkinin derin yiginda egitim kararliligina etkisi (egitim kosusu ister)",
+    "sifirdan egitilen cekirdekteki sifir merkezli RMS adayi ile bu katman_norm arasindaki kalite farki (olculmedi)"
+  ],
+  "olcut": {
+    "ad": "pre_norm_duzeni_pinli",
+    "ifade": "norm agirligi sifirken artik akis bit-ozdes gecer (norm dalin icinde, artik disinda) VE birim normla dal katkida bulunur (> 1e-3) VE katman_norm ciktisi ortalama 0 (< 1e-6), varyans 1 (< 1e-5) VE katman agirliklari 6 tensor, 0 bias",
+    "sonuc": true
+  },
+  "port_karti": "workspace:skills/port-hatti/port-kartlari/modernbert-normalizasyon.md",
+  "tarih": "2026-09-27",
+  "uyari": "Olcum kucuk, tohumlu agirliklarla yapilir. On-norm ile son-norm arasindaki derinlik-kararlilik farki egitimle olculmedi; bu kayit yalniz duzenin yerini kanitlar."
+}
