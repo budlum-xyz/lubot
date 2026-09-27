@@ -859,4 +859,56 @@ mod tests {
         sirali.dedup();
         assert_eq!(sirali.len(), adlar.len(), "{adlar:?}");
     }
+
+    /// Port kaydi olcumu: `training/nicem.py` bu satiri kosar ve okur; sayilari
+    /// kendisi uretmez. Olculen: 2 bit + 128'lik grupta agirlik basina bit ve
+    /// bayt (tam sayi aritmetigi), yuvarlak yol bagil hatasi ve olculen SNR'in
+    /// kod kitabi tahminine uzakligi, donusun agir kuyrukta absmax tabanina
+    /// karsi kazanci, bit sayisi arttikca hatanin tekduze dusmesi, ayni
+    /// tensorun iki nicemlemesinin bayt-esit olmasi.
+    #[test]
+    fn olcum_raporu() {
+        let n = Nicemleyici::yeni(Genislik::Bit(2), 128).expect("valid");
+        let w = normalimsi(128 * 32, 0.05);
+        let q = n.nicemle(&w, 128).expect("quantises");
+        let o = q.olc(&w).expect("measures");
+        let snr_fark = (o.snr_db - o.kitap_snr_db).abs();
+
+        let w64 = normalimsi(128 * 40, 0.1);
+        let mut onceki = f64::INFINITY;
+        let mut tekduze = 1usize;
+        for bit in 1..=6u8 {
+            let nb = Nicemleyici::yeni(Genislik::Bit(bit), 128).expect("valid");
+            let ob = nb
+                .nicemle(&w64, 128)
+                .expect("quantises")
+                .olc(&w64)
+                .expect("measures");
+            if ob.bagil_hata >= onceki {
+                tekduze = 0;
+            }
+            onceki = ob.bagil_hata;
+        }
+
+        let mut agir = normalimsi(128 * 8, 0.01);
+        for r in 0..8 {
+            agir[r * 128 + 17] = 0.15;
+            agir[r * 128 + 96] = -0.14;
+        }
+        let donduruldu = n
+            .nicemle(&agir, 128)
+            .expect("quantises")
+            .olc(&agir)
+            .expect("measures")
+            .bagil_hata;
+        let dondurulmedi = absmax_iki_bit(&agir, 128);
+
+        let q2 = n.nicemle(&w, 128).expect("quantises");
+        let bayt_esit = usize::from(q.yuk() == q2.yuk() && q.olcekler() == q2.olcekler());
+
+        println!(
+            "nicem | bit=2 grup=128 agirlik={} agirlik_basina_bit={:.6} bayt={} oran={:.6} bagil_hata={:.6e} snr_db={:.6} kitap_snr_db={:.6} snr_fark={:.6} agir_donuslu={donduruldu:.6e} agir_absmax={dondurulmedi:.6e} tekduze={tekduze} bayt_esit={bayt_esit}",
+            w.len(), o.agirlik_basina_bit, o.bayt, o.oran, o.bagil_hata, o.snr_db, o.kitap_snr_db, snr_fark
+        );
+    }
 }
