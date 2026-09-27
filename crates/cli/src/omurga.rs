@@ -23,12 +23,14 @@
 //!   is measured rather than assumed to work.
 
 use lubot_omurga::dikkat::{yumusak_azami, DikkatHatasi, Gqa};
+use lubot_omurga::dizi::{DiziHatasi, Erim, Paket, Yerlesim};
 use lubot_omurga::hadamard::{
     blok_bol, karisim, kron_uygula, silu, walsh, Hadamard, HadamardHatasi, HadamardSekli,
     CIKIS_DIAGONAL_INIT, KARISIM_TOHUMLARI, KARISIM_UST_YARI_OFSETI, KOSUL_INIT_STD, KOSUL_RANK,
 };
 use lubot_omurga::katman::{carp, gelu, kapili_ileri, KatmanHatasi, Norm};
 use lubot_omurga::konum::{Eslesme, KonumHatasi, Rope};
+use lubot_omurga::merdiven::{Merdiven, MerdivenHatasi};
 use lubot_omurga::pencere::{Kapsam, PencereHatasi, Plan};
 use lubot_omurga::sonda::{
     birim_rms, maskeli_yumusak_azami, Bas, Sonda, SondaHatasi, SondaSekli, GOMME_SICAKLIK_INIT,
@@ -86,6 +88,8 @@ fn kullanim() -> String {
         "  lubot omurga birlesim [--tohum S] [--tohum-b S]",
         "  lubot omurga hadamard [--genislik D] [--jeton N] [--tohum S] [--yariya-ayrik]",
         "  lubot omurga sonda [--seviye L] [--sonda K] [--sorgu Q] [--genislik D] [--jeton N]",
+        "  lubot omurga merdiven [--katman N] [--seviye L] [--butce O] [--jeton N]",
+        "  lubot omurga paket [--pencere P] [--kayit a,b,c] [--yaricap R]",
         "  lubot omurga parca",
         "",
         "shared shape flags: --genislik --katman --kafa --kv-kafa --dff --sozluk",
@@ -564,6 +568,152 @@ fn sonda(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The depth ladder: several exits, one forward pass.
+fn merdiven(args: &[String]) -> Result<(), String> {
+    let yap = yapilandirma(args)?;
+    let seviye = sayi(args, "--seviye", 3)?;
+    let jeton = sayi(args, "--jeton", 4)?;
+    let butce = deger_bul(args, "--butce")
+        .map(|v| {
+            v.parse::<f64>()
+                .map_err(|_| "--butce bir sayi degil".to_string())
+        })
+        .transpose()?;
+
+    let m = Merdiven::esit_aralikli(yap.n_katman, seviye)
+        .map_err(|e: MerdivenHatasi| format!("merdiven: {e}"))?;
+    println!(
+        "katman: {} | seviye: {} | kademeler: {:?} | araliklar: {:?}",
+        m.n_katman(),
+        m.seviye(),
+        m.kademeler(),
+        m.araliklar()
+    );
+    let oranlar: Vec<String> = m.oranlar().iter().map(|o| format!("{o:.3}")).collect();
+    println!(
+        "derinlik oranlari: {oranlar:?} | tepeyi okur: {}",
+        m.tepeyi_okur()
+    );
+
+    if let Some(o) = butce {
+        match m.butceye_gore(o) {
+            Ok(kesik) => println!(
+                "butce {o}: kademeler {:?} | tepeyi okur {}",
+                kesik.kademeler(),
+                kesik.tepeyi_okur()
+            ),
+            Err(e) => println!("butce {o}: reddedildi ({e})"),
+        }
+    }
+
+    let omurga = Omurga::yeni(yap.clone(), sayi(args, "--tohum", 1)? as u64)
+        .map_err(|e: OmurgaHatasi| format!("omurga: {e}"))?;
+    let jetonlar: Vec<u32> = (0..jeton).map(|i| (i % yap.vocab) as u32).collect();
+    let hucreler = m
+        .hucreler(&omurga, &jetonlar)
+        .map_err(|e: OmurgaHatasi| format!("hucre: {e}"))?;
+    let duz = omurga
+        .ileri(&jetonlar)
+        .map_err(|e: OmurgaHatasi| format!("ileri: {e}"))?;
+    let d = yap.d_model;
+    let sev = m.seviye();
+    let son_ozdes = (0..jetonlar.len()).all(|t| {
+        let son = &hucreler[(t * sev + sev - 1) * d..(t * sev + sev) * d];
+        son.iter()
+            .zip(duz[t * d..(t + 1) * d].iter())
+            .all(|(a, b)| a.to_bits() == b.to_bits())
+    });
+    println!(
+        "hucre: {} sayi ({} jeton x {} seviye x {} genislik)",
+        hucreler.len(),
+        jetonlar.len(),
+        sev,
+        d
+    );
+    println!("son seviye tek gecisli ileriyle bit-ozdes mi: {son_ozdes}");
+    for l in 0..sev {
+        let mut kare = 0.0f64;
+        for t in 0..jetonlar.len() {
+            for v in &hucreler[(t * sev + l) * d..(t * sev + l + 1) * d] {
+                kare += f64::from(*v) * f64::from(*v);
+            }
+        }
+        let rms = (kare / ((jetonlar.len() * d) as f64)).sqrt();
+        println!("  seviye {l} (kademe {}): rms {rms:.6}", m.kademeler()[l]);
+    }
+    println!("olculmedi: hangi seviyenin yeterli oldugu - erken cikis politikasi yok");
+    Ok(())
+}
+
+/// Packing: several records in one window, and the mask that keeps them apart.
+fn paket(args: &[String]) -> Result<(), String> {
+    let pencere = sayi(args, "--pencere", 12)?;
+    let yaricap = sayi(args, "--yaricap", 2)?;
+    let uzunluklar: Vec<usize> = match deger_bul(args, "--kayit") {
+        Some(v) => v
+            .split(',')
+            .map(|p| {
+                p.trim()
+                    .parse::<usize>()
+                    .map_err(|_| format!("--kayit: {p} sayi degil"))
+            })
+            .collect::<Result<Vec<usize>, String>>()?,
+        None => vec![3, 4, 2],
+    };
+
+    let p = Paket::paketle(pencere, &uzunluklar).map_err(|e: DiziHatasi| format!("paket: {e}"))?;
+    println!(
+        "pencere: {} | kayit: {} | dolu: {} | dolgu: {} | doluluk: {:.3}",
+        p.pencere(),
+        p.kayit_sayisi(),
+        p.dolu(),
+        p.dolgu(),
+        p.doluluk()
+    );
+    for (i, y) in p.yerlesimler().iter().enumerate() {
+        let Yerlesim { bas, uzunluk } = *y;
+        println!("  kayit {i}: {bas}..{} ({uzunluk} jeton)", bas + uzunluk);
+    }
+
+    let mut capraz = 0usize;
+    let mut dolgu_sizintisi = 0usize;
+    let mut simetrik = true;
+    for q in 0..p.pencere() {
+        for k in 0..p.pencere() {
+            let gorur = p.gorulebilir(q, k, Erim::Yaricap(yaricap));
+            if gorur != p.gorulebilir(k, q, Erim::Yaricap(yaricap)) {
+                simetrik = false;
+            }
+            match (p.sahip(q), p.sahip(k)) {
+                (Some(a), Some(b)) if a != b && gorur => capraz += 1,
+                (None, _) | (_, None) if gorur => dolgu_sizintisi += 1,
+                _ => {}
+            }
+        }
+    }
+    println!("capraz kayit gorunurlugu: {capraz} (beklenen 0)");
+    println!("dolgu sizintisi: {dolgu_sizintisi} (beklenen 0)");
+    println!("maske simetrik mi: {simetrik}");
+
+    let tut = p.tut_maskesi();
+    println!(
+        "tut maskesi: {} dogru / {} konum",
+        tut.iter().filter(|v| **v).count(),
+        tut.len()
+    );
+    for konum in 0..p.pencere().min(6) {
+        let dar = p
+            .gorulen_sayisi(konum, Erim::Yaricap(yaricap))
+            .map_err(|e: DiziHatasi| format!("sayim: {e}"))?;
+        let tam = p
+            .gorulen_sayisi(konum, Erim::Kayit)
+            .map_err(|e: DiziHatasi| format!("sayim: {e}"))?;
+        println!("  konum {konum}: yaricap {yaricap} ile {dar} anahtar, kayit tamaminda {tam}");
+    }
+    println!("olculmedi: paketleme stratejisinin egitim kaybina etkisi");
+    Ok(())
+}
+
 pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("plan") => plan(&args[1..]),
@@ -573,6 +723,8 @@ pub fn cmd_omurga(args: &[String]) -> Result<(), String> {
         Some("birlesim") => birlesim(&args[1..]),
         Some("hadamard") => hadamard(&args[1..]),
         Some("sonda") => sonda(&args[1..]),
+        Some("merdiven") => merdiven(&args[1..]),
+        Some("paket") => paket(&args[1..]),
         Some("parca") => parca(&args[1..]),
         _ => Err(kullanim()),
     }
@@ -626,6 +778,31 @@ mod tests {
     #[test]
     fn sonda_sifir_boyut_reddedilir() {
         assert!(sonda(&arg(&["--seviye", "0"])).is_err());
+    }
+
+    #[test]
+    fn merdiven_calisir() {
+        assert!(merdiven(&arg(&["--katman", "6", "--seviye", "3", "--jeton", "3"])).is_ok());
+    }
+
+    #[test]
+    fn merdiven_butce_ile_calisir() {
+        assert!(merdiven(&arg(&["--katman", "6", "--seviye", "3", "--butce", "0.5"])).is_ok());
+    }
+
+    #[test]
+    fn merdiven_fazla_seviye_reddedilir() {
+        assert!(merdiven(&arg(&["--katman", "2", "--seviye", "9"])).is_err());
+    }
+
+    #[test]
+    fn paket_calisir() {
+        assert!(paket(&arg(&["--pencere", "10", "--kayit", "3,4"])).is_ok());
+    }
+
+    #[test]
+    fn paket_sigmayan_kayit_reddedilir() {
+        assert!(paket(&arg(&["--pencere", "4", "--kayit", "3,4"])).is_err());
     }
 
     #[test]

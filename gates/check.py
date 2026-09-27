@@ -9270,6 +9270,25 @@ _OMURGA_SOZLESME = [
         ],
     ),
     (
+        "crates/omurga/src/merdiven.rs",
+        [
+            ("fn son_seviye_ileri_ile_bit_ozdes", "the top rung is never pinned against the ordinary forward pass"),
+            ("fn sifirinci_kademe_reddedilir", "the embedding is offered as a level"),
+            ("fn alt_seviye_ust_seviyeden_farkli", "two levels are never measured to differ"),
+            ("fn esit_aralikli_hep_tepeyi_okur", "an evenly spaced ladder is never checked to reach the top"),
+        ],
+    ),
+    (
+        "crates/omurga/src/dizi.rs",
+        [
+            ("fn kayitlar_birbirini_gormez", "packed records are never measured to be isolated"),
+            ("fn dolgu_hicbir_seyi_gormez", "padding is not measured to be blind"),
+            ("fn dolguyu_kimse_gormez", "padding is not measured to be invisible"),
+            ("fn maske_simetrik", "the bidirectional mask is never measured to be symmetric"),
+            ("fn her_jeton_kendini_gorur", "the diagonal is not measured to survive the mask"),
+        ],
+    ),
+    (
         "crates/omurga/src/sonda.rs",
         [
             ("fn havuz_jeton_sirasindan_bagimsiz", "the pooling is never measured to be order-free"),

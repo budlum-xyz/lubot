@@ -358,6 +358,54 @@ Hiçbiri metin üretmez.
 `omurga-sozlesmesi`. Geri geçiş yok: bu crate ileri yönlüdür, hiçbir baş
 eğitilmedi.
 
+### 3.11 Derinlik merdiveni: yığını birden çok derinlikte okumak
+
+**Ne:** `n` katmanlı bir yığın jeton başına `n` gizli durum üretir ve
+sonuncusu dışında hepsini atar. Bunun iki maliyeti var: dört katmanda ayrışan
+bir karar yirmi katmanın parasını öder, ve §3.10'un havuzlama başlığı tek bir
+görüş görür — seviye ekseni tek seviyeyle bir formaliteye döner.
+
+**Nasıl:** merdiven, yükselen bir katman-sayısı listesidir (`[2, 4, 6]` =
+"durumu iki katmandan, dörtten ve altıdan sonra oku"). `Merdiven::hucreler`
+omurgayı **bir kez** koşar ve bütün kademeleri havuzlamanın beklediği düzende
+(`jeton × kademe × d_model`) döndürür.
+
+**Ölçülen:** en üst kademe, sıradan ileri geçişin ürettiğiyle **bit-özdeş**
+(`son_seviye_ileri_ile_bit_ozdes`) — yani seviye başına bir geçiş koşulmuyor.
+Her kademe **aynı son normdan** geçer; ham bir durumu normalize bir durumla
+karşılaştırmak derin kademeyi bildiğiyle ilgisi olmayan bir nedenle büyük
+gösterirdi. Sıfırıncı kademe (gömme) **reddedilir**: orada hiçbir katman başka
+bir jetona bakmamıştır, ucuz bir seviye değildir.
+
+**Olmayan:** erken çıkış *politikası*. `butceye_gore` merdiveni derinlik
+bütçesine kırpar, ama hangi girdide hangi seviyenin yettiği eğitilmiş bir güven
+başlığı ve ölçülmüş bir hata oranı ister; ikisi de bu crate'te yok. Elle seviye
+seçip buna uyarlanabilir hesaplama demek, altında sayı olmayan bir iddia olurdu.
+
+**Yeri:** `crates/omurga/src/merdiven.rs`, CLI `lubot omurga merdiven`.
+
+### 3.12 Paketleme: bir pencerede birden çok kayıt, karışmadan
+
+**Ne:** kayıtlar kısa, pencereler uzun. Pencere ya birkaç kayıt taşır ya da
+çoğunlukla dolgu taşır; ikisi de sessizce bozulur. *Dikkat eden dolgu:* dolgulu
+konum gerçek bir gömme taşır ve bir şey engellemezse her jeton ona bakar — kayıp
+yine düşer, sayılar yine sayı gibi görünür ve model hiçbir şey demeyen bir
+jetona yaslanmayı öğrenmiştir. *Birbirini okuyan kayıtlar:* iki belgeyi tek
+pencereye paketleyip dikkati serbest bırakmak, ikinci belgedeki bir atıfın
+birincinin sorusunu yanıtlamasına izin verir; dışarıdan bu okuduğunu anlama
+gibi görünür.
+
+**Ölçülen (dördü de test):** dolgu **iki yönde** yalıtık (okuyamıyor *ve*
+okunamıyor — tek yön yetmez, okunabilen bir dolgu hâlâ bir kanaldır), hiçbir
+yarıçapta iki kayıt birbirini görmüyor, köşegen her maskede sağ kalıyor (görünür
+anahtarı olmayan satırın softmax'ı yoktur), ve maske **simetrik** — bu omurga
+çift yönlü, simetrik olmayan bir maske kimsenin beyan etmediği nedensel bir
+kural kaçırmış olurdu. Doluluk oranı da raporlanır: üçte ikisi dolgu olan bir
+pencere dikkatinin üçte ikisini hiçbir şeye harcar.
+
+**Yeri:** `crates/omurga/src/dizi.rs`, CLI `lubot omurga paket`. Tokenleştirici
+ve kayıt kaynağı burada değil: paket, başkasının ölçtüğü uzunluklardan kurulur.
+
 ## 4. Birleşik taslak: lubot-a2 adayı (yön, değil taahhüt)
 
 Sıra, ölçüm disiplinine göre kurulur; her satır ayrı artım, kendi self-test'i ve
