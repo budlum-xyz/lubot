@@ -128,18 +128,39 @@ impl Rope {
         out
     }
 
-    /// Komşu çift mi, yarıya bölme mi — ölçülerek karar verilmiş bir ayrım.
+    /// Komşu çift mi, yarıya bölme mi — sabit değil, **ölçülür**.
     ///
     /// İki eşleşme de "RoPE" diye anılır ama aynı şey değildir: komşu çift
     /// eşleşmesi `(x0, x1)` çiftlerini döndürür, yarıya bölme eşleşmesi ise
     /// `i` ile `i + d/2` konumlarını aynı açıyla döndürür
-    /// (`cat((freqs, freqs))` + `rotate_half`). Referans uygulama ikincisini
-    /// kullanır; ayrım yanlış kurulursa çıktı sessizce kayar, çünkü iki
-    /// eşleşme de geçerli bir döndürmedir. Bu yüzden hangisinin kurulu
-    /// olduğu bir fonksiyonla sorulabilir ve testi vardır.
+    /// (`cat((freqs, freqs))` + `rotate_half`). Ayrım yanlış kurulursa çıktı
+    /// sessizce kayar, çünkü iki eşleşme de geçerli bir döndürmedir.
+    ///
+    /// **Bulgu (2026-09-27, sessizce düzeltilmedi):** bu fonksiyon daha önce
+    /// sabit `true` döndürüyordu ("duzeltildi, yariya bolme"), ama
+    /// [`Rope::uygula`] `(i, i+1)` komşu çiftlerini döndürüyor. Beyan ile
+    /// uygulama çelişiyordu ve testi de aynı sabiti tekrar ettiği için hiçbir
+    /// koşu bunu göremiyordu. Beyanı ölçüme bağlamak doğruyu söyler;
+    /// **uygulamayı yarıya bölmeye çevirmek ayrı bir karardır** (model ailesi
+    /// değişikliği, `docs/MIMARI-TASARIM.md` §5 M-serisi) ve bu turda
+    /// yapılmadı. Sıfırdan yazılan kodlayıcı omurgası (`crates/omurga`) her iki
+    /// eşleşmeyi de açık bir alan olarak taşır ve varsayılanı yarıya bölmedir.
+    ///
+    /// Yöntem: sıfırıncı koordinata bir birim vektör konur, bir konum
+    /// döndürülür ve kütlenin hangi koordinata sızdığına bakılır — komşu çift
+    /// için indeks `1`, yarıya bölme için indeks `d/2`.
     #[must_use]
     pub fn yariya_bolme_mi(&self) -> bool {
-        true // duzeltildi, yariya bolme
+        let rope_dim = self.rope_boyutu();
+        if rope_dim < 4 || self.d_model < rope_dim {
+            return false;
+        }
+        let mut sonda = vec![0.0f32; self.d_model];
+        sonda[0] = 1.0;
+        let dondurulmus = self.uygula(&sonda, 1);
+        let komsu = dondurulmus.get(1).copied().unwrap_or(0.0).abs();
+        let bolme = dondurulmus.get(rope_dim / 2).copied().unwrap_or(0.0).abs();
+        bolme > komsu
     }
 }
 
@@ -369,9 +390,53 @@ mod tests {
     }
 
     #[test]
-    fn rope_yariya_bolme() {
+    fn rope_eslesme_beyani_uygulamayla_tutarli() {
+        // Eski test `yariya_bolme_mi()`'nin sabitini tekrar ediyordu, yani
+        // beyanı beyanla kontrol ediyordu. Bu test bunun yerine eşleşmeyi
+        // uygulamadan bağımsız olarak türetir ve beyanın onunla aynı olmasını
+        // şart koşar. Sabit hangi yöne çevrilirse çevrilsin bu test yakalar.
         let rope = Rope::yeni(64, 0.25, 256);
-        assert!(rope.yariya_bolme_mi());
+        let rope_dim = rope.rope_boyutu();
+        let mut sonda = vec![0.0f32; 64];
+        sonda[0] = 1.0;
+        let dondurulmus = rope.uygula(&sonda, 1);
+        let komsu_ciftte = dondurulmus[1].abs();
+        let yarida = dondurulmus[rope_dim / 2].abs();
+        let olculen = yarida > komsu_ciftte;
+        assert_eq!(
+            rope.yariya_bolme_mi(),
+            olculen,
+            "beyan edilen eşleşme uygulamayla çelişiyor"
+        );
+    }
+
+    #[test]
+    fn rope_bugun_komsu_cift_eslesmesi_kuruyor() {
+        // Ölçülen durum, iddia değil: bugünkü uygulama `(i, i+1)` döndürüyor.
+        // Bu bir kalite hükmü değildir; yarıya bölmeye geçmek model ailesi
+        // kararıdır (docs/MIMARI-TASARIM.md §5) ve bu testin düşmesi o kararın
+        // verildiğini gösterir.
+        let rope = Rope::yeni(64, 0.25, 256);
+        assert!(
+            !rope.yariya_bolme_mi(),
+            "eşleşme değişmiş: bu bir mimari karardır, testi güncellemeden önce damgalanmalı"
+        );
+    }
+
+    #[test]
+    fn rope_dondurme_normu_korur() {
+        // Hangi eşleşme kurulu olursa olsun döndürme ortogonaldir. Bu test
+        // eşleşme tartışmasından bağımsız olarak uygulamanın gerçekten bir
+        // döndürme olduğunu ölçer.
+        let rope = Rope::yeni(64, 0.25, 256);
+        let x: Vec<f32> = (0..64).map(|i| ((i as f32) * 0.31).sin()).collect();
+        let once: f64 = x.iter().map(|v| f64::from(*v) * f64::from(*v)).sum();
+        let y = rope.uygula(&x, 11);
+        let sonra: f64 = y.iter().map(|v| f64::from(*v) * f64::from(*v)).sum();
+        assert!(
+            (once - sonra).abs() < 1e-4,
+            "döndürme normu korumuyor: {once} -> {sonra}"
+        );
     }
 
     #[test]
