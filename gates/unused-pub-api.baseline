@@ -114,6 +114,22 @@ gecis:Sembol
 gecis:SembolTuru
 gecis:Tesisat
 gecis:say_sinirli
+# birlesik (tasarim 3.8): alti tekil adayi tek blokta kosturan kompozisyon
+# yuzeyi. Ayni durum: sekil, gradyan ve kapali-bilesen sozlesmesi olculdu, ama
+# hicbir aile bu blogu cagirmiyor - hangi bilesenin hangi aileye girecegi
+# M1/M2/M3 olarak isaretli operator karari. Cagri yazilinca bu satirlar silinir.
+egitim:BirlesikAgirliklar
+egitim:BirlesikBellek
+egitim:BirlesikCikti
+egitim:BirlesikGirdi
+egitim:BirlesikGradyanlar
+egitim:BirlesikHatasi
+egitim:BirlesikSpec
+egitim:EngramSayim
+egitim:GradyanDenetimi
+egitim:belirgin_durumlar
+egitim:gradyan_denetle
+egitim:parametre_yollari
 esik:QuorumError
 esik:byzantine_floor
 grant:AuditEntry
