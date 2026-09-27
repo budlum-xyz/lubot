@@ -130,6 +130,17 @@ egitim:GradyanDenetimi
 egitim:belirgin_durumlar
 egitim:gradyan_denetle
 egitim:parametre_yollari
+# kademe adayi (tasarim 3.5 kalem 1) bagli degil: egitim cagrisini ve M4
+# damgasini bekliyor. Cagri yazilinca bu satirlar silinir (liste kisalir).
+egitim:DERINLIK_UST_SINIRI
+egitim:KADEME_UST_SINIRI
+egitim:KademeHatasi
+egitim:KademeKayip
+egitim:KademeSpec
+egitim:kademeli_kayip
+egitim:ornek_cikislar
+egitim:ornek_hedef
+egitim:taban_kayip
 esik:QuorumError
 esik:byzantine_floor
 grant:AuditEntry

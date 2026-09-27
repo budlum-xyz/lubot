@@ -7762,6 +7762,193 @@ def selftest_normalizasyon_kapisi() -> None:
 
 
 
+def _kademe_denetle(path: Path) -> list:
+    """Kademe egitimi adayinin (tasarim 3.5, kalem 1) olculebilir sozlesmesi.
+    Metin denetimidir; ihlal listesi doner, bos liste gecer demektir."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    # 1) Kararli kayip bicimi: log-sum-exp uzerinden capraz entropi.
+    for iz in ("fn log_toplam_us", "fn kararli_capraz_entropi"):
+        if iz not in metin:
+            ihlaller.append(f"kararli kayip bicimi eksik: {iz}")
+    # 2) Taban kayip modulun icinde tasinir; bit-ozdeslik olculur.
+    for iz in ("fn taban_kayip", "son_kademe_tabanin_kendisi"):
+        if iz not in metin:
+            ihlaller.append(f"taban sozlesmesi eksik: {iz}")
+    # 3) Elle yazilan geri gecis sonlu farkla denetlenir; her kademeden akar.
+    for iz in ("gradyan_sonlu_farkla_uyumlu", "her_kademeden_gradyan_akar"):
+        if iz not in metin:
+            ihlaller.append(f"gradyan sozlesmesi eksik: {iz}")
+    # 4) Bilesim dogrusal ve kademelerin arasindadir (olculur, iddia edilmez).
+    for iz in ("kademeli_kayip_agirlikli_dogrusal_kombinasyon",
+               "kademeli_kayip_kademelerin_arasindadir"):
+        if iz not in metin:
+            ihlaller.append(f"bilesim olcumu eksik: {iz}")
+    # 5) Buyuk logitler kararli kalmali; agirliklar bire normalize edilir.
+    for iz in ("buyuk_logitler_kararli_kalir", "agirliklar_bire_normalize_edilir"):
+        if iz not in metin:
+            ihlaller.append(f"kararlilik/normalizasyon olcumu eksik: {iz}")
+    # 6) Sekil hatalari reddedilir ve olcum satiri modulun kendisinden gelir.
+    for iz in ("sekil_hatalari_reddedilir", "fn olcum_raporu"):
+        if iz not in metin:
+            ihlaller.append(f"olcum sozlesmesi eksik: {iz}")
+    # 7) Kayip bicimi parametre tutmaz.
+    if "fn parametre_sayisi(&self) -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("kayip bicimi parametre tutuyor: sayi sifir olmali")
+    # 8) Aday oldugu yazili: spec degismez, baglanma M4 damgasi bekler.
+    for iz in ("M4", "model_spec.json"):
+        if iz not in metin:
+            ihlaller.append(f"adaylik isareti eksik: {iz}")
+    # 9) K1: ucuncu taraf adi bu agacta gecmez.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # 10) Test disinda panik yolu yok.
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        govde = metin[:test_oneki]
+        for desen in (".unwrap()", ".expect("):
+            if desen in govde:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_kademe_kapisi() -> str:
+    """Kademe egitimi adayi olculur halde duruyor: her derinlik dagitilabilir -
+    ara kademeler kayip tasir, taban kayip modulun icinde bit-ozdes tasinir,
+    gradyanlar elle yazildi ve sonlu farkla denetlendi, buyuk logitler kararli,
+    agirliklar bire normalize, parametre sifir. Aday bagli degil: spec degismedi,
+    baglanma M4 damgasi bekler."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "kademe.rs"
+    ihlaller = _kademe_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("kademe sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "kademe"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    dogrula = subprocess.run(
+        ["python3", "training/kademe.py", "--dogrula"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if dogrula.returncode != 0:
+        raise SystemExit("kademe kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (
+        f"kademe adayi olculur: {gecen} test, taban bit-ozdes tasinmis, gradyan "
+        f"sonlu farkla denetlenmis, agirliklar bire normalize, parametre sifir, "
+        f"bagli degil (M4 acik)"
+    )
+
+
+def selftest_kademe_kapisi() -> None:
+    """Kanaryalar: bozulmus sozlesme, parametre tutan kopya, panik yolu,
+    ucuncu taraf adi ve degistirilmis kayit yakalanmali."""
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "kademe.rs"
+    if _kademe_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "kademe.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        # 1) kararli kayip bicimi sokulurse
+        bozuk.write_text(metin.replace("fn kararli_capraz_entropi", "fn x"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("kararli kayip bicimi sokulmus kopya yakalanmadi")
+        # 2) taban karsilastirmasi sokulursa (bit-ozdeslik olculemez)
+        bozuk.write_text(metin.replace("fn taban_kayip", "fn x"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("taban kaybi sokulmus kopya yakalanmadi")
+        # 3) olcum satiri sokulursa (kayit kaynagi sahipsiz kalir)
+        bozuk.write_text(metin.replace("fn olcum_raporu", "fn x"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("olcum raporu sokulmus kopya yakalanmadi")
+        # 4) kayip bicimi parametre tutmaya baslarsa
+        bozuk.write_text(metin.replace("fn parametre_sayisi(&self) -> usize {\n        0\n    }",
+                                       "fn parametre_sayisi(&self) -> usize {\n        self.ust_derinlik\n    }", 1),
+                         encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("parametre tutan kopya yakalanmadi")
+        # 5) adaylik isareti sokulursa (baglanma karari sessizlesir)
+        bozuk.write_text(metin.replace("M4", "M0"), encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("adaylik isareti sokulmus kopya yakalanmadi")
+        # 6) panik yolu eklersek (tekil hedef: ust duzey imza, girintisiz)
+        hedef = "pub fn taban_kayip("
+        if metin.count(hedef) != 1:
+            raise SystemExit("panik mutantinin tekil hedefi bulunamadi")
+        mutant = metin.replace(hedef,
+            "let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        # 7) ucuncu taraf adi gecerse (K1)
+        bozuk.write_text(metin + "\n// modernbert referansi\n", encoding="utf-8")
+        if not _kademe_denetle(bozuk):
+            raise SystemExit("ucuncu taraf adli kopya yakalanmadi")
+    # 8) Kayit tazeligi: degistirilmis kanit reddedilmeli.
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "kademe-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["taban_fark"] = 0.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/kademe.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("taban farki bozulmus kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["gradyan_sapma"] = 1e-3
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/kademe.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("gradyan sapmasi esik ustundeyken kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["agirlik_toplam"] = 1.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(
+            ["python3", "training/kademe.py", "--dogrula", "--kayit", str(sahte)],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if kosu.returncode == 0:
+            raise SystemExit("normalize edilmemis agirlik kaydi kabul edildi")
+
+
+
 def _cok_serit_denetle(path: Path) -> list:
     """Cok-seritli artik baglanti adayinin (bilesen 5) olculebilir sozlesmesi.
     Metin denetimidir - ihlal listesi doner, bos liste gecer demektir. Kaynak
@@ -8931,6 +9118,7 @@ GATES_EXTRA = {
     "kesit-kapisi": (gate_kesit_kapisi, selftest_kesit_kapisi),
     "normalizasyon-kapisi": (gate_normalizasyon_kapisi, selftest_normalizasyon_kapisi),
     "omurga-karar-port-kayitlari": (gate_omurga_karar_port_kayitlari, selftest_omurga_karar_port_kayitlari),
+    "kademe-kapisi": (gate_kademe_kapisi, selftest_kademe_kapisi),
 }
 
 

@@ -147,7 +147,12 @@ sorusu ölçüm ister. İşaretli karar: şerit sayısı (2 önerisi ölçülmed
 
 1. **Kademe eğitimi:** "her derinlik dağıtılabilir bir modeldir" hedefi — eğitim
    sırasında ara derinlik çıkışlarının da kayıp taşıması. Eğitim hedefini değiştirir;
-   işaretli mimari karar, öneri olarak durur.
+   işaretli mimari karar, öneri olarak durur. **Aday modülü yazıldı (bağlı değil):**
+   `egitim` kirasında `kademe` — ara kademelerin kaybı ağırlıklı bileşimle taşınır,
+   taban kayıp modülün içinde bit-özdeş taşınır, gradyanlar elle yazılıp sonlu farkla
+   denetlenir; kapısı `kademe-kapisi`, ölçümü `training/eval/sonuclar/`
+   altındaki kayıtla, sınırları kaydın `olculmeyen` listesiyle durur. Eğitim
+   hedefine bağlanma M4 damgası bekler; spec değişmedi.
 2. **Eğitim-zamanı nicem farkındalığı (J):** ölçülmeden önerilmez; nicemleme
    doğruluk/maliyet tablosu zaten ölçülü duruyor, QAT ancak o tablo bir kapıya
    bağlanınca gündeme gelir.
