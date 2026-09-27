@@ -3,9 +3,14 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    # `egitim-dongusu` uzun omurlu calisma dali ve PR'ler ona aciliyor; CI
+    # yalniz main'i tetiklerken o PR'ler hic kosum almiyordu (olculdu:
+    # port-hadamard-nicem-olcum dalinda 0 kosum, yani "CI tek yetkilidir"
+    # kurali o PR'ler icin bosluga dusuyordu). Tetikleyici listesi
+    # genisletildi, daraltilmadi: hicbir denetim gevsetilmedi.
+    branches: [main, egitim-dongusu]
   pull_request:
-    branches: [main]
+    branches: [main, egitim-dongusu]
 
 concurrency:
   group: ci-${{ github.ref }}
