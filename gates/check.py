@@ -9109,6 +9109,116 @@ def selftest_kodlayici_kapisi() -> None:
             raise SystemExit("belirlenimcilik testi sokulmus kopya yakalanmadi")
 
 
+
+SEMA_COZUCU_MARKERLAR = (
+    # Reddin adi: "en yakin bayta dusurme" yerine adlandirilmis hata.
+    ("SemaRed::KabulEdilenBaytYok", "red varyanti sokulmus: cikmaz artik adlandirilmiyor"),
+    ("KabulEdilenBaytYok {", "red varyanti tanimi yok"),
+    # Maskenin kendisi ve sert reddi.
+    ("pub fn maskele(", "maskele yok: logit maskesi uygulanmiyor"),
+    ("f64::NEG_INFINITY", "maske yumusatilmis: reddedilen bayt -inf'e gitmiyor"),
+    # Sorunun yan etkisiz sorulabilmesi.
+    ("pub fn izin_verilir(", "izin_verilir yok: maske kopya uzerinde sorulmuyor"),
+    ("pub fn bitirebilir(", "bitirebilir yok: cikmaz ile bitis ayirt edilemez"),
+    # Erken red: baslik ihlali bosluk baytinda yakalanir.
+    ("fn erken_baslik_denetimi(", "erken baslik denetimi sokulmus: red satir sonuna kayar"),
+    # Olcumun kaynagi: aynaladigi dogrulayiciya karsi capraz kontrol.
+    ("validate_markdown_output", "capraz kontrol sokulmus: ayna olculmeden birakilmis"),
+    # Bit-ozdeslik iddiasi olculur halde durmali.
+    ("to_bits()", "bit-ozdeslik olcumu sokulmus"),
+)
+
+
+def _sema_cozucu_denetle(kaynak: Path) -> list:
+    """Sozlesme metin duzeyinde ayakta mi: red adlandirilir, maske sertlestirir,
+    capraz kontrol durur ve modul parametre tutmaz."""
+    if not kaynak.exists():
+        return [f"kaynak yok: {kaynak}"]
+    metin = kaynak.read_text(encoding="utf-8")
+    ihlaller = [mesaj for imza, mesaj in SEMA_COZUCU_MARKERLAR if imza not in metin]
+    # Parametre sayisi sifir olmali ve bu kodda yazili olmali.
+    if "pub const fn parametre_sayisi() -> usize {\n        0\n    }" not in metin:
+        ihlaller.append("modul parametre tutmaya basladi (parametre_sayisi != 0)")
+    # Yumusatmanin klasik bicimleri: reddi yutup varsayilan bayta dusmek.
+    for yasak in ("en_yakin_bayt", "fallback_bayt", "yumusat("):
+        if yasak in metin:
+            ihlaller.append(f"yumusatma yolu eklenmis: {yasak}")
+    return ihlaller
+
+
+def gate_sema_cozucu_reddeder() -> str:
+    """Sema cozucu olculur halde duruyor: reddedilen bayt -inf'e gider, cikmaz
+    adlandirilmis bir hatadir (asla en yakin bayta dusurulmez), baslik ihlali
+    bosluk baytinda yakalanir ve kabul edilen dil, aynaladigi dogrulayiciya
+    karsi 20.000 vakalik bir fuzz ile olculur."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "sema_cozucu.rs"
+    ihlaller = _sema_cozucu_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("sema cozucu sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    if beklenen == 0:
+        raise SystemExit("modulde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-egitim", "sema_cozucu"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"sema cozucu olculur: {gecen} test, red adlandirilmis (yumusatma yok), "
+        f"maske -inf, baslik ihlali bosluk baytinda, kabul edilen dil dogrulayiciya "
+        f"karsi 20.000 vakada ayni"
+    )
+
+
+def selftest_sema_cozucu_reddeder() -> None:
+    """Kanaryalar: sokulmus red varyanti, yumusatilmis maske, sokulmus erken
+    baslik denetimi, sokulmus capraz kontrol ve parametre tutan kopya
+    yakalanmali."""
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "sema_cozucu.rs"
+    if _sema_cozucu_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    metin = gercek.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "sema_cozucu.rs"
+        kanaryalar = (
+            ("red varyanti sokulmus kopya",
+             metin.replace("KabulEdilenBaytYok", "SessizceDevamEt")),
+            ("yumusatilmis maske",
+             metin.replace("f64::NEG_INFINITY", "-1.0e9")),
+            ("erken baslik denetimi sokulmus kopya",
+             metin.replace("fn erken_baslik_denetimi(", "fn x(")),
+            ("capraz kontrol sokulmus kopya",
+             metin.replace("validate_markdown_output", "yoksay")),
+            ("bit-ozdeslik olcumu sokulmus kopya",
+             metin.replace("to_bits()", "abs()")),
+            ("parametre tutan kopya",
+             metin.replace(
+                 "pub const fn parametre_sayisi() -> usize {\n        0\n    }",
+                 "pub const fn parametre_sayisi() -> usize {\n        1\n    }", 1)),
+            ("yumusatma yolu eklenmis kopya",
+             metin.replace("pub fn maskele(", "fn en_yakin_bayt() {}\n    pub fn maskele(", 1)),
+        )
+        for ad, icerik in kanaryalar:
+            if icerik == metin:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            bozuk.write_text(icerik, encoding="utf-8")
+            if not _sema_cozucu_denetle(bozuk):
+                raise SystemExit(f"{ad} yakalanmadi")
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -9242,6 +9352,7 @@ GATES_EXTRA = {
     "omurga-karar-port-kayitlari": (gate_omurga_karar_port_kayitlari, selftest_omurga_karar_port_kayitlari),
     "kademe-kapisi": (gate_kademe_kapisi, selftest_kademe_kapisi),
     "kodlayici-kapisi": (gate_kodlayici_kapisi, selftest_kodlayici_kapisi),
+    "sema-cozucu-reddeder": (gate_sema_cozucu_reddeder, selftest_sema_cozucu_reddeder),
 }
 
 

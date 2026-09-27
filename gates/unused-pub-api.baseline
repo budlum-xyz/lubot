@@ -141,6 +141,10 @@ egitim:kademeli_kayip
 egitim:ornek_cikislar
 egitim:ornek_hedef
 egitim:taban_kayip
+egitim:ALFABE
+egitim:MAKS_CIKTI_BAYT
+egitim:SemaCozucu
+egitim:SemaRed
 esik:QuorumError
 esik:byzantine_floor
 grant:AuditEntry
@@ -228,7 +232,6 @@ olcum:OlcumMotoru
 paralel:BatchHesap
 paralel:ParalelConfig
 paralel:SuperComputer
-read:MAX_OUTPUT_BYTES
 read:PerceptionKind
 read:PerceptionRefusal
 read:is_known
@@ -287,4 +290,3 @@ veri:KayitTuru
 veri:SentetikUretim
 yetenek:CapabilityError
 yetenek:Handle
-yetenek:State
