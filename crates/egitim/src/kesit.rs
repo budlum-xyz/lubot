@@ -17,9 +17,11 @@
 //! * **Her kesit kosar:** uretilen her spec ile bir ileri+geri adim kosar ve
 //!   kayip sonludur. "Her derinlikte kosulabilen aile" iddiasi boyle olculur -
 //!   spec alanlarini kopyalamak kosmak degildir.
-//! * **Monotonluk:** derinlik de genislik de arttikca parametre sayisi
-//!   **azalmaz** (tam sayi aritmetigi; karsilastirma esitlik de kabul eder ama
-//!   bu ailede artar).
+//! * **Referans aile monotonlugu:** olcumdeki sabit spec ailesinde derinlik ve
+//!   genislik arttikca parametre sayisi **azalmaz**. Bu, her gecerli `Spec`
+//!   icin evrensel bir ozellik degildir: K/V kafa sayisinin tam bolene cekilmesi
+//!   dar MLP'lerde komsu iki genislik arasinda parametre dusurebilir. Bu sinir
+//!   ayri bir karsi-ornek regresyonuyla korunur; sessizce mimari degistirilmez.
 //! * **Bas dilimi:** genislik kesiti **kafa silerek** daralir; `d_k` sabit kalir
 //!   (kafayi daraltmak ayni kafayi bozmak olurdu). Bu yuzden genislik hedefi
 //!   `d_k`'nin tam kati olmali; olmayan hedef reddedilir, en yakin degere
@@ -152,9 +154,9 @@ pub fn genislik_izgarasi(spec: Spec, en_az_kafa: usize) -> Vec<Kesit> {
     if d_k == 0 {
         return Vec::new();
     }
-    // Izgara **dardan genise** uretilir: merdiven okunusu budur ve monotonluk
-    // iddiasi bu sirayla anlamli olur (genisleyen kesit daha az parametre
-    // tutamaz). Ters sirada uretmek testin yonunu ters cevirirdi - olculdu.
+    // Izgara **dardan genise** uretilir: merdiven okunusu budur. Referans ailede
+    // parametre monotonlugu bu sirayla olculur. Bu ozellik butun gecerli
+    // Spec'lere genellenmez; K/V kafa bolenindeki sicrama ayri regresyondadir.
     let en_az_kafa = en_az_kafa.max(1);
     let mut izgara = Vec::new();
     for kafa in en_az_kafa..=spec.n_heads {
@@ -405,16 +407,43 @@ mod tests {
 
     #[test]
     fn genislik_arttikca_parametre_azalmaz() {
+        // Bu, kayda giren referans ailenin olcumudur; evrensel bir teorem degil.
         let s = temel();
         let izgara = genislik_izgarasi(s, 1);
         assert!(izgara.len() >= 3, "izgara cok kisa: {}", izgara.len());
         for cift in izgara.windows(2) {
             assert!(
                 cift[0].spec.parametre_sayisi() <= cift[1].spec.parametre_sayisi(),
-                "genislik azalirken parametre artti"
+                "referans ailede genislik artarken parametre dustu"
             );
         }
         assert_eq!(izgara.last().map(|k| k.spec.d_model), Some(s.d_model));
+    }
+
+    #[test]
+    fn genislik_monotonlugu_her_spece_genellenmez() {
+        // K/V kafasi n_heads'i tam bolmek zorunda. 4 -> 5 sorgu kafasi
+        // gecisinde K/V kafasi 4 -> 1 olur; dar MLP'de bu azalma, eklenen sorgu
+        // parametrelerinden buyuktur. Davranis mimari onay olmadan degistirilmez;
+        // bu test olcum iddiasinin sinirini ve somut karsi ornegi korur.
+        let s = Spec {
+            vocab: 2,
+            d_model: 16,
+            n_layers: 1,
+            n_heads: 8,
+            n_kv_heads: 4,
+            qkv_dokunus: 0,
+            qk_norm: false,
+            d_ff: 1,
+            max_seq_len: 2,
+        };
+        let dar = kesit(s, 1, 8).expect("8 genislik kesiti");
+        let genis = kesit(s, 1, 10).expect("10 genislik kesiti");
+        assert_eq!((dar.spec.n_heads, dar.spec.n_kv_heads), (4, 4));
+        assert_eq!((genis.spec.n_heads, genis.spec.n_kv_heads), (5, 1));
+        assert_eq!(dar.spec.parametre_sayisi(), 377);
+        assert_eq!(genis.spec.parametre_sayisi(), 375);
+        assert!(genis.spec.parametre_sayisi() < dar.spec.parametre_sayisi());
     }
 
     #[test]

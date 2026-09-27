@@ -1,5 +1,5 @@
 {
-  "is": "Aile kesiti (derinlik/genislik dilimleri): spec'ten her derinlik ve genislik icin kosan alt-modeller; tamlik, monotonluk ve kafa silme olculdu",
+  "is": "Aile kesiti (derinlik/genislik dilimleri): referans spec'ten her derinlik ve genislik icin kosan alt-modeller; tamlik, referans-aile monotonlugu ve kafa silme olculdu",
   "kanit": {
     "d_k": 16.0,
     "derinlik": 4.0,
@@ -10,7 +10,7 @@
     "parametre_en_az": 78720.0,
     "parametre_genislik_en_az": 21344.0,
     "parametre_tam": 216192.0,
-    "sure_saniye": 2.18,
+    "sure_saniye": 1.07,
     "tam_ozdes": 1.0
   },
   "kaynaklar": {
@@ -18,21 +18,22 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 2.18
+    "sure_saniye": 1.07
   },
   "kosucu": "betik",
   "olculmeyen": [
     "kesilmis modelin sinav/kalite davranisi (egitim ve sinav kosusu ister)",
     "optimizer momentlerini alt-modele tasima ve ortak agirlik egitimi olculmedi",
     "ortadan katman cikarma (sadece bastan kisaltma olculdu)",
-    "K/V grup orani degisebilir: dar kesitin kaynakla fonksiyonel esdegerligi iddia edilmez"
+    "K/V grup orani degisebilir: dar kesitin kaynakla fonksiyonel esdegerligi iddia edilmez",
+    "genislik-parametre monotonlugu tum gecerli Spec'lere genellenmez; dar MLP karsi ornegi Rust regresyonunda korunur"
   ],
   "olcut": {
-    "ad": "her_derinlikte_kesit_kosar_ve_parametre_monoton",
+    "ad": "referans_ailede_her_derinlikte_kesit_kosar_ve_parametre_monoton",
     "ifade": "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, sonlu pozitif kayip) VE tam agirliklar bit ozdes (tam_ozdes=1) VE en dar genislik kesitinin parametresi tam kesitten kucuk",
     "sonuc": true
   },
   "port_karti": "workspace:port-kartlari/needle-derinlik-genislik.md",
   "tarih": "2026-09-27",
-  "uyari": "Kesit ayni kaynak agirliklardan koordinatla kirpilir. Olculen sey 'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis model kaliteyi koruyor' degil."
+  "uyari": "Kesit ayni kaynak agirliklardan koordinatla kirpilir. Olculen sey 'bu referans spec ile bir adim kosuyor' ve 'bu referans ailede parametre sayisi monoton' - 'butun gecerli spec'lerde monoton' veya 'kesilmis model kaliteyi koruyor' degil. Dar MLP karsi orneginde genislik 8 -> 10 iken K/V kafasi 4 -> 1 ve parametre 377 -> 375 olur."
 }
