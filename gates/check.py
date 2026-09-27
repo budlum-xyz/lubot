@@ -8552,6 +8552,8 @@ PORT_KAYITLARI = (
      "fn olcum_raporu", "training/eval/sonuclar/hadamard-mlp-2026-09-27.json"),
     ("training/nicem.py", "crates/nicem/src/grup.rs",
      "fn olcum_raporu", "training/eval/sonuclar/nicem-2026-09-27.json"),
+    ("training/kodlayici.py", "crates/kodlayici/src/blok.rs",
+     "fn olcum_raporu_kodlayici", "training/eval/sonuclar/kodlayici-2026-09-27.json"),
 )
 PORT_UCUNCU_TARAF = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
                      "torch", "huggingface", "transformers", "candle")
@@ -8604,7 +8606,7 @@ def _port_kaynak_denetle(kaynak: Path, test_adi: str) -> list:
 
 
 def gate_omurga_karar_port_kayitlari() -> str:
-    """Omurga (dikkat kadansi, norm yeri), tipli karar, Hadamard MLP ve
+    """Omurga (dikkat kadansi, norm yeri, kodlayici siniri), tipli karar, Hadamard MLP ve
     alt-bayt nicem port kartlarinin karta-ozel kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
     kendi betiginin `--dogrula` adimindan gecer, olcum testi kaynakta var,
     K1 siniri (ust kaynak adi test disinda gecmez) tutuyor."""
@@ -8980,11 +8982,131 @@ def selftest_port_envanteri_kapisi() -> None:
     if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
         raise SystemExit("tanimsiz durum yakalanmadi")
     # 6) Kaynaksiz "bagli" iddiasi
-    bozuk = metin.replace("| `modernbert_encoder` | `crates/kodlayici/src/lib.rs`, "
-                          "`crates/transformer/src/lib.rs` |",
-                          "| `modernbert_encoder` | yok |", 1)
+    bozuk = re.sub(r"^\| `modernbert_encoder` \|[^|]*\|",
+                   "| `modernbert_encoder` | yok |", metin, count=1, flags=re.M)
     if bozuk == metin or not _port_envanteri_denetle(bozuk, kapilar):
         raise SystemExit("kaynaksiz durum iddiasi yakalanmadi")
+
+
+KODLAYICI_IZLER = (
+    # (dosya, iz, ne olculuyor)
+    ("blok.rs", "pub fn pencere_icinde(", "pencere kurali tek fonksiyonda; maske burada karar verir"),
+    ("blok.rs", "fn attention_is_bidirectional_and_a_sliding_layer_is_bounded", "cift yon + pencere siniri testi"),
+    ("blok.rs", "fn the_three_window_shapes_agree_on_the_recent_left_and_differ_elsewhere", "uc pencere bicimi ayri ayri"),
+    ("blok.rs", "fn the_same_input_twice_gives_the_same_answer", "belirlenimcilik testi"),
+    ("blok.rs", "fn an_empty_sequence_is_refused_not_answered_with_a_zero_vector", "bos dizi reddi"),
+    ("blok.rs", "fn a_token_outside_the_vocabulary_is_refused_not_wrapped", "sozluk disi red"),
+    ("blok.rs", "fn the_gate_and_the_value_halves_are_not_interchangeable", "gecit/deger ayrimi"),
+    ("blok.rs", "fn olcum_raporu_kodlayici", "port kaydi olcumu"),
+    ("hesap.rs", "fn layer_norm_of_a_constant_vector_is_zero_not_nan", "sabit vektorde NaN yok"),
+    ("hesap.rs", "fn softmax_sums_to_one_and_survives_large_logits", "buyuk logitte tasma yok"),
+    ("hesap.rs", "fn rope_rotates_halves_not_neighbours_and_preserves_length", "rope yarilari dondurur"),
+)
+
+
+def _kodlayici_denetle(dizin) -> list:
+    """Kodlayici omurgasinin (7.4 `modernbert_encoder` satiri) olculebilir
+    sozlesmesi: pencere karari tek fonksiyonda, sinir/belirlenimcilik/red
+    testleri adiyla duruyor, test disi govdede ucuncu taraf adi yok, hesap
+    cekirdeginde `unwrap`/`expect` yok. Metin denetimidir; ihlal listesi doner."""
+    ihlaller: list[str] = []
+    for dosya in ("blok.rs", "hesap.rs"):
+        yol = Path(dizin) / dosya
+        if not yol.is_file():
+            ihlaller.append(f"{dosya} yok")
+            continue
+        metin = yol.read_text(encoding="utf-8")
+        for d, iz, ne in KODLAYICI_IZLER:
+            if d == dosya and iz not in metin:
+                ihlaller.append(f"{dosya}: eksik: {ne} ({iz})")
+        test_oneki = metin.find("mod tests")
+        govde = metin if test_oneki == -1 else metin[:test_oneki]
+        satirlar = [s for s in govde.splitlines() if not s.lstrip().startswith("//")]
+        kucuk = "\n".join(satirlar).lower()
+        for ad in PORT_UCUNCU_TARAF:
+            if re.search(rf"\b{ad}\b", kucuk):
+                ihlaller.append(f"{dosya}: ucuncu taraf adi test disinda gecti: {ad}")
+        for yasak in (".unwrap(", ".expect("):
+            if any(yasak in s for s in satirlar):
+                ihlaller.append(f"{dosya}: test disinda {yasak} var; sekil hatasi Result ile doner")
+    return ihlaller
+
+
+def gate_kodlayici_kapisi() -> str:
+    """Kodlayici omurgasi (7.4 `modernbert_encoder`) deposal kapi altinda:
+    pencere karari tek fonksiyonda, sinir/belirlenimcilik/red testleri adiyla
+    yerinde, K1 siniri tutuyor, test disi `unwrap` yok. Ayrica crate'in lib
+    testleri kosturulur ve kaynaktaki `#[test]` sayisiyla birebir eslenir:
+    sessiz atlanan test kapiyi kirmizi yapar."""
+    import subprocess
+
+    dizin = ROOT / "crates" / "kodlayici" / "src"
+    ihlaller = _kodlayici_denetle(dizin)
+    if ihlaller:
+        raise SystemExit("kodlayici sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    beklenen = sum(
+        len(re.findall(r"#\[test\]", yol.read_text(encoding="utf-8")))
+        for yol in sorted(dizin.glob("*.rs"))
+    )
+    if beklenen == 0:
+        raise SystemExit("crate'te hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-p", "lubot-kodlayici", "--lib"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("kodlayici testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed; 0 failed; 0 ignored", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"kodlayici omurgasi olculur: {gecen} test, pencere siniri her ciftte, "
+        f"belirlenimci cikti, bos/sozluk disi red, test disi unwrap yok"
+    )
+
+
+def selftest_kodlayici_kapisi() -> None:
+    """Kanaryalar: saglam agac gecer; pencere fonksiyonu adi sokulmus, ucuncu
+    taraf adi eklenmis ve test disina `unwrap` sokulmus kopyalar yakalanir."""
+    import shutil
+    import tempfile
+
+    gercek = ROOT / "crates" / "kodlayici" / "src"
+    if _kodlayici_denetle(gercek):
+        raise SystemExit("saglam kodlayici denetimden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        kopya = Path(td)
+        for dosya in ("blok.rs", "hesap.rs"):
+            shutil.copy(gercek / dosya, kopya / dosya)
+        blok = (gercek / "blok.rs").read_text(encoding="utf-8")
+        hesap = (gercek / "hesap.rs").read_text(encoding="utf-8")
+        # 1) pencere karari tek fonksiyondan cikarsa
+        (kopya / "blok.rs").write_text(
+            blok.replace("pub fn pencere_icinde(", "pub fn pencere_icinde_x(", 1), encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("pencere fonksiyonu sokulmus kopya yakalanmadi")
+        # 2) ucuncu taraf adi test disinda
+        (kopya / "blok.rs").write_text("use torch;\n" + blok, encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("ucuncu taraf adi tasiyan kopya yakalanmadi")
+        (kopya / "blok.rs").write_text(blok, encoding="utf-8")
+        # 3) hesap cekirdegine unwrap sokulursa
+        (kopya / "hesap.rs").write_text(
+            hesap.replace("mod tests", "fn _x() { let _ = \"1\".parse::<u8>().unwrap(); }\nmod tests", 1),
+            encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("unwrap sokulmus kopya yakalanmadi")
+        # 4) belirlenimcilik testi silinirse
+        (kopya / "hesap.rs").write_text(hesap, encoding="utf-8")
+        (kopya / "blok.rs").write_text(
+            blok.replace("fn the_same_input_twice_gives_the_same_answer", "fn ayni_girdi", 1),
+            encoding="utf-8")
+        if not _kodlayici_denetle(kopya):
+            raise SystemExit("belirlenimcilik testi sokulmus kopya yakalanmadi")
 
 
 GATES_EXTRA = {
@@ -9119,6 +9241,7 @@ GATES_EXTRA = {
     "normalizasyon-kapisi": (gate_normalizasyon_kapisi, selftest_normalizasyon_kapisi),
     "omurga-karar-port-kayitlari": (gate_omurga_karar_port_kayitlari, selftest_omurga_karar_port_kayitlari),
     "kademe-kapisi": (gate_kademe_kapisi, selftest_kademe_kapisi),
+    "kodlayici-kapisi": (gate_kodlayici_kapisi, selftest_kodlayici_kapisi),
 }
 
 

@@ -27,14 +27,14 @@ herkes kendi listesine bakar ve farkli cevap verir.
 
 | 7.4 modulu | bu depodaki yeri | kapi | olcum kaydi | durum |
 |---|---|---|---|---|
-| `modernbert_encoder` | `crates/kodlayici/src/lib.rs`, `crates/transformer/src/lib.rs` | — | — | bagli |
-| `hadamard_mlp` | `crates/egitim/src/mlp_hadamard.rs` | `hadamard-mlp-kapisi` | — | bagimsiz |
+| `modernbert_encoder` | `crates/kodlayici/src/lib.rs`, `crates/kodlayici/src/blok.rs`, `crates/transformer/src/lib.rs` | `kodlayici-kapisi` | `kodlayici-2026-09-27.json`, `dikkat-kadansi-2026-09-27.json`, `norm-yeri-2026-09-27.json` | bagli |
+| `hadamard_mlp` | `crates/egitim/src/mlp_hadamard.rs` | `hadamard-mlp-kapisi` | `hadamard-mlp-2026-09-27.json` | bagimsiz |
 | `gqa_engram_attention` | `crates/egitim/src/lib.rs`, `crates/egitim/src/engram.rs` | `engram-kapisi` | `engram-2026-09-26.json` | bagli |
 | `hyperconnections` | `crates/egitim/src/cok_serit.rs` | `cok-serit-kapisi` | `cok-serit-2026-09-26.json` | bagimsiz |
 | `sinkhorn_router` | `crates/egitim/src/yonlendirme.rs` | `yonlendirme-kapisi` | `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |
 | `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi` | `kalibrasyon-2026-09-26.json` | bagli |
 | `schema_decoder` | `crates/read/src/output_schema.rs` | `ai-output-schema-enforced` | `sema-kapsam-2026-09-24.json` | bagli |
-| `cq2_quant` | `crates/nicem/src/lib.rs`, `crates/tasiyici/src/lib.rs` | `bit-budget-is-arithmetic` | — | bagli |
+| `cq2_quant` | `crates/nicem/src/lib.rs`, `crates/nicem/src/grup.rs`, `crates/tasiyici/src/lib.rs` | `bit-budget-is-arithmetic` | `nicem-2026-09-27.json` | bagli |
 
 `gqa_engram_attention` satiri iki parcalidir ve durumu **parca parca** okunur:
 GQA egitim cekirdeginde baglidir (`n_kv_heads`, `qkv_dokunus`, `qk_norm` ayni
@@ -55,12 +55,17 @@ bu yuzden GQA'ya gore `bagli` yazilir; engramin kendi satiri asagidadir.
 
 1. Sekiz modulun **sekizi de** bu agacta var. "Port yazilacak" bir is degil;
    kalan is **baglama** isidir.
-2. `modernbert_encoder`in deposal bir kapisi **yok**. Kaynak ve testler var,
-   ama kapi yok: yani bir regresyon kapiya takilmaz. Bu, bu belgenin urettigi
-   somut bir eksiktir ve baska bir turun isidir.
-3. `hadamard_mlp` ve `cq2_quant` icin ayri bir olcum kaydi yok; olcum modul
-   testlerinin icinde. Kayit dosyasi, olcumun tarihini ve tazeligini disaridan
-   denetlenebilir yapar — bunlarin ikisi de simdilik ic olcumdur.
+2. `modernbert_encoder`in deposal kapisi `kodlayici-kapisi`dir (bu belgenin
+   ilk surumunde eksik olarak isaretlenmisti). Kapi pencere kararinin tek
+   fonksiyonda kaldigini, sinir/belirlenimcilik/red testlerinin adiyla
+   durdugunu, test disi govdede ucuncu taraf adi ve `unwrap` olmadigini
+   denetler; crate'in lib testlerini kosturur ve kaynaktaki `#[test]`
+   sayisiyla birebir esler. Kaydi `kodlayici-2026-09-27.json`: 8 konumluk
+   dizide 64 (sorgu, degisen) ciftinin tamami olculur, pencere disi etki 0,
+   pencere ici etki 15/15.
+3. `hadamard_mlp` ve `cq2_quant` icin karta ozel olcum kayitlari
+   `hadamard-mlp-2026-09-27.json` ve `nicem-2026-09-27.json`; ikisi de
+   `omurga-karar-port-kayitlari` kapisinda her turda yeniden olculur.
 4. Bagimsiz kalan dort aday (`hadamard_mlp`, `hyperconnections`,
    `sinkhorn_router`, ve engram kolu) artik tek bir blokta birlikte kosuyor
    (3.8), ama **o blok da hicbir aileye bagli degil**. Hangisinin hangi aileye

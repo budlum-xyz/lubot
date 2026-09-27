@@ -1059,4 +1059,95 @@ mod tests {
             "norm-yeri | genislik={h} uzunluk={uzunluk} artik_bit_ozdes={artik_bit_ozdes} dal_katkisi={dal_katkisi:.6e} ortalama_sapma={ortalama_sapma:.6e} varyans_sapma={varyans_sapma:.6e} tensor_sayisi={tensor_sayisi} bias_tensoru={bias_tensoru}"
         );
     }
+
+    /// Port kaydi olcumu (kodlayici omurgasi): `training/kodlayici.py` bu
+    /// satiri kosar ve okur.
+    ///
+    /// Olculen: kayan pencerenin siniri **her konum cifti icin** tutar (pencere
+    /// disindaki bir konumu degistirmek sorgu ciktisini degistirmez, icindeki
+    /// degistirir), ayni girdi iki kez bit-ozdes cikti verir, bos dizi ve
+    /// sozluk disi kimlik reddedilir, derinlik ciktiyi degistirir ve gecit/deger
+    /// yarilari yer degistirince cikti degisir.
+    #[test]
+    fn olcum_raporu_kodlayici() {
+        let uzunluk = 8usize;
+        let pencere = 2usize;
+        let h = kucuk_yapi(1).hidden_size;
+        let taban: Vec<u32> = (0..uzunluk as u32).map(|k| (k % 5) + 1).collect();
+
+        let mut yapi = kucuk_yapi(1);
+        yapi.local_attention = pencere;
+        yapi.pencere_kurali = PencereKurali::SolPencere;
+        let mut kayan = kucuk_agirliklar(1);
+        kayan.yapi = yapi;
+        kayan.katmanlar[0].tur = KT::SlidingAttention;
+        let referans = kodla(&kayan, &taban).expect("kodlanmali");
+
+        // Her (sorgu i, degistirilen j) cifti: j penceredeyse i degismeli,
+        // degilse degismemeli.
+        let mut cift = 0usize;
+        let mut pencere_ihlal = 0usize;
+        let mut ici_degisen = 0usize;
+        let mut ici_toplam = 0usize;
+        for j in 0..uzunluk {
+            let mut degisik = taban.clone();
+            degisik[j] = (degisik[j] % 5) + 1;
+            let cikti = kodla(&kayan, &degisik).expect("kodlanmali");
+            for i in 0..uzunluk {
+                cift += 1;
+                let fark = referans[i * h..(i + 1) * h]
+                    .iter()
+                    .zip(cikti[i * h..(i + 1) * h].iter())
+                    .fold(0.0f32, |m, (p, q)| m.max((p - q).abs()));
+                let icinde = pencere_icinde(j, i, pencere, PencereKurali::SolPencere);
+                if icinde {
+                    ici_toplam += 1;
+                    if fark > 1e-6 {
+                        ici_degisen += 1;
+                    }
+                } else if fark > 0.0 {
+                    pencere_ihlal += 1;
+                }
+            }
+        }
+
+        let tam = kucuk_agirliklar(2);
+        let a = kodla(&tam, &taban).expect("kodlanmali");
+        let b = kodla(&tam, &taban).expect("kodlanmali");
+        let bit_ozdes = usize::from(
+            a.iter()
+                .zip(b.iter())
+                .all(|(x, y)| x.to_bits() == y.to_bits()),
+        );
+        let bos_red = usize::from(kodla(&tam, &[]).is_err());
+        let sozluk_disi_red = usize::from(kodla(&tam, &[1, 9_999_999]).is_err());
+        let derin = kodla(&kucuk_agirliklar(3), &taban).expect("kodlanmali");
+        let derinlik_farki = a
+            .iter()
+            .zip(derin.iter())
+            .fold(0.0f32, |m, (p, q)| m.max((p - q).abs()));
+        let sonlu = usize::from(derin.iter().all(|x| x.is_finite()));
+
+        let mut takas = kucuk_agirliklar(1);
+        let once = kodla(&takas, &taban).expect("kodlanmali");
+        let ffn = takas.yapi.intermediate_size;
+        let wi = takas.katmanlar[0].mlp.wi.clone();
+        let mut yeni = wi.clone();
+        for satir in 0..ffn {
+            for i in 0..h {
+                yeni[satir * h + i] = wi[(ffn + satir) * h + i];
+                yeni[(ffn + satir) * h + i] = wi[satir * h + i];
+            }
+        }
+        takas.katmanlar[0].mlp.wi = yeni;
+        let sonra = kodla(&takas, &taban).expect("kodlanmali");
+        let gecit_takas_farki = once
+            .iter()
+            .zip(sonra.iter())
+            .fold(0.0f32, |m, (p, q)| m.max((p - q).abs()));
+
+        println!(
+            "kodlayici | uzunluk={uzunluk} pencere={pencere} genislik={h} cift={cift} pencere_ihlal={pencere_ihlal} ici_toplam={ici_toplam} ici_degisen={ici_degisen} bit_ozdes={bit_ozdes} bos_red={bos_red} sozluk_disi_red={sozluk_disi_red} sonlu={sonlu} derinlik_farki={derinlik_farki:.6e} gecit_takas_farki={gecit_takas_farki:.6e}"
+        );
+    }
 }
