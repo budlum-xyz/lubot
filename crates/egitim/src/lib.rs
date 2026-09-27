@@ -40,6 +40,7 @@ pub mod kosu;
 pub mod mlp_hadamard;
 pub mod normalizasyon;
 pub mod olcum;
+pub mod sema_cozucu;
 pub mod veri;
 pub mod yonlendirme;
 

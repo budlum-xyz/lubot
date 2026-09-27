@@ -13,5 +13,11 @@ lubot-grant = { path = "../grant", version = "0.1.0" }
 serde_json = "1"
 sha2 = "0.10"
 
+[dev-dependencies]
+# Only the cross-check needs it: the schema decoder is measured against the
+# validator it mirrors. The production path of this crate does not depend on
+# lubot-read.
+lubot-read = { path = "../read", version = "0.1.0" }
+
 [lints]
 workspace = true
