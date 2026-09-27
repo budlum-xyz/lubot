@@ -828,4 +828,92 @@ mod tests {
         let (cb, _) = ileri(b_spec, &b, &x, 2);
         assert_ne!(ca, cb);
     }
+
+    /// Port kaydi olcumu: `training/hadamard_mlp.py` bu satiri kosar ve okur;
+    /// sayilari kendisi uretmez. Olculen: parametre muhasebesi (bloklu ve
+    /// bloksuz, tam sayi), gradyanin sonlu farka karsi en kotu bagil sapmasi
+    /// ve denetlenen parametre sayisinin sekle bagli oldugu, 40 adimlik inis
+    /// ve Hadamard carpiminin gercekten carpim oldugu (sifir dal = sifir cikti).
+    #[test]
+    fn olcum_raporu() {
+        let spec = kucuk();
+        let bloksuz = HadamardSpec { blok: 1, ..spec };
+        let parametre = spec.parametre_sayisi();
+        let parametre_bloksuz = bloksuz.parametre_sayisi();
+
+        // Gradyan: en kotu bagil sapma ve sayim bagi.
+        let a = belirgin_doldur(spec, 7);
+        let t = 3;
+        let x = girdiler(t, spec.d_model, 31);
+        let hedef = girdiler(t, spec.d_model, 37);
+        let (cikti, bellek) = ileri(spec, &a, &x, t);
+        let g = geri(spec, &a, &bellek, &kayip_gradyan(&cikti, &hedef));
+        let h = 1e-5f64;
+        let mut denetlenen = 0usize;
+        let mut ihlal = 0usize;
+        let mut en_kotu = 0.0f64;
+        for (_ad, secim) in ALANLAR {
+            let analitik = match secim {
+                Alan::W1 => g.w1.clone(),
+                Alan::W2 => g.w2.clone(),
+                Alan::W3 => g.w3.clone(),
+                Alan::B1 => g.b1.clone(),
+                Alan::B2 => g.b2.clone(),
+                Alan::B3 => g.b3.clone(),
+            };
+            let mut deneme = a.clone();
+            for (i, analitik_deger) in analitik.iter().enumerate() {
+                let asil = alan(&a, secim)[i];
+                alan_mut(&mut deneme, secim)[i] = asil + h;
+                let (c_art, _) = ileri(spec, &deneme, &x, t);
+                alan_mut(&mut deneme, secim)[i] = asil - h;
+                let (c_eks, _) = ileri(spec, &deneme, &x, t);
+                alan_mut(&mut deneme, secim)[i] = asil;
+                let sayisal = (kayip(&c_art, &hedef) - kayip(&c_eks, &hedef)) / (2.0 * h);
+                let fark = (analitik_deger - sayisal).abs();
+                let olcek = analitik_deger.abs().max(sayisal.abs());
+                if fark > GRADIENT_CHECK_MUTLAK_TABAN + GRADIENT_CHECK_TOLERANCE * olcek {
+                    ihlal += 1;
+                }
+                let bagil = if olcek > 0.0 { fark / olcek } else { fark };
+                en_kotu = en_kotu.max(bagil);
+                denetlenen += 1;
+            }
+        }
+
+        // Inis: 40 adim, kayip her adimda dusmek zorunda.
+        let mut a2 = belirgin_doldur(spec, 23);
+        let x2 = girdiler(t, spec.d_model, 53);
+        let hedef2 = girdiler(t, spec.d_model, 59);
+        let (ilk, _) = ileri(spec, &a2, &x2, t);
+        let kayip0 = kayip(&ilk, &hedef2);
+        let mut son = kayip0;
+        let mut monoton = 1usize;
+        for _ in 0..40 {
+            let (c, b) = ileri(spec, &a2, &x2, t);
+            let g2 = geri(spec, &a2, &b, &kayip_gradyan(&c, &hedef2));
+            sgd_adimi(&mut a2, &g2, 0.05);
+            let (y, _) = ileri(spec, &a2, &x2, t);
+            let k = kayip(&y, &hedef2);
+            if k >= son {
+                monoton = 0;
+            }
+            son = k;
+        }
+
+        // Carpim: ikinci dal sifirsa (w2 = 0, b2 = 0) gelu(0) = 0, cikti = b3.
+        let mut sifir = belirgin_doldur(spec, 11);
+        sifir.w2.iter_mut().for_each(|v| *v = 0.0);
+        sifir.b2.iter_mut().for_each(|v| *v = 0.0);
+        let (c0, _) = ileri(spec, &sifir, &x, t);
+        let carpim_sifir = usize::from(
+            c0.chunks(spec.d_model)
+                .all(|satir| satir.iter().zip(sifir.b3.iter()).all(|(a, b)| a == b)),
+        );
+
+        println!(
+            "hadamard-mlp | d_model={} d_r={} blok={} parametre={parametre} parametre_bloksuz={parametre_bloksuz} denetlenen={denetlenen} ihlal={ihlal} en_kotu_bagil={en_kotu:.6e} kayip0={kayip0:.8} kayip40={son:.8} monoton={monoton} carpim_sifir={carpim_sifir}",
+            spec.d_model, spec.d_r, spec.blok
+        );
+    }
 }

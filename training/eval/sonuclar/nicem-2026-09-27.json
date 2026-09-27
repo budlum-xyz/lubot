@@ -1,0 +1,43 @@
+{
+  "is": "Alt-bayt nicemleme: Walsh-Hadamard donusu + Lloyd-Max kod kitabi + grup olcegi; bit butcesi aritmetik, yuvarlak yol hatasi ve donusun kazanci sentetik tensorde olculdu; servis oncesi nicemleme, egitim yuksek hassasiyette kalir",
+  "kanit": {
+    "agir_absmax": 0.5780119,
+    "agir_donuslu": 0.2965584,
+    "agirlik": 4096.0,
+    "agirlik_basina_bit": 2.125,
+    "bagil_hata": 0.338723,
+    "bayt": 1088.0,
+    "bayt_esit": 1.0,
+    "bit": 2.0,
+    "grup": 128.0,
+    "kitap_snr_db": 9.300292,
+    "olcut_sonucu": true,
+    "oran": 15.058824,
+    "snr_db": 9.403105,
+    "snr_fark": 0.102813,
+    "sure_saniye": 0.88,
+    "tekduze": 1.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 0.88
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "egitilmis lubot-a1 agirliklarinda nicemleme sonrasi sinav kaybi (kontrol noktasi yok)",
+    "egitim-zamani nicem farkindaligi (QAT): olculmeden onerilmez (tasarim 3.5)",
+    "kademe egitimi ile birlikte derinlik merdiveni davranisi (M4)",
+    "gercek donanimda 2 bit carpim hizi (olculmedi)"
+  ],
+  "olcut": {
+    "ad": "bit_butcesi_aritmetik_ve_yuvarlak_yol_olculu",
+    "ifade": "2 bit + 128 grup, 4096 agirlik: agirlik basina bit = 2.125 (tam aritmetik) VE 1088 bayt VE olculen SNR kod kitabi tahminine 3 dB icinde VE agir kuyrukta donuslu hata absmax tabanindan kucuk VE 1..6 bit arasinda hata tekduze duser VE ayni tensor iki kez ayni baytlari verir VE bagil hata < 0.35",
+    "sonuc": true
+  },
+  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-kuantalama.md",
+  "tarih": "2026-09-27",
+  "uyari": "Tensorler sentetiktir (tohumlu normalimsi dagilim ve agir kuyruk fixture'i); egitilmis bir kontrol noktasinin nicemleme sonrasi kalite kaybi olculmedi. Tek buyuk agirlikli grup (spike) donusun en kotu halidir ve modul testinde kayitlidir."
+}
