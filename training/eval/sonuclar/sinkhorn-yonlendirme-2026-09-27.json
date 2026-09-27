@@ -7,7 +7,7 @@
     "parametre": 0.0,
     "satir_sapma": 2.22e-16,
     "secim": 256.0,
-    "sure_saniye": 0.18,
+    "sure_saniye": 0.07,
     "taban_orani": 1.141525,
     "uzman": 8.0,
     "yineleme": 8.0,
@@ -18,7 +18,7 @@
     "girdi_jetonlari": 0,
     "maliyet": 0.0,
     "onbellekli_jetonlari": 0,
-    "sure_saniye": 0.18
+    "sure_saniye": 0.07
   },
   "kosucu": "betik",
   "olculmeyen": [
@@ -32,7 +32,7 @@
     "ifade": "jeton=128, uzman=8, k=2, yineleme=8: satir sapmasi < 1e-12 VE yuk orani klasik tabanin oranindan kucuk VE secim sayisi = jeton x k",
     "sonuc": true
   },
-  "port_karti": "workspace:port-kartlari/needle-sinkhorn-yonlendirme.md",
+  "tasarim_karti": "workspace:tasarim-kartlari/sinkhorn-yonlendirme.md",
   "tarih": "2026-09-27",
   "uyari": "Olcum sentetik puanlardir: uzmanli bir aga baglanmadi, egitim kosusu yok. Ogrenilebilir parametre sayisi sifirdir - rota bir hesaplamadir."
 }

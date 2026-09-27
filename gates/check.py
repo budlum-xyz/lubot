@@ -7390,14 +7390,17 @@ def selftest_yonlendirme_kapisi() -> None:
                          encoding="utf-8")
         if not _yonlendirme_denetle(bozuk):
             raise SystemExit("parametre tutan kopya yakalanmadi")
-        # 5) panik yolu sokulursa
-        # fmt kaynakta sabit sadece satir bazinda dursa da kanari calismali:
-        # ekleme, gerc. satir biciminden bagimsiz olarak islev govdesine girer.
-        if "    let taban_spec = RotaSpec {\n" not in metin:
-            raise SystemExit("kanari demirlemesi yok: taban_spec satiri bicimi degisti")
-        bozuk.write_text(metin.replace("    let taban_spec = RotaSpec {\n",
-                                       "    let _ = vec![1].first().unwrap();\n    let taban_spec = RotaSpec {\n", 1),
-                         encoding="utf-8")
+        # 5) rustfmt struct literalini birden cok satira yayabilir. Tam
+        # literal yerine tekil atama baslangici kullan; degismeyen mutant
+        # kanit degildir, onu ayrica reddet.
+        hedef = "    let taban_spec = RotaSpec {"
+        if metin.count(hedef) != 1:
+            raise SystemExit("panik mutantinin tekil hedefi bulunamadi")
+        mutant = metin.replace(hedef,
+            "    let _ = vec![1].first().unwrap();\n" + hedef, 1)
+        if mutant == metin:
+            raise SystemExit("panik mutanti kaynakla ayni kaldi")
+        bozuk.write_text(mutant, encoding="utf-8")
         if not _yonlendirme_denetle(bozuk):
             raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
     # 6) Kayit tazeligi ve sayim bagi.
@@ -7424,6 +7427,253 @@ def selftest_yonlendirme_kapisi() -> None:
         )
         if kosu.returncode == 0:
             raise SystemExit("sayimi tutmayan kayit kabul edildi")
+
+
+
+def _kesit_denetle(path: Path) -> list:
+    """Aile kesitinin (derinlik/genislik) olculebilir sozlesmesi."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    for iz in ("pub fn kesit(", "fn derinlik_merdiveni", "fn genislik_izgarasi"):
+        if iz not in metin:
+            ihlaller.append(f"kesit sozlesmesi eksik: {iz}")
+    # Tamlik, gecerlilik, kosma ve monotonluk ayri ayri olculmeli.
+    for iz in ("tamlik_girdinin_kendisi", "her_kesit_kendi_dogrulamasindan_gecer",
+               "kesit_kosumdan_gecer", "derinlik_arttikca_parametre_azalmaz",
+               "genislik_arttikca_parametre_azalmaz", "kafa_silinir_kafa_daraltilmaz",
+               "agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
+               "tam_agirlik_kesiti_bit_ozdes", "agirlik_bellek_tavani_tam_sinirda",
+               "her_blok_bozuk_sekli_tahsisten_once_reddeder",
+               "mevcut_agirlik_kesitleri_ileri_geri_kosar") :
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # Sessiz yuvarlama yok: hedef kafa kati degilse reddedilir.
+    if "GenislikKafaKatıDegil" not in metin:
+        ihlaller.append("kafa kati olmayan genislik reddedilmiyor")
+    # Bas dilimi: bastan kisaltma.
+    if "bastan" not in metin:
+        ihlaller.append("kesitin bastan alindigi yazili degil")
+    # K1.
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    # Panik yolu yok (test disinda).
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        for desen in (".unwrap()", ".expect("):
+            if desen in metin[:test_oneki]:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_kesit_kapisi() -> str:
+    """Aile kesiti olculur halde duruyor: tam kesit girdinin kendisi, her kesit
+    kendi dogrulamasindan geciyor ve **kosuyor**, parametre sayisi derinlik ve
+    genislikle monoton, kafa silinir (daraltilmaz), sessiz yuvarlama yok."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "kesit.rs"
+    ihlaller = _kesit_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("kesit sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    kosu = subprocess.run(["cargo", "test", "-q", "-p", "lubot-egitim", "kesit"],
+                          cwd=ROOT, capture_output=True, text=True)
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme or int(eslesme.group(1)) != beklenen:
+        raise SystemExit(f"test sayisi bagi tutmuyor: beklenen {beklenen}\n" + cikti[-800:])
+    dogrula = subprocess.run(["python3", "training/kesit.py", "--dogrula"],
+                             cwd=ROOT, capture_output=True, text=True)
+    if dogrula.returncode != 0:
+        raise SystemExit("kesit kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (f"kesit olculur: {beklenen} test, tamlik + gecerlilik + kosma + monotonluk, "
+            f"kafa silme ve sessiz yuvarlama yok")
+
+
+def selftest_kesit_kapisi() -> None:
+    import json
+    import subprocess
+    import tempfile
+
+    # Sayisal kayit siniri da CI kanaryasinin parcasi: NaN/Inf, bool,
+    # kesirli sayimlar ve negatif hata olculeri kabul edilmez.
+    subprocess.run(
+        ["python3", "-m", "unittest", "discover", "-s", "training",
+         "-p", "test_olcum_kayitlari.py"],
+        cwd=ROOT, check=True,
+    )
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "kesit.rs"
+    if _kesit_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "kesit.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        bozuk.write_text(metin.replace("fn derinlik_merdiveni", "fn x"), encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("merdiven sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("GenislikKafaKatıDegil", "Yuvarlama"), encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("sessiz yuvarlama kopyasi yakalanmadi")
+        bozuk.write_text(metin.replace("kesit_kosumdan_gecer", "kosmaz"), encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("kosma olcumu sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("    let mut kesilen = Spec {",
+                                       "    let _ = vec![1].first().unwrap();\n    let mut kesilen = Spec {", 1),
+                         encoding="utf-8")
+        if not _kesit_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        for iz in ("agirliklari_al", "matris_satir_adimi_duz_prefix_degil",
+                   "agirlik_bellek_tavani_tam_sinirda"):
+            bozuk.write_text(metin.replace(iz, "sokulen"), encoding="utf-8")
+            if not _kesit_denetle(bozuk):
+                raise SystemExit(f"agirlik sozlesmesi sokuldu ama yakalanmadi: {iz}")
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "kesit-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["kosan"] = veri["kanit"]["kosan"] - 1.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/kesit.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("kosmayan kesit sayisini tasiyan kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["d_k"] = 7.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/kesit.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("kafa bolmesi bozuk kayit kabul edildi")
+
+
+def _normalizasyon_denetle(path: Path) -> list:
+    """Sifir merkezli RMS adayinin olculebilir sozlesmesi."""
+    ihlaller: list[str] = []
+    if not path.is_file():
+        return [f"{path} yok"]
+    metin = path.read_text(encoding="utf-8")
+    for iz in ("pub fn norm_ileri", "pub fn norm_geri", "pub fn duz_rms"):
+        if iz not in metin:
+            ihlaller.append(f"norm sozlesmesi eksik: {iz}")
+    # Degismezlikler ve fark ayri ayri olculur.
+    for iz in ("kaydirma_degismezligi", "olcek_degismezligi_eps_tabanina_kadar",
+               "klasik_rms_kaydirmadan_etkilenir_fark_olculur",
+               "geri_gecis_sonlu_farkla_uyusur", "sabit_girdi_sifira_gider_patlamaz"):
+        if iz not in metin:
+            ihlaller.append(f"davranis olcumu eksik: {iz}")
+    # eps tabani saklanmaz: tam iliski yazili olmali.
+    if "1.0 - s.eps / (cikti.r * cikti.r)" not in metin:
+        ihlaller.append("eps tabanli cikti iliskisi olculmuyor")
+    # Parametre sayisi sekle bagli.
+    if "fn parametre_sayisi(&self) -> usize {\n        self.genislik\n    }" not in metin:
+        ihlaller.append("parametre sayisi genislige bagli degil")
+    kucuk = metin.lower()
+    for ad in ("needle", "laya", "modernbert", "torch", "pytorch", "huggingface",
+               "transformers", "openai", "gemini", "llama", "cuda", "megatron",
+               "flax", "jax"):
+        if ad in kucuk:
+            ihlaller.append(f"ucuncu taraf adi gecti: {ad}")
+    test_oneki = metin.find("mod tests")
+    if test_oneki == -1:
+        ihlaller.append("mod tests yok")
+    else:
+        for desen in (".unwrap()", ".expect("):
+            if desen in metin[:test_oneki]:
+                ihlaller.append(f"test disinda panik yolu: {desen}")
+    return ihlaller
+
+
+def gate_normalizasyon_kapisi() -> str:
+    """Sifir merkezli RMS adayi olculur halde duruyor: kaydirma degismez
+    (tam), olcek degismezligi eps tabanina kadar (iki eps ile olculur), klasik
+    RMS kaydirmadan etkilenir (fark olculur), cikti sifir ortalamali ve eps
+    tabanli tam RMS iliskisi yazili, geri gecis sonlu farkla dogrulanir."""
+    import re
+    import subprocess
+
+    kaynak = ROOT / "crates" / "egitim" / "src" / "normalizasyon.rs"
+    ihlaller = _normalizasyon_denetle(kaynak)
+    if ihlaller:
+        raise SystemExit("norm sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    metin = kaynak.read_text(encoding="utf-8")
+    beklenen = len(re.findall(r"#\[test\]", metin))
+    kosu = subprocess.run(["cargo", "test", "-q", "-p", "lubot-egitim", "normalizasyon"],
+                          cwd=ROOT, capture_output=True, text=True)
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("modul testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme or int(eslesme.group(1)) != beklenen:
+        raise SystemExit(f"test sayisi bagi tutmuyor: beklenen {beklenen}\n" + cikti[-800:])
+    dogrula = subprocess.run(["python3", "training/normalizasyon.py", "--dogrula"],
+                             cwd=ROOT, capture_output=True, text=True)
+    if dogrula.returncode != 0:
+        raise SystemExit("norm kaydi dogrulanmadi:\n" + (dogrula.stdout + dogrula.stderr)[-800:])
+    return (f"norm adayi olculur: {beklenen} test, kaydirma tam degismez, olcek eps "
+            f"tabanina kadar, klasik RMS farki olculur, geri gecis sonlu farkla")
+
+
+def selftest_normalizasyon_kapisi() -> None:
+    import json
+    import subprocess
+    import tempfile
+
+    gercek = ROOT / "crates" / "egitim" / "src" / "normalizasyon.rs"
+    if _normalizasyon_denetle(gercek):
+        raise SystemExit("saglam modul metin denetiminden gecmedi")
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "normalizasyon.rs"
+        metin = gercek.read_text(encoding="utf-8")
+        bozuk.write_text(metin.replace("pub fn norm_geri", "pub fn x"), encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("geri gecis sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("fn parametre_sayisi(&self) -> usize {\n        self.genislik\n    }",
+                                       "fn parametre_sayisi(&self) -> usize {\n        8\n    }", 1),
+                         encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("sabit parametre sayisi kopyasi yakalanmadi")
+        bozuk.write_text(metin.replace("1.0 - s.eps / (cikti.r * cikti.r)", "1.0"), encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("eps iliskisi sokulmus kopya yakalanmadi")
+        bozuk.write_text(metin.replace("    let (r, c) = _cerceve(spec, x)?;",
+                                       "    let _ = vec![1].first().unwrap();\n    let (r, c) = _cerceve(spec, x)?;", 1),
+                         encoding="utf-8")
+        if not _normalizasyon_denetle(bozuk):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+    kayit = ROOT / "training" / "eval" / "sonuclar" / "normalizasyon-2026-09-27.json"
+    if not kayit.is_file():
+        raise SystemExit(f"kayit yok: {kayit}")
+    with tempfile.TemporaryDirectory() as td:
+        sahte = Path(td) / "sahte.json"
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["duz_rms_fark"] = 0.0
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/normalizasyon.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("klasik RMS farkini sifirlayan kayit kabul edildi")
+        veri = json.loads(kayit.read_text(encoding="utf-8"))
+        veri["kanit"]["cikti_ort"] = 0.5
+        sahte.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+        kosu = subprocess.run(["python3", "training/normalizasyon.py", "--dogrula", "--kayit", str(sahte)],
+                              cwd=ROOT, capture_output=True, text=True)
+        if kosu.returncode == 0:
+            raise SystemExit("sifir ortalamasiz kayit kabul edildi")
 
 
 
@@ -8140,6 +8390,8 @@ GATES_EXTRA = {
     "cok-serit-kapisi": (gate_cok_serit_kapisi, selftest_cok_serit_kapisi),
     "engram-kapisi": (gate_engram_kapisi, selftest_engram_kapisi),
     "yonlendirme-kapisi": (gate_yonlendirme_kapisi, selftest_yonlendirme_kapisi),
+    "kesit-kapisi": (gate_kesit_kapisi, selftest_kesit_kapisi),
+    "normalizasyon-kapisi": (gate_normalizasyon_kapisi, selftest_normalizasyon_kapisi),
 }
 
 

@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
-"""Rota adayinin (tasarim notu 3.5) olcumunu kayda gecirir.
+"""Aile kesitinin (derinlik/genislik dilimleri) olcumunu kayda gecirir.
 
-Olcum Rust modulunun icindedir (`crates/egitim/src/yonlendirme.rs`,
-`olcum_raporu`): top-k destegi korunuyor mu, satirlar 1'e toplaniyor mu, yuk
-dengesi klasik tabandan iyi mi, sayimlar sekle bagli mi. Bu betik o satiri
-**kosar ve okur**; sayilari kendisi uretmez.
+Olcum Rust modulunun icindedir (`crates/egitim/src/kesit.rs`, `olcum_raporu`):
+her derinlik ve genislik icin bir kesit turetildi mi, **kosuyor** mu (ileri+geri
+adim, sonlu pozitif kayip), parametre sayisi derinlik/genislik ile monoton mu ve
+tam kesit girdi spec'inin kendisi mi. Bu betik o satiri kosar ve okur.
 
 Hedef olcut (kayittan once yazilir, sonuc kayitta olculur):
 
-    satir sapmasi < 1e-12 VE bu modulun yuk orani klasik tabanin oranindan
-    KUCUK VE secim sayisi = jeton x k.
+    kosan = derinlik sayisi x 3 (her derinlikte uc genislik) VE
+    tam kesitin parametre sayisi girdi spec'ininkine esit VE
+    en dar kesitin parametresi tam kesitten kucuk.
 
-"Rota modeli iyilestirir" iddiasi bu kayitta **yoktur**: o iddia uzmanli bir
-egitim karsilastirmasi ister ve `olculmeyen` listesinde durur.
+"Kesitler model kalitesini korur" iddiasi bu kayitta **yoktur**: o iddia egitim
+ve sinav karsilastirmasi ister ve `olculmeyen` listesinde durur.
 
 Kullanim:
 
-    python3 training/yonlendirme.py --olc
-    python3 training/yonlendirme.py --kur
-    python3 training/yonlendirme.py --dogrula
+    python3 training/kesit.py --olc
+    python3 training/kesit.py --kur
+    python3 training/kesit.py --dogrula
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -32,16 +34,16 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KAYIT = ROOT / "training" / "eval" / "sonuclar" / "sinkhorn-yonlendirme-2026-09-27.json"
-ETIKET = "yonlendirme |"
-TAM_ALANLAR = ("jeton", "uzman", "k", "yineleme", "secim", "parametre")
-KESIRLI_ALANLAR = ("satir_sapma", "yuk_orani", "taban_orani")
+KAYIT = ROOT / "training" / "eval" / "sonuclar" / "kesit-2026-09-27.json"
+ETIKET = "kesit |"
+TAM_ALANLAR = ("derinlik", "genislik", "d_k", "izgara", "kosan",
+               "parametre_en_az", "parametre_tam", "parametre_genislik_en_az", "tam_ozdes")
 
 
 def _test_kos() -> tuple[int, str]:
     kosu = subprocess.run(
         ["cargo", "test", "-q", "-p", "lubot-egitim",
-         "yonlendirme::tests::olcum_raporu", "--", "--nocapture"],
+         "kesit::tests::olcum_raporu", "--", "--nocapture"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     return kosu.returncode, kosu.stdout + kosu.stderr
@@ -52,7 +54,7 @@ def _satiri_coz(cikti: str) -> dict[str, float]:
     if satir is None:
         raise SystemExit("olcum satiri bulunamadi:\n" + cikti[-600:])
     olcum: dict[str, float] = {}
-    for alan in TAM_ALANLAR + KESIRLI_ALANLAR:
+    for alan in TAM_ALANLAR:
         eslesme = re.search(rf"{alan}=([0-9.eE+-]+)", satir)
         if not eslesme:
             raise SystemExit(f"olcum satirinda {alan} yok:\n{satir[:400]}")
@@ -68,9 +70,10 @@ def olc() -> dict:
     olcum = _satiri_coz(cikti)
     olcum["sure_saniye"] = round(time.monotonic() - basla, 2)
     olcum["olcut_sonucu"] = bool(
-        olcum["satir_sapma"] < 1e-12
-        and olcum["yuk_orani"] < olcum["taban_orani"]
-        and olcum["secim"] == olcum["jeton"] * olcum["k"]
+        olcum["kosan"] == olcum["derinlik"] * 3
+        and olcum["tam_ozdes"] == 1
+        and olcum["parametre_tam"] > 0
+        and olcum["parametre_genislik_en_az"] < olcum["parametre_tam"]
     )
     return olcum
 
@@ -78,18 +81,19 @@ def olc() -> dict:
 def _kayit(olcum: dict) -> dict:
     return {
         "is": (
-            "Sinkhorn rota adayi (tasarim 3.5): top-k destegi uzerinde log uzayinda iki "
-            "yonlu normalizasyon; yuk dengesi klasik tabana karsi olculdu"
+            "Aile kesiti (derinlik/genislik dilimleri): spec'ten her derinlik ve genislik "
+            "icin kosan alt-modeller; tamlik, monotonluk ve kafa silme olculdu"
         ),
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "tasarim_karti": "workspace:tasarim-kartlari/sinkhorn-yonlendirme.md",
+        "tasarim_karti": "workspace:tasarim-kartlari/derinlik-genislik.md",
         "olcut": {
-            "ad": "satir_toplamlari_bir_ve_yuk_orani_tabandan_kucuk",
+            "ad": "her_derinlikte_kesit_kosar_ve_parametre_monoton",
             "sonuc": bool(olcum["olcut_sonucu"]),
             "ifade": (
-                "jeton=128, uzman=8, k=2, yineleme=8: satir sapmasi < 1e-12 VE yuk orani "
-                "klasik tabanin oranindan kucuk VE secim sayisi = jeton x k"
+                "derinlik=4, genislik=64: kosan = 4 x 3 = 12 kesit (ileri+geri adim, "
+                "sonlu pozitif kayip) VE tam agirliklar bit ozdes (tam_ozdes=1) VE "
+                "en dar genislik kesitinin parametresi tam kesitten kucuk"
             ),
         },
         "kaynaklar": {
@@ -101,14 +105,15 @@ def _kayit(olcum: dict) -> dict:
         },
         "kanit": olcum,
         "uyari": (
-            "Olcum sentetik puanlardir: uzmanli bir aga baglanmadi, egitim kosusu yok. "
-            "Ogrenilebilir parametre sayisi sifirdir - rota bir hesaplamadir."
+            "Kesit ayni kaynak agirliklardan koordinatla kirpilir. Olculen sey "
+            "'bu spec ile bir adim kosuyor' ve 'parametre sayisi monoton' - 'kesilmis "
+            "model kaliteyi koruyor' degil."
         ),
         "olculmeyen": [
-            "rotanin model kalitesine etkisi (uzmanli egitim kosusu ister)",
-            "uzman sayisi ve k secimi izgarasi (isaretli karar)",
-            "dilim (jeton blogu) bazli dengeleme: denge burada tum yigin uzerinde olculdu",
-            "egitim sirasinda yuk dagiliminin adim adim izlenmesi",
+            "kesilmis modelin sinav/kalite davranisi (egitim ve sinav kosusu ister)",
+            "optimizer momentlerini alt-modele tasima ve ortak agirlik egitimi olculmedi",
+            "ortadan katman cikarma (sadece bastan kisaltma olculdu)",
+            "K/V grup orani degisebilir: dar kesitin kaynakla fonksiyonel esdegerligi iddia edilmez",
         ],
     }
 
@@ -124,23 +129,37 @@ def kur() -> Path:
 
 
 def _bulgu(kayit: dict) -> str | None:
+    if not isinstance(kayit, dict):
+        return "kayit nesne degil"
     if not isinstance(kayit.get("olcut"), dict):
         return "olcut bolumu yok"
     if not isinstance(kayit["olcut"].get("sonuc"), bool):
         return "olcut.sonuc mantiksal degil"
-    kanit = kayit.get("kanit") or {}
-    for alan in TAM_ALANLAR + KESIRLI_ALANLAR:
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kanit nesne degil"
+    for alan in TAM_ALANLAR:
         if alan not in kanit:
             return f"kanit alani yok: {alan}"
+        deger = kanit[alan]
+        # bool, int alt sinifi olsa da sayisal olcum degildir. NaN ve sonsuz
+        # karsilastirmalarla sessizce gecmemeli; once tur ve sonluluk denetlenir.
+        if type(deger) not in (int, float):
+            return f"sayisal olmayan kanit: {alan}"
+        if isinstance(deger, float) and not math.isfinite(deger):
+            return f"sonlu olmayan kanit: {alan}"
+        if alan in TAM_ALANLAR and (deger <= 0 or deger != int(deger)):
+            return f"pozitif tam sayi olmayan kanit: {alan}"
     sonuc = bool(
-        kanit["satir_sapma"] < 1e-12
-        and kanit["yuk_orani"] < kanit["taban_orani"]
-        and kanit["secim"] == kanit["jeton"] * kanit["k"]
+        kanit["kosan"] == kanit["derinlik"] * 3
+        and kanit["tam_ozdes"] == 1
+        and kanit["parametre_tam"] > 0
+        and kanit["parametre_genislik_en_az"] < kanit["parametre_tam"]
     )
     if sonuc != kayit["olcut"]["sonuc"]:
         return "olcut ile kanit celisiyor"
-    if kanit["parametre"] != 0:
-        return "rota parametre tutmamali (parametre sayisi sifir olmali)"
+    if kanit["d_k"] <= 0 or kanit["genislik"] % kanit["d_k"] != 0:
+        return "d_k tam sayi kafa bolmesi degil"
     return None
 
 
@@ -153,7 +172,7 @@ def dogrula(yol: Path = KAYIT) -> str:
         raise SystemExit(f"kayit semasi bozuk: {bulgu}")
     taze = olc()
     eski = kayit["kanit"]
-    for alan in TAM_ALANLAR + KESIRLI_ALANLAR:
+    for alan in TAM_ALANLAR:
         if float(eski[alan]) != float(taze[alan]):
             raise SystemExit(
                 f"{alan} kayittan farkli cikti: kayit {eski[alan]}, olcum {taze[alan]}"
@@ -162,9 +181,9 @@ def dogrula(yol: Path = KAYIT) -> str:
         raise SystemExit("olcut sonucu degisti")
     return (
         "kayit taze: "
-        f"{taze['jeton']:.0f} jeton x {taze['uzman']:.0f} uzman, k={taze['k']:.0f}, "
-        f"satir sapmasi {taze['satir_sapma']:.3e}, yuk orani {taze['yuk_orani']:.6} "
-        f"(taban {taze['taban_orani']:.6}), {taze['sure_saniye']} s"
+        f"{taze['kosan']:.0f} kesit kosuyor ({taze['derinlik']:.0f} derinlik x 3 genislik), "
+        f"parametre {taze['parametre_en_az']:.0f}..{taze['parametre_tam']:.0f}, "
+        f"d_k={taze['d_k']:.0f}, {taze['sure_saniye']} s"
     )
 
 
