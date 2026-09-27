@@ -1299,6 +1299,127 @@ fn karisim_konum(tohum: u64, soru: usize, deneme: usize) -> usize {
     (x % 1_000_003) as usize
 }
 
+fn kesit_hatasi(hata: lubot_egitim::kesit::KesitHatasi) -> String {
+    format!("agirlik kesiti reddedildi: {hata:?}")
+}
+
+fn kesit_raporu(
+    kaynak: Spec,
+    p: &Parametreler,
+    derinlik: usize,
+    genislik: usize,
+    tavan: usize,
+) -> Result<String, String> {
+    let kesilen: lubot_egitim::kesit::Kesit =
+        lubot_egitim::kesit::kesit(kaynak, derinlik, genislik).map_err(kesit_hatasi)?;
+    let q = kesilen
+        .agirliklari_al(kaynak, p, tavan)
+        .map_err(kesit_hatasi)?;
+    let mut oz = Sha256::new();
+    let mut toplam = 0usize;
+    let mut tablo =
+        String::from("| tensor | kaynak eleman | kesit eleman |\n| --- | --- | --- |\n");
+    for ((ad, a), b) in p.bloklar_adli().into_iter().zip(q.bloklar()) {
+        toplam += b.len(); // agirliklari_al toplam ve bayt tasmasini denetledi.
+        oz.update(ad.as_bytes());
+        oz.update((b.len() as u64).to_le_bytes());
+        for v in b {
+            oz.update(v.to_le_bytes());
+        }
+        tablo.push_str(&format!("| {ad} | {} | {} |\n", a.len(), b.len()));
+    }
+    let ozet = hex(&oz.finalize());
+    let md = format!(
+        "# Agirlik kesiti\n\n\
+         Var olan kontrol noktasindan koordinatla kesildi; yeni tohumlama yok.\n\n\
+         | alan | deger |\n| --- | --- |\n\
+         | derinlik | {} -> {} |\n| genislik | {} -> {} |\n\
+         | kafa boyutu | {} |\n| yeni tensor bayti | {} |\n\
+         | ek tensor tavani | {} |\n| tensor ozeti SHA-256 | {} |\n\n\
+         {}\n## Sinir\n\n\
+         Bu komut checkpoint yazmaz, optimizer tasimaz ve egitimi degistirmez.\n\
+         Bellek tavani yalniz yeni f64 tensor verisidir; kaynak ve allocator dahil degil.\n\
+         Daraltilmis modelin kalitesi ve egitim kaybi olculmedi.\n",
+        kaynak.n_layers,
+        kesilen.spec.n_layers,
+        kaynak.d_model,
+        kesilen.spec.d_model,
+        kesilen.spec.d_k(),
+        toplam * 8,
+        tavan,
+        ozet,
+        tablo,
+    );
+    crate::validate_output(md.as_bytes(), "kesit-incele")?;
+    Ok(md)
+}
+
+/// `lubot kesit-incele`: kaynak checkpoint'i degistirmeden agirlik kesitini
+/// kurar ve sema-dogrulanmis Markdown raporu verir. Her iki bellek siniri da
+/// operator tarafindan acikca verilir; tahmini donanim kapasitesi kullanilmaz.
+pub fn cmd_kesit_incele(args: &[String]) -> Result<(), String> {
+    use std::io::Read;
+    let gecerli = [
+        "--ckpt",
+        "--derinlik",
+        "--genislik",
+        "--tensor-tavani",
+        "--girdi-tavani",
+    ];
+    let b = Bayraklar::ayikla(args, &gecerli)?;
+    // Ortak ayristirici ilk degeri alir; bu bellek sinirinda belirsizliktir.
+    for ad in gecerli {
+        if args.iter().filter(|s| s.as_str() == ad).count() != 1 {
+            return Err(format!("{ad} tam bir kez verilmeli"));
+        }
+    }
+    let derinlik = b
+        .zorunlu("--derinlik")?
+        .parse::<usize>()
+        .map_err(|_| "--derinlik pozitif tam sayi olmali".to_string())?;
+    let genislik = b
+        .zorunlu("--genislik")?
+        .parse::<usize>()
+        .map_err(|_| "--genislik pozitif tam sayi olmali".to_string())?;
+    let tavan = b
+        .zorunlu("--tensor-tavani")?
+        .parse::<usize>()
+        .map_err(|_| "--tensor-tavani bayt sayisi olmali".to_string())?;
+    let girdi_tavani = b
+        .zorunlu("--girdi-tavani")?
+        .parse::<usize>()
+        .map_err(|_| "--girdi-tavani bayt sayisi olmali".to_string())?;
+    if derinlik == 0 || genislik == 0 || tavan == 0 || girdi_tavani == 0 {
+        return Err("kesit boyutlari ve tavanlar sifirdan buyuk olmali".to_string());
+    }
+    let yol = b.zorunlu("--ckpt")?;
+    let dosya = std::fs::File::open(yol).map_err(|e| format!("checkpoint acilamadi: {e}"))?;
+    let uzunluk = dosya
+        .metadata()
+        .map_err(|e| format!("checkpoint metadata: {e}"))?
+        .len();
+    if uzunluk > girdi_tavani as u64 {
+        return Err("checkpoint girdi tavanini asiyor".to_string());
+    }
+    let sinir = (girdi_tavani as u64)
+        .checked_add(1)
+        .ok_or_else(|| "girdi tavani tasiyor".to_string())?;
+    let mut ham = Vec::new();
+    ham.try_reserve_exact(uzunluk as usize)
+        .map_err(|_| "checkpoint icin bellek ayrilamadi".to_string())?;
+    dosya
+        .take(sinir)
+        .read_to_end(&mut ham)
+        .map_err(|e| format!("checkpoint okunamadi: {e}"))?;
+    if ham.len() > girdi_tavani {
+        return Err("okuma sirasinda checkpoint girdi tavanini asti".to_string());
+    }
+    let ckpt = Kontrol::baytlardan(&ham).map_err(|e| format!("checkpoint: {e:?}"))?;
+    let md = kesit_raporu(ckpt.spec, &ckpt.parametreler, derinlik, genislik, tavan)?;
+    print!("{md}");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1422,5 +1543,127 @@ mod tests {
             crate::validate_output(md.as_bytes(), "egitim-kosu-test")
                 .expect("olcum satirlari semadan gecmeli");
         }
+    }
+
+    #[test]
+    fn kesit_raporu_sema_ve_deterministik_ozet() {
+        let s = Spec {
+            vocab: 16,
+            d_model: 8,
+            n_layers: 2,
+            n_heads: 2,
+            n_kv_heads: 1,
+            qkv_dokunus: 1,
+            qk_norm: true,
+            d_ff: 16,
+            max_seq_len: 8,
+        };
+        let p = Parametreler::mup_init(s, 9, 0.02);
+        let a = kesit_raporu(s, &p, 1, 4, 100_000).expect("rapor");
+        let b = kesit_raporu(s, &p, 1, 4, 100_000).expect("rapor");
+        assert_eq!(a, b);
+        assert!(a.contains("tensor ozeti SHA-256"));
+        assert!(a.contains("checkpoint yazmaz"));
+        assert!(a.contains("olculmedi"));
+        crate::validate_output(a.as_bytes(), "kesit-incele").expect("sema");
+    }
+
+    #[test]
+    fn kesit_raporu_yetersiz_tavani_reddeder() {
+        let s = Spec {
+            vocab: 16,
+            d_model: 8,
+            n_layers: 2,
+            n_heads: 2,
+            n_kv_heads: 1,
+            qkv_dokunus: 0,
+            qk_norm: false,
+            d_ff: 16,
+            max_seq_len: 8,
+        };
+        let p = Parametreler::mup_init(s, 9, 0.02);
+        assert!(kesit_raporu(s, &p, 1, 4, 1).is_err());
+        assert!(kesit_raporu(s, &p, 1, 3, 100_000).is_err());
+    }
+
+    #[test]
+    fn kesit_komutu_belirsiz_bayraklari_reddeder() {
+        assert!(cmd_kesit_incele(&[]).is_err());
+        let args: Vec<String> = [
+            "--ckpt",
+            "yok",
+            "--derinlik",
+            "1",
+            "--genislik",
+            "4",
+            "--tensor-tavani",
+            "100",
+            "--girdi-tavani",
+            "100",
+            "--genislik",
+            "8",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert!(cmd_kesit_incele(&args)
+            .expect_err("tekrar")
+            .contains("tam bir kez"));
+        assert!(cmd_kesit_incele(&["--bilinmeyen".to_string()]).is_err());
+    }
+
+    #[test]
+    fn kesit_komutu_checkpointten_okur_kaynagi_degistirmez() {
+        let s = Spec {
+            vocab: 16,
+            d_model: 8,
+            n_layers: 2,
+            n_heads: 2,
+            n_kv_heads: 1,
+            qkv_dokunus: 1,
+            qk_norm: true,
+            d_ff: 16,
+            max_seq_len: 8,
+        };
+        let ckpt = Kontrol {
+            spec: s,
+            parametreler: Parametreler::mup_init(s, 9, 0.02),
+            adim: 0,
+            epoch: 0,
+            tohum: 9,
+            sozluk_aile: "kesit-test".to_string(),
+            korpus_ozeti: "0".repeat(64),
+            egitim_kaybi: 0.0,
+            dogrulama_kaybi: None,
+            en_iyi_dogrulama: None,
+            devam_konum: 0,
+            hassasiyet: Hassasiyet::F64,
+            optimizer: None,
+        };
+        let mut ham = ckpt.baytlar().expect("checkpoint");
+        let ozet = Sha256::digest(&ham);
+        ham.extend_from_slice(&ozet);
+        let yol = std::env::temp_dir().join(format!("lubot-kesit-{}.ckpt", std::process::id()));
+        std::fs::write(&yol, &ham).expect("yaz");
+        let mut args = vec![
+            "--ckpt".to_string(),
+            yol.to_string_lossy().into_owned(),
+            "--derinlik".to_string(),
+            "1".to_string(),
+            "--genislik".to_string(),
+            "4".to_string(),
+            "--tensor-tavani".to_string(),
+            "100000".to_string(),
+            "--girdi-tavani".to_string(),
+            ham.len().to_string(),
+        ];
+        let kabul = cmd_kesit_incele(&args);
+        args[9] = (ham.len() - 1).to_string();
+        let ret = cmd_kesit_incele(&args);
+        let sonra = std::fs::read(&yol).expect("oku");
+        std::fs::remove_file(&yol).expect("sil");
+        assert!(kabul.is_ok(), "{kabul:?}");
+        assert!(ret.expect_err("tavan").contains("girdi tavanini"));
+        assert_eq!(ham, sonra);
     }
 }

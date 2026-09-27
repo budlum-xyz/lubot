@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
-"""Rota adayinin (tasarim notu 3.5) olcumunu kayda gecirir.
+"""Sifir merkezli RMS norm adayinin olcumunu kayda gecirir.
 
-Olcum Rust modulunun icindedir (`crates/egitim/src/yonlendirme.rs`,
-`olcum_raporu`): top-k destegi korunuyor mu, satirlar 1'e toplaniyor mu, yuk
-dengesi klasik tabandan iyi mi, sayimlar sekle bagli mi. Bu betik o satiri
-**kosar ve okur**; sayilari kendisi uretmez.
+Olcum Rust modulunun icindedir (`crates/egitim/src/normalizasyon.rs`,
+`olcum_raporu`): kaydirma degismezligi, klasik RMS ile fark, cikti ortalamasi ve
+RMS karesinin **eps tabanli tam iliskisi**, elle turetilen geri gecisin merkezi
+farkla uyumu. Bu betik o satiri kosar ve okur.
 
 Hedef olcut (kayittan once yazilir, sonuc kayitta olculur):
 
-    satir sapmasi < 1e-12 VE bu modulun yuk orani klasik tabanin oranindan
-    KUCUK VE secim sayisi = jeton x k.
+    kaydirma ile cikti degismiyor (merkez_fark < 1e-12) VE klasik RMS
+    kaydirmadan etkileniyor (duz_rms_fark > 1.0) VE gradyan sapmasi < 1e-6.
 
-"Rota modeli iyilestirir" iddiasi bu kayitta **yoktur**: o iddia uzmanli bir
-egitim karsilastirmasi ister ve `olculmeyen` listesinde durur.
+"Merkezleme kaliteyi artirir" iddiasi bu kayitta **yoktur**: o iddia bir egitim
+karsilastirmasi ister ve `olculmeyen` listesinde durur.
 
 Kullanim:
 
-    python3 training/yonlendirme.py --olc
-    python3 training/yonlendirme.py --kur
-    python3 training/yonlendirme.py --dogrula
+    python3 training/normalizasyon.py --olc
+    python3 training/normalizasyon.py --kur
+    python3 training/normalizasyon.py --dogrula
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -32,16 +33,16 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KAYIT = ROOT / "training" / "eval" / "sonuclar" / "sinkhorn-yonlendirme-2026-09-27.json"
-ETIKET = "yonlendirme |"
-TAM_ALANLAR = ("jeton", "uzman", "k", "yineleme", "secim", "parametre")
-KESIRLI_ALANLAR = ("satir_sapma", "yuk_orani", "taban_orani")
+KAYIT = ROOT / "training" / "eval" / "sonuclar" / "normalizasyon-2026-09-27.json"
+ETIKET = "normalizasyon |"
+TAM_ALANLAR = ("genislik", "denetlenen", "parametre")
+KESIRLI_ALANLAR = ("merkez_fark", "duz_rms_fark", "cikti_ort", "cikti_rms2", "gradyan_sapma")
 
 
 def _test_kos() -> tuple[int, str]:
     kosu = subprocess.run(
         ["cargo", "test", "-q", "-p", "lubot-egitim",
-         "yonlendirme::tests::olcum_raporu", "--", "--nocapture"],
+         "normalizasyon::tests::olcum_raporu", "--", "--nocapture"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     return kosu.returncode, kosu.stdout + kosu.stderr
@@ -68,9 +69,10 @@ def olc() -> dict:
     olcum = _satiri_coz(cikti)
     olcum["sure_saniye"] = round(time.monotonic() - basla, 2)
     olcum["olcut_sonucu"] = bool(
-        olcum["satir_sapma"] < 1e-12
-        and olcum["yuk_orani"] < olcum["taban_orani"]
-        and olcum["secim"] == olcum["jeton"] * olcum["k"]
+        olcum["merkez_fark"] < 1e-12
+        and olcum["duz_rms_fark"] > 1.0
+        and olcum["gradyan_sapma"] < 1e-6
+        and olcum["denetlenen"] == olcum["genislik"]
     )
     return olcum
 
@@ -78,18 +80,19 @@ def olc() -> dict:
 def _kayit(olcum: dict) -> dict:
     return {
         "is": (
-            "Sinkhorn rota adayi (tasarim 3.5): top-k destegi uzerinde log uzayinda iki "
-            "yonlu normalizasyon; yuk dengesi klasik tabana karsi olculdu"
+            "Sifir merkezli RMS norm adayi (tasarim 3.2 norm yolu): kaydirma degismezligi, "
+            "klasik RMS ile olculen fark, eps tabanli cikti iliskisi ve elle turetilen "
+            "geri gecisin sonlu farkla uyumu"
         ),
         "kosucu": "betik",
         "tarih": time.strftime("%Y-%m-%d"),
-        "tasarim_karti": "workspace:tasarim-kartlari/sinkhorn-yonlendirme.md",
+        "tasarim_karti": "workspace:tasarim-kartlari/normalizasyon.md",
         "olcut": {
-            "ad": "satir_toplamlari_bir_ve_yuk_orani_tabandan_kucuk",
+            "ad": "kaydirma_degismez_klasik_rms_degisken_ve_gradyan_fd_ile_uyumlu",
             "sonuc": bool(olcum["olcut_sonucu"]),
             "ifade": (
-                "jeton=128, uzman=8, k=2, yineleme=8: satir sapmasi < 1e-12 VE yuk orani "
-                "klasik tabanin oranindan kucuk VE secim sayisi = jeton x k"
+                "genislik=8, eps=1e-6: merkez_fark < 1e-12 VE duz_rms_fark > 1.0 VE "
+                "gradyan_sapma < 1e-6 VE denetlenen girdi sayisi = genislik"
             ),
         },
         "kaynaklar": {
@@ -101,14 +104,15 @@ def _kayit(olcum: dict) -> dict:
         },
         "kanit": olcum,
         "uyari": (
-            "Olcum sentetik puanlardir: uzmanli bir aga baglanmadi, egitim kosusu yok. "
-            "Ogrenilebilir parametre sayisi sifirdir - rota bir hesaplamadir."
+            "Olcum sentetik bir vektordur; hicbir katmana baglanmadi ve hicbir egitim "
+            "kosusunda kullanilmadi. Olcekleme degismezligi **yaklasiktir**: sapma eps "
+            "tabanindan gelir ve eps kuculdukce kuculur (testte iki eps degeri ile olculur)."
         ),
         "olculmeyen": [
-            "rotanin model kalitesine etkisi (uzmanli egitim kosusu ister)",
-            "uzman sayisi ve k secimi izgarasi (isaretli karar)",
-            "dilim (jeton blogu) bazli dengeleme: denge burada tum yigin uzerinde olculdu",
-            "egitim sirasinda yuk dagiliminin adim adim izlenmesi",
+            "norm seciminin egitim kaybina etkisi (karsilastirmali kosu ister)",
+            "cekirdekteki QK-norm ile degistirilebilirlik (q/k yoluna baglanmadi)",
+            "derin yiginlarda karisik hassasiyet davranisi",
+            "eps secimi izgarasi (yalniz 1e-6 ve 1e-18 karsilastirildi)",
         ],
     }
 
@@ -124,23 +128,44 @@ def kur() -> Path:
 
 
 def _bulgu(kayit: dict) -> str | None:
+    if not isinstance(kayit, dict):
+        return "kayit nesne degil"
     if not isinstance(kayit.get("olcut"), dict):
         return "olcut bolumu yok"
     if not isinstance(kayit["olcut"].get("sonuc"), bool):
         return "olcut.sonuc mantiksal degil"
-    kanit = kayit.get("kanit") or {}
+    kanit = kayit.get("kanit")
+    if not isinstance(kanit, dict):
+        return "kanit nesne degil"
     for alan in TAM_ALANLAR + KESIRLI_ALANLAR:
         if alan not in kanit:
             return f"kanit alani yok: {alan}"
+        deger = kanit[alan]
+        # bool, int alt sinifi olsa da sayisal olcum degildir. NaN ve sonsuz
+        # karsilastirmalarla sessizce gecmemeli; once tur ve sonluluk denetlenir.
+        if type(deger) not in (int, float):
+            return f"sayisal olmayan kanit: {alan}"
+        if isinstance(deger, float) and not math.isfinite(deger):
+            return f"sonlu olmayan kanit: {alan}"
+        if alan in TAM_ALANLAR and (deger <= 0 or deger != int(deger)):
+            return f"pozitif tam sayi olmayan kanit: {alan}"
+    for alan in ("merkez_fark", "duz_rms_fark", "gradyan_sapma", "cikti_rms2"):
+        if kanit[alan] < 0:
+            return f"negatif buyukluk: {alan}"
+    if not 0 <= kanit["cikti_rms2"] <= 1:
+        return "RMS karesi birim aralik disinda"
     sonuc = bool(
-        kanit["satir_sapma"] < 1e-12
-        and kanit["yuk_orani"] < kanit["taban_orani"]
-        and kanit["secim"] == kanit["jeton"] * kanit["k"]
+        kanit["merkez_fark"] < 1e-12
+        and kanit["duz_rms_fark"] > 1.0
+        and kanit["gradyan_sapma"] < 1e-6
+        and kanit["denetlenen"] == kanit["genislik"]
     )
     if sonuc != kayit["olcut"]["sonuc"]:
         return "olcut ile kanit celisiyor"
-    if kanit["parametre"] != 0:
-        return "rota parametre tutmamali (parametre sayisi sifir olmali)"
+    if kanit["parametre"] != kanit["genislik"]:
+        return "parametre sayisi genislik degil (olcek vektoru sekle bagli olmali)"
+    if abs(kanit["cikti_ort"]) >= 1e-12:
+        return "cikti sifir ortalamali degil"
     return None
 
 
@@ -162,9 +187,9 @@ def dogrula(yol: Path = KAYIT) -> str:
         raise SystemExit("olcut sonucu degisti")
     return (
         "kayit taze: "
-        f"{taze['jeton']:.0f} jeton x {taze['uzman']:.0f} uzman, k={taze['k']:.0f}, "
-        f"satir sapmasi {taze['satir_sapma']:.3e}, yuk orani {taze['yuk_orani']:.6} "
-        f"(taban {taze['taban_orani']:.6}), {taze['sure_saniye']} s"
+        f"genislik {taze['genislik']:.0f}, kaydirma farki {taze['merkez_fark']:.3e}, "
+        f"klasik RMS farki {taze['duz_rms_fark']:.3f}, gradyan sapmasi "
+        f"{taze['gradyan_sapma']:.3e}, {taze['sure_saniye']} s"
     )
 
 
@@ -174,7 +199,7 @@ def main(argv: list[str]) -> int:
     ayristirici.add_argument("--kur", action="store_true", help="kaydi yaz")
     ayristirici.add_argument("--dogrula", action="store_true", help="kayit taze mi")
     ayristirici.add_argument("--kayit", type=Path, default=KAYIT, help="kayit yolu")
-    args = ayristirici.parse_args(argv)
+    args = ayristirici.parse_args(args=argv)
     if args.olc:
         print(json.dumps(olc(), ensure_ascii=False, indent=2, sort_keys=True))
         return 0

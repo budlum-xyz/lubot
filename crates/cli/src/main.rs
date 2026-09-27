@@ -26,6 +26,7 @@ fn usage() -> String {
     [
         "usage:",
         "  lubot corpus <file.jsonl.gz>...",
+        "  lubot kesit-incele --ckpt <f> --derinlik N --genislik N --tensor-tavani BAYT --girdi-tavani BAYT",
         "  lubot egitim   (trainer self-check: spec, epoch ceiling, measured descent)",
         "  lubot jetonla --vocab <v.json> --corpus <c.jsonl.gz> [--limit N] [--tam]",
         "  lubot egitim-veri --corpus <c.jsonl.gz> [--uzunluk N]  (window measurement vs the spec)",
@@ -136,6 +137,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "egitim" => cmd_egitim(rest),
         "jetonla" => cmd_jetonla(rest),
         "egitim-veri" => cmd_egitim_veri(rest),
+        "kesit-incele" => lubot::egitim_kosu::cmd_kesit_incele(rest),
         "egitim-kosu" => lubot::egitim_kosu::cmd_egitim_kosu(rest),
         "egitim-karsilastir" => lubot::egitim_kosu::cmd_egitim_karsilastir(rest),
         "cikarim" => lubot::egitim_kosu::cmd_cikarim(rest),
