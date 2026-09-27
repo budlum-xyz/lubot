@@ -64,6 +64,7 @@ pub struct Kesit {
 /// modelin onceki katmanlaridir. `genislik` hedef `d_model`dir; kafa boyutu
 /// (`d_k = d_model / n_heads`) korunur, kafa sayisi hedefe gore azalir.
 pub fn kesit(spec: Spec, derinlik: usize, genislik: usize) -> Result<Kesit, KesitHatasi> {
+    spec.dogrula().map_err(KesitHatasi::UretilenSpecGecersiz)?;
     if derinlik == 0 {
         return Err(KesitHatasi::SifirDerinlik);
     }
@@ -81,10 +82,9 @@ pub fn kesit(spec: Spec, derinlik: usize, genislik: usize) -> Result<Kesit, Kesi
         return Err(KesitHatasi::GenislikKafaKatıDegil(genislik, d_k));
     }
     let kafa = genislik / d_k;
-    // MLP ic genisligi d_model ile ayni oranda olceklenir ve tam sayi
-    // aritmetigi ile hesaplanir: yuvarlama sessiz kalmaz, asagi yuvarlanir ve
-    // yine de pozitif kalir (`d_ff >= d_model` spec dogrulamasinda zaten sart).
-    let d_ff = (spec.d_ff * genislik / spec.d_model).max(genislik);
+    // Carpim u128 ile hesaplanir; genislik <= d_model oldugu icin sonuc
+    // usize araligindadir. Dar MLP de gecerlidir: tam kesit d_ff'yi korur.
+    let d_ff = ((spec.d_ff as u128 * genislik as u128) / spec.d_model as u128).max(1) as usize;
     let mut kesilen = Spec {
         n_layers: derinlik,
         d_model: genislik,
@@ -128,6 +128,9 @@ pub fn derinlik_merdiveni(spec: Spec) -> Vec<Kesit> {
 
 /// Genislik izgarasi: kafa katlarina dusen genislikler icin kesit.
 pub fn genislik_izgarasi(spec: Spec, en_az_kafa: usize) -> Vec<Kesit> {
+    if spec.dogrula().is_err() {
+        return Vec::new();
+    }
     let d_k = spec.d_k();
     if d_k == 0 {
         return Vec::new();
@@ -179,6 +182,14 @@ mod tests {
             Err(KesitHatasi::GenislikKafaKatıDegil(40, 16))
         );
         assert!(kesit(s, 2, 32).is_ok());
+        for bozuk in [
+            Spec { n_heads: 0, ..s },
+            Spec { n_kv_heads: 0, ..s },
+            Spec { d_model: 0, ..s },
+        ] {
+            assert!(kesit(bozuk, 1, 16).is_err());
+            assert!(genislik_izgarasi(bozuk, 1).is_empty());
+        }
     }
 
     #[test]
@@ -187,6 +198,13 @@ mod tests {
         let tam = kesit(s, s.n_layers, s.d_model).unwrap_or_else(|_| panic!("kesit"));
         assert_eq!(tam.spec, s, "tam kesit girdi spec'i olmali");
         assert_eq!(tam.spec.parametre_sayisi(), s.parametre_sayisi());
+        for d_ff in [1, 16, 63, 64, 256, usize::MAX] {
+            let dar = Spec { d_ff, ..s };
+            assert_eq!(
+                kesit(dar, dar.n_layers, dar.d_model).map(|k| k.spec),
+                Ok(dar)
+            );
+        }
     }
 
     #[test]

@@ -85,6 +85,7 @@ pub struct NormCikti {
 }
 
 fn _cerceve(spec: NormSpec, x: &[f64]) -> Result<(f64, Vec<f64>), NormHatasi> {
+    NormSpec::yeni(spec.genislik, spec.eps)?;
     if x.len() != spec.genislik {
         return Err(NormHatasi::UzunlukUyusmuyor(x.len(), spec.genislik));
     }
@@ -114,7 +115,7 @@ pub fn norm_ileri(spec: NormSpec, x: &[f64], olcek: &[f64]) -> Result<NormCikti,
 /// ```text
 /// gx_j = gy_j / r - (sum_i gy_i c_i) c_j / (n r^3) - (sum_i gy_i) / (n r)
 /// ```
-/// burada `gy = grad_y * (1 + s)` (olcekli cikis icin), `grad_s_j = grad_y_j * y_j`.
+/// burada `gy = grad_y * (1 + s)` (olcekli cikis icin), `grad_s_j = grad_y_j * c_j / r`.
 pub fn norm_geri(
     spec: NormSpec,
     x: &[f64],
@@ -152,6 +153,7 @@ pub fn merkezle(spec: NormSpec, x: &[f64]) -> Result<Vec<f64>, NormHatasi> {
 /// Klasik RMS (merkezlemez): karsilastirma olcusu. Bu modul onu kullanmaz;
 /// yalnizca farki **olcmek** icin disariya aciktir.
 pub fn duz_rms(spec: NormSpec, x: &[f64]) -> Result<Vec<f64>, NormHatasi> {
+    NormSpec::yeni(spec.genislik, spec.eps)?;
     if x.len() != spec.genislik {
         return Err(NormHatasi::UzunlukUyusmuyor(x.len(), spec.genislik));
     }
