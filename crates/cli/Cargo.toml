@@ -10,7 +10,7 @@ license-file.workspace = true
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 lubot-answer = { path = "../answer", version = "0.1.0" }
 lubot-index = { path = "../index", version = "0.1.0" }
 lubot-doc = { path = "../doc", version = "0.1.0" }
