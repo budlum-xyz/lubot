@@ -145,7 +145,7 @@ def _bulgu(kayit: dict) -> str | None:
         return "olcut ile kanit celisiyor"
     if kanit["parametre"] != kanit["genislik"]:
         return "parametre sayisi genislik degil (olcek vektoru sekle bagli olmali)"
-    if kanit["cikti_ort"] >= 1e-12:
+    if abs(kanit["cikti_ort"]) >= 1e-12:
         return "cikti sifir ortalamali degil"
     return None
 
