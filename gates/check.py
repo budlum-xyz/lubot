@@ -8554,6 +8554,8 @@ PORT_KAYITLARI = (
      "fn olcum_raporu", "training/eval/sonuclar/nicem-2026-09-27.json"),
     ("training/kodlayici.py", "crates/kodlayici/src/blok.rs",
      "fn olcum_raporu_kodlayici", "training/eval/sonuclar/kodlayici-2026-09-27.json"),
+    ("training/sema_cozucu.py", "crates/sema-cozucu/src/cozucu.rs",
+     "fn olcum_raporu_sema_cozucu", "training/eval/sonuclar/sema-cozucu-2026-09-27.json"),
 )
 PORT_UCUNCU_TARAF = ("needle", "laya", "modernbert", "flexbert", "mmbert", "convai",
                      "torch", "huggingface", "transformers", "candle")
@@ -8606,10 +8608,14 @@ def _port_kaynak_denetle(kaynak: Path, test_adi: str) -> list:
 
 
 def gate_omurga_karar_port_kayitlari() -> str:
-    """Omurga (dikkat kadansi, norm yeri, kodlayici siniri), tipli karar, Hadamard MLP ve
-    alt-bayt nicem port kartlarinin karta-ozel kayitlari duruyor ve bu makinede yeniden olculuyor: her kayit
-    kendi betiginin `--dogrula` adimindan gecer, olcum testi kaynakta var,
-    K1 siniri (ust kaynak adi test disinda gecmez) tutuyor."""
+    """Port kartlarinin karta-ozel kayitlari duruyor ve bu makinede yeniden
+    olculuyor: her kayit kendi betiginin `--dogrula` adimindan gecer, olcum
+    testi kaynakta var, K1 siniri (ust kaynak adi test disinda gecmez) tutuyor.
+
+    Kapsam PORT_KAYITLARI tablosudur: omurga (dikkat kadansi, norm yeri,
+    kodlayici siniri), tipli karar, Hadamard MLP, alt-bayt nicem ve sema cozucu.
+    Ad eski; tabloya eklenen her kart ayni sozlesmeye baglanir, kayit
+    sozlesmesi icin ayri bir kapi acilmaz."""
     ihlaller: list[str] = []
     for betik, kaynak, test_adi, kayit in PORT_KAYITLARI:
         ihlaller += _port_kaynak_denetle(ROOT / kaynak, test_adi)
@@ -9109,6 +9115,160 @@ def selftest_kodlayici_kapisi() -> None:
             raise SystemExit("belirlenimcilik testi sokulmus kopya yakalanmadi")
 
 
+def _sema_cozucu_denetle(dizin) -> list:
+    """Sema cozucunun olculebilir sozlesmesi: maske otomattan gelir, kabulun
+    tek kaynagi `kapat`'tir, kacis iddiasi testte assert edilir ve ust
+    kaynak adi yalniz port kartinda gecer. Duzeltilebilir bir metin denetimidir;
+    dizin disaridan verilir ki self-test ayni denetimi kasitli bozuk kopyalarda
+    kosturabilsin."""
+    otomat = dizin / "src" / "otomat.rs"
+    cozucu = dizin / "src" / "cozucu.rs"
+    kutuphane = dizin / "src" / "lib.rs"
+    for yol in (otomat, cozucu, kutuphane):
+        if not yol.is_file():
+            return [f"{yol} yok"]
+    o_metin = otomat.read_text(encoding="utf-8")
+    c_metin = cozucu.read_text(encoding="utf-8")
+    k_metin = kutuphane.read_text(encoding="utf-8")
+    ihlaller = []
+    # 1) Maske otomatin kendisinden gelir: decode ayri bir kural kopyasi tutmaz,
+    #    yoksa iki karar mercii olur ve aralarindaki fark olculmez.
+    for iz in ("if !y.izinli(jeton)", "maskelenen += 1"):
+        if iz not in c_metin:
+            ihlaller.append(f"maske otomattan alinmiyor: {iz}")
+    # 2) Secim iki uc durumda da karar verir: NaN baslangic olamaz, esitlikte
+    #    kucuk indeks kalir. Ikisi de sozlesmenin parcasi.
+    for iz in ("puan.is_nan()", "partial_cmp(&en_iyi)"):
+        if iz not in c_metin:
+            ihlaller.append(f"secim sozlesmesi eksik: {iz}")
+    # 3) Kabulun tek kaynagi `kapat`: iki yerden sorulan ayni soru iki ayri
+    #    cevabin mumkun oldugu bir yer acar.
+    if "match y.kapat()" not in c_metin:
+        ihlaller.append("kabul karari y.kapat()'tan alinmiyor")
+    if "KabulEdilmez { sebep }" not in c_metin:
+        ihlaller.append("red nedeni tasinmiyor (KabulEdilmez)")
+    # 4) Kacis iddiasi kayda birakilmaz, testte assert edilir: CI kagit
+    #    uzerinde degil test duzeyinde kirmizi olur.
+    for iz in ("dogrulayici_kacis, 0", "rastgele_kacis, 0", "naif_gecersiz > 0"):
+        if iz not in c_metin:
+            ihlaller.append(f"kacis olcutu assert edilmiyor: {iz}")
+    # 5) Otomatin daraltma yerleri yerinde duruyor mu: baslik boslugu, cit
+    #    dengesi, tablo sutunu, UTF-8 araligi ve ters kare kosusu.
+    for iz in ("BaslikBoslukIster", "CitDengesiz", "TabloUyumsuz",
+               "devam_araligi", "ters_kare_kosu_bitti"):
+        if iz not in o_metin:
+            ihlaller.append(f"otomat sozlesmesi eksik: {iz}")
+    # 6) Crate bir uretim yuzeyi degil: dar re-export durmali.
+    if "pub use otomat::Yuruyus;" not in k_metin:
+        ihlaller.append("dar re-export yok (pub use otomat::Yuruyus)")
+    # 7) K1: ust kaynak adi test disinda ve yorum satiri disinda gecmez.
+    for yol, metin in ((otomat, o_metin), (cozucu, c_metin), (kutuphane, k_metin)):
+        test_oneki = metin.find("mod tests")
+        govde = metin if test_oneki == -1 else metin[:test_oneki]
+        kucuk = "\n".join(
+            s for s in govde.lower().splitlines() if not s.lstrip().startswith("//")
+        )
+        for ad in PORT_UCUNCU_TARAF:
+            if re.search(rf"\b{ad}\b", kucuk):
+                ihlaller.append(f"{yol.name}: ucuncu taraf adi test disinda gecti: {ad}")
+    return ihlaller
+
+
+def gate_sema_cozucu_kapisi() -> str:
+    """Sema cozucu olculur halde duruyor: maske otomattan geliyor, kabulun tek
+    kaynagi `kapat`, kacis iddiasi testte assert ediliyor, red yollari
+    kosuluyor ve ust kaynak adi kodda gecmiyor. Ayrica crate'in testleri burada
+    kosturulur: kac test varsa o kadari gecmeli (sessiz atlama yok).
+
+    Bilinen sinir: K1 taramasi her dosyada `mod tests` isaretinden **onceki**
+    govdeyi ve yorum disi satirlari tarar (`_port_kaynak_denetle` ile ayni
+    kural). Test modulunden sonra ya da yorum satirinda duran bir ad
+    taranmaz; kanarya bu siniri bilerek govdeden isiriyor."""
+    import re
+    import subprocess
+
+    dizin = ROOT / "crates" / "sema-cozucu"
+    ihlaller = _sema_cozucu_denetle(dizin)
+    if ihlaller:
+        raise SystemExit("sema cozucu sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+    beklenen = 0
+    for yol in sorted(dizin.rglob("*.rs")):
+        beklenen += len(re.findall(r"#\[test\]", yol.read_text(encoding="utf-8")))
+    if beklenen == 0:
+        raise SystemExit("crate'te hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-sema-cozucu", "--lib"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("crate testleri kirmizi:\n" + cikti[-2000:])
+    eslesme = re.search(r"test result: ok\. (\d+) passed", cikti)
+    if not eslesme:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = int(eslesme.group(1))
+    if gecen != beklenen:
+        raise SystemExit(f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var")
+    return (
+        f"sema cozucu olculur: {gecen} test, maske otomattan, kabul y.kapat() tan, "
+        "kacis iddiasi assert, red yollari kosuluyor"
+    )
+
+
+def selftest_sema_cozucu_kapisi() -> None:
+    """Kanaryalar: her biri denetimin **belirli** bir maddesini sokuyor ve
+    denetimin o maddeyi adlandirarak yakalamasi gerekiyor.
+
+    "Bir sey yakalandi" yetmez: yanlis maddeyi yakalayan kanarya kanarya
+    degildir. Bu self-test'in ilk halinde iki tanesi oyleydi ve CI'da kirmizi
+    yandi - biri `ters_kare_kosu_bitti` adinin yalniz **ilk** gectigi yeri
+    degistiriyordu (ad dosyada baska yerlerde durdugu icin denetim geciyordu),
+    oburu ust kaynak adini **yorum satirina** yaziyordu (K1 denetimi yorum
+    satirlarini zaten atliyor). Ikisi de duzeltildi ve artik kanaryalar
+    beklenen ihlal metnini de denetliyor."""
+    import tempfile
+
+    gercek = ROOT / "crates" / "sema-cozucu"
+    if _sema_cozucu_denetle(gercek):
+        raise SystemExit("saglam crate denetimden gecmedi")
+    # (dosya, sokulen iz ya da None, yerine gelen, beklenen ihlal parcasi)
+    kanaryalar = (
+        ("cozucu.rs", "if !y.izinli(jeton)", "if false", "maske otomattan alinmiyor"),
+        ("cozucu.rs", "match y.kapat()", "match y.kapat_eski()", "y.kapat()"),
+        ("cozucu.rs", "dogrulayici_kacis, 0", "dogrulayici_kacis, 99", "kacis olcutu"),
+        ("cozucu.rs", "puan.is_nan()", "puan.is_infinite()", "secim sozlesmesi eksik"),
+        ("otomat.rs", "ters_kare_kosu_bitti", "kosu_bitti", "otomat sozlesmesi eksik"),
+        ("otomat.rs", "BaslikBoslukIster", "BoslukIster", "otomat sozlesmesi eksik"),
+        ("lib.rs", "pub use otomat::Yuruyus;", "pub use otomat::YuruyusEski;", "dar re-export"),
+        # K1: ad yoruma degil **koda** yazilir (denetim yorumlari atlar) ve
+        # `mod tests` isaretinden **once** durur, cunku denetim yalniz govdeyi
+        # tarar. Dosyanin sonuna eklenen bir ad taranmaz - bu sinir
+        # `_port_kaynak_denetle` ile ayni ve burada saklanmiyor.
+        ("lib.rs", "pub use otomat::Yuruyus;",
+         'pub const KAYNAK_ADI: &str = "needle";\npub use otomat::Yuruyus;',
+         "ucuncu taraf adi"),
+    )
+    with tempfile.TemporaryDirectory() as td:
+        bozuk = Path(td) / "sema-cozucu"
+        (bozuk / "src").mkdir(parents=True)
+        saglam = {}
+        for ad in ("lib.rs", "otomat.rs", "cozucu.rs"):
+            saglam[ad] = (gercek / "src" / ad).read_text(encoding="utf-8")
+            (bozuk / "src" / ad).write_text(saglam[ad], encoding="utf-8")
+        for ad, iz, degisim, beklenen in kanaryalar:
+            hedef = bozuk / "src" / ad
+            metin = saglam[ad].replace(iz, degisim)
+            if metin == saglam[ad]:
+                raise SystemExit(f"kanarya hedefi kaynakta yok: {iz}")
+            hedef.write_text(metin, encoding="utf-8")
+            ihlaller = _sema_cozucu_denetle(bozuk)
+            if not any(beklenen in i for i in ihlaller):
+                raise SystemExit(
+                    f"kanarya beklenen ihlalle yakalanmadi ({ad}: {iz}): {ihlaller}"
+                )
+            hedef.write_text(saglam[ad], encoding="utf-8")
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -9242,6 +9402,7 @@ GATES_EXTRA = {
     "omurga-karar-port-kayitlari": (gate_omurga_karar_port_kayitlari, selftest_omurga_karar_port_kayitlari),
     "kademe-kapisi": (gate_kademe_kapisi, selftest_kademe_kapisi),
     "kodlayici-kapisi": (gate_kodlayici_kapisi, selftest_kodlayici_kapisi),
+    "sema-cozucu-kapisi": (gate_sema_cozucu_kapisi, selftest_sema_cozucu_kapisi),
 }
 
 
