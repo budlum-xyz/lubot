@@ -96,8 +96,11 @@ entering the corpus), `karar` (the decision head as its own crate, with its
 verdict ledger), `uc-asama` (three named stages with a data bucket per
 checkpoint), `paralel` (parallel and mixed-precision run planning), `karma`
 (cross-stage token accounting), `sistem` (the training system named as
-components), `nicem` (sub-byte quantization) and `tasiyici` (the in-place
-weight container and its depth ladder). They are workspace members with
+components), `nicem` (sub-byte quantization), `tasiyici` (the in-place
+weight container and its depth ladder) and `omurga` (the encoder backbone:
+rotary positions, the alternating local/global attention schedule,
+grouped-query attention, bias-free blocks, and the flat weight directory
+that makes averaging two checkpoints a defined operation). They are workspace members with
 their own tests; the ones the binary does not reach yet are named in
 `gates/unwired.baseline`, a list that may only shrink. This is stated so a
 reader sees the stack as it is - built, not yet fully wired - rather than
