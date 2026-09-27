@@ -59,6 +59,7 @@ pub mod hadamard;
 pub mod katman;
 pub mod konum;
 pub mod pencere;
+pub mod sonda;
 
 use dikkat::{DikkatHatasi, Gqa};
 use katman::{KatmanHatasi, Norm};
