@@ -33,7 +33,7 @@ herkes kendi listesine bakar ve farkli cevap verir.
 | `hyperconnections` | `crates/egitim/src/cok_serit.rs` | `cok-serit-kapisi` | `cok-serit-2026-09-26.json` | bagimsiz |
 | `sinkhorn_router` | `crates/egitim/src/yonlendirme.rs` | `yonlendirme-kapisi` | `sinkhorn-yonlendirme-2026-09-27.json` | bagimsiz |
 | `decision_head` | `crates/tomurcuk/src/lib.rs`, `crates/tomurcuk/src/kalibrasyon.rs` | `kalibrasyon-bandi-kapisi` | `kalibrasyon-2026-09-26.json` | bagli |
-| `schema_decoder` | `crates/read/src/output_schema.rs` | `ai-output-schema-enforced` | `sema-kapsam-2026-09-24.json` | bagli |
+| `schema_decoder` | `crates/read/src/output_schema.rs`, `crates/egitim/src/sema_cozucu.rs` | `ai-output-schema-enforced`, `sema-cozucu-reddeder` | `sema-kapsam-2026-09-24.json` | bagli |
 | `cq2_quant` | `crates/nicem/src/lib.rs`, `crates/nicem/src/grup.rs`, `crates/tasiyici/src/lib.rs` | `bit-budget-is-arithmetic` | `nicem-2026-09-27.json` | bagli |
 
 `gqa_engram_attention` satiri iki parcalidir ve durumu **parca parca** okunur:
@@ -41,6 +41,19 @@ GQA egitim cekirdeginde baglidir (`n_kv_heads`, `qkv_dokunus`, `qk_norm` ayni
 ileri/geri gecisten geciyor), engram tablosu ise bagimsizdi — 3.8 blogu onu bir
 kompozisyon icine aldi ama o blok da hicbir aileye bagli degil. Satirin durumu
 bu yuzden GQA'ya gore `bagli` yazilir; engramin kendi satiri asagidadir.
+
+`schema_decoder` satiri da iki parcalidir ve bir **itiraz** tasiyor. Direktif
+7.3 bu modulden "gecerli cikti uzayini grammar/sema ile daraltarak decode"
+etmesini istiyor; `read::output_schema` bunu yapmaz, **bitmis** bir ciktiyi
+dogrular. Ikisi ayni kuralin iki yarisidir ve biri otekinin yerine gecmez:
+dogrulayici "bu gecerli miydi?" sorusuna cevap verir, cozucunun ihtiyaci olan
+soru "bu hala gecerli olabilir mi?"dir ve o soru her konumda, bir logit
+orneklenmeden once sorulmak zorundadir. Cozme tarafi bu agacta **yoktu**;
+`crates/egitim/src/sema_cozucu.rs` onu ekliyor. Satirin durumu dogrulayici
+yarisina gore `bagli` yazili kalir - cozucu yarisi **bagimsizdir** ve hicbir
+cagri yolundan gecmez. Bu, envanterin "sekizin sekizi de var" sonucunu
+degistirmez ama onu daha dar okutur: sekizinci modulun iki yarisindan biri
+2026-09-27'de eklendi, oteki zaten duruyordu.
 
 ## 7.4'te olmayan, bu agacta olan
 
