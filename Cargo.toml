@@ -4,6 +4,7 @@ members = [
     "crates/alim",
     "crates/gecis",
     "crates/omurga",
+    "crates/otonom",
     "crates/veri",
     "crates/uc-asama",
     "crates/transformer",

@@ -9650,7 +9650,226 @@ def selftest_sema_jeton_maskeler() -> None:
                 raise SystemExit(f"{ad} yakalanmadi")
 
 
+
+# --------------------------------------------------------------------------
+# gate: the autonomous loop refuses by name (direktif bolum 6)
+# --------------------------------------------------------------------------
+OTONOM_MODULLER = (
+    "tetikleyici",
+    "veri_yolu",
+    "kosum",
+    "regresyon",
+    "yayin",
+    "capraz",
+    "secim",
+    "koken",
+    "dallanma",
+)
+
+# Her modul icin (imza, ihlal mesaji). Metin duzeyinde bir sozlesme: bu
+# imzalar modulun *reddetme* yeteneginin durdugu yerler. Biri sokuldugunda
+# modul hala derlenir ve testleri yesil kalabilir - kapinin varlik sebebi bu.
+OTONOM_MARKERLAR = {
+    "tetikleyici": (
+        ("reddedilen_bos", "bos parti reddi sayilmiyor: zaman gecmesi veri sayilmis"),
+        ("SaatGeriGitti", "geri giden saat reddi sokulmus"),
+        ("soguma_kalan", "soguma sokulmus: ayni veri iki turda gorulebilir"),
+        ("TekrarEdenKimlik", "tekrar reddi sokulmus: esik hak edilmeden dolar"),
+        ("pencere_basi", "kayittan bagimsiz pencere sokulmus: bos red olculemez"),
+    ),
+    "veri_yolu": (
+        ("EtiketTaninmiyor", "taninmayan etiket reddi sokulmus"),
+        ("red_sayisi", "hicbir yola gitmeyen kayitlar sayilmiyor"),
+        ("karar_ver", "yan etkisiz onizleme sokulmus: sorgu olcumu kirletir"),
+        ("GecersizUtf8", "utf-8 reddi sokulmus"),
+    ),
+    "kosum": (
+        ("EksikOlcum", "eksik olcum reddi sokulmus: iki taraf birbirinin yerine yazilir"),
+        ("KipUyusmuyor", "kip denetimi sokulmus"),
+        ("egitime_uygun", "rol uygunlugu sokulmus: cq2 ile egitilebilir hale gelmis"),
+    ),
+    "regresyon": (
+        ("YonsuzAnahtar", "yonu olmayan anahtar yoksayiliyor: ratchet sessizce delinmis"),
+        ("AnahtarKayboldu", "kaybolan anahtar reddi sokulmus: satir silmek serbest kalmis"),
+        ("KapiKosmadi", "'kapi yok' ile 'kapi gecti' ayni sayilmis"),
+        ("taban_ilerlet", "taban ilerletme sokulmus"),
+    ),
+    "yayin": (
+        ("YargiGecmedi", "yargi kontrolu sokulmus: kirmizi turda yayin yapilir"),
+        ("IkinciKok", "ikinci kok reddi sokulmus: zincir ormana donusur"),
+        ("AtaBulunamadi", "bilinmeyen ata reddi sokulmus"),
+        ("AdimGeriGitti", "adim monotonlugu sokulmus"),
+    ),
+    "capraz": (
+        ("EN_AZ_BAGIMSIZ_ONAY", "bagimsiz onay esigi sokulmus"),
+        ("bagimsiz_yesil", "bagimsizlik kaynaktan olculmuyor: tekrar onay sayilir"),
+        ("Cekimser", "cekimser oy sinifi sokulmus: kararsizlik yesile eklenir"),
+    ),
+    "secim": (
+        ("berabere", "beraberlik isareti sokulmus: esit skora sira uydurulur"),
+        ("ESITLIK_TOLERANSI", "esitlik toleransi sokulmus: son bit farki kazanan uydurur"),
+        ("SiralanamazSkor", "NaN reddi sokulmus: siralama belirlenimsiz olur"),
+        ("girdi_sirasi", "beraberligin beyanli bozucusu sokulmus"),
+    ),
+    "koken": (
+        ("YuzeyDisiKaynak", "K2 yuzey reddi sokulmus"),
+        ("LisansTaninmiyor", "lisans reddi sokulmus: taninmayan lisans bilinmiyora duser"),
+        ("katkici_sayisi", "katkici muhasebesi sokulmus"),
+    ),
+    "dallanma": (
+        ("OrtakAtaYok", "ortak ata reddi sokulmus: iliskisiz modeller ortalanir"),
+        ("ToplamBirDegil", "toplam denetimi sokulmus: ortalama olceklemeye doner"),
+        ("NegatifAgirlik", "negatif agirlik reddi sokulmus: corba cikarmaya doner"),
+        ("dil_sayisi", "dil dagilimi sokulmus: tek dilli corba cok dilli raporlanir"),
+    ),
+}
+
+# Provenance defterine bir deger alani eklemek, direktif 6.8'in "odulsuz"
+# parantezini sessizce kaldirmanin yoludur. Alan adlari degil *kavramlar*
+# yasak: hangi adla gelirse gelsin bir miktar alani kapiyi kirmizi yakar.
+OTONOM_YASAK_ALANLAR = ("odul", "puan", "miktar", "pay:", "bakiye", "reward")
+
+# Yumusatmanin klasik bicimleri: reddi yutup bir adaya dusmek.
+OTONOM_YASAK_YOLLAR = (
+    "fn en_yakin",
+    "fn yumusat",
+    "fn varsayilana_dus",
+    "fn bilinmiyora_dus",
+    "unwrap_or_default()",
+)
+
+
+def _otonom_denetle(kok) -> list:
+    """Dokuz halkanin her biri hala reddedebiliyor mu - metin duzeyinde."""
+    ihlaller = []
+    src = kok / "crates" / "otonom" / "src"
+    if not src.is_dir():
+        return [f"kaynak dizini yok: {src}"]
+    for modul in OTONOM_MODULLER:
+        yol = src / f"{modul}.rs"
+        if not yol.exists():
+            ihlaller.append(f"{modul}: kaynak yok")
+            continue
+        metin = yol.read_text(encoding="utf-8")
+        for imza, mesaj in OTONOM_MARKERLAR.get(modul, ()):
+            if imza not in metin:
+                ihlaller.append(f"{modul}: {mesaj}")
+        if "pub const fn parametre_sayisi() -> usize {\n        0\n    }" not in metin:
+            ihlaller.append(f"{modul}: parametre tutmaya baslamis")
+        for yasak in OTONOM_YASAK_YOLLAR:
+            if yasak in metin:
+                ihlaller.append(f"{modul}: yumusatma yolu eklenmis ({yasak})")
+    koken = (src / "koken.rs").read_text(encoding="utf-8") if (src / "koken.rs").exists() else ""
+    govde = koken.split("pub struct Katki {")
+    if len(govde) > 1:
+        alanlar = govde[1].split("}")[0].lower()
+        for yasak in OTONOM_YASAK_ALANLAR:
+            if yasak in alanlar:
+                ihlaller.append(
+                    f"koken: Katki'ya deger alani eklenmis ({yasak}): 6.8 odulsuz"
+                )
+    lib = (src / "lib.rs").read_text(encoding="utf-8") if (src / "lib.rs").exists() else ""
+    if "HALKA_SAYISI: usize = 9" not in lib:
+        ihlaller.append("lib: halka sayisi 9 degil ya da beyan edilmemis")
+    return ihlaller
+
+
+def gate_otonom_dongu_reddeder() -> str:
+    """Otonom dongu (direktif bolum 6) dokuz halkasiyla ayakta ve her halka
+    adlandirilmis bir redle duruyor: bos parti egitilmez, taninmayan etiket
+    omurgaya dusurulmez, egitim ile servis sayisi birbirinin yerine yazilmaz,
+    ratchet kayiptan once okunur, soyu dogrulanamayan kontrol noktasi
+    yayimlanmaz, tek dogrulayici cogunluk sayilmaz, esit skor esit raporlanir,
+    katki kaydedilir ama odullendirilmez, ortak atasi olmayan modeller
+    ortalanmaz. Hicbir halka parametre tutmaz."""
+    import re
+    import subprocess
+
+    ihlaller = _otonom_denetle(ROOT)
+    if ihlaller:
+        raise SystemExit("otonom dongu sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+
+    src = ROOT / "crates" / "otonom" / "src"
+    beklenen = 0
+    for yol in sorted(src.glob("*.rs")):
+        beklenen += len(re.findall(r"#\[test\]", yol.read_text(encoding="utf-8")))
+    if beklenen == 0:
+        raise SystemExit("crate'te hic test yok")
+
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-otonom"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("otonom testleri kirmizi:\n" + cikti[-2000:])
+    gecen = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", cikti))
+    if gecen != beklenen:
+        raise SystemExit(
+            f"{beklenen} test var ama {gecen} tanesi kostu; sessiz atlama var"
+        )
+    return (
+        f"otonom dongu olculur: {len(OTONOM_MODULLER)} halka, {gecen} test, "
+        "her halka adlandirilmis redle duruyor (bos parti, taninmayan etiket, "
+        "kip karisimi, ratchet dususu, soysuz yayin, tek onay, uydurulmus sira, "
+        "odul alani, ortak atasiz ortalama), dokuzunda da parametre sifir"
+    )
+
+
+def selftest_otonom_dongu_reddeder() -> None:
+    """Kanaryalar: her halkadan bir red sokuldugunda, provenance defterine bir
+    odul alani eklendiginde, bir yumusatma yolu acildiginda ve bir halka
+    parametre tutmaya basladiginda kapi kirmizi yanmali."""
+    import shutil
+    import tempfile
+
+    if _otonom_denetle(ROOT):
+        raise SystemExit("saglam crate metin denetiminden gecmedi")
+    kaynak = ROOT / "crates" / "otonom" / "src"
+    with tempfile.TemporaryDirectory() as td:
+        kok = Path(td)
+        hedef = kok / "crates" / "otonom" / "src"
+        hedef.parent.mkdir(parents=True)
+        shutil.copytree(kaynak, hedef)
+        if _otonom_denetle(kok):
+            raise SystemExit("kopya saglam halde denetimden gecmedi")
+
+        kanaryalar = []
+        for modul, markerlar in OTONOM_MARKERLAR.items():
+            imza = markerlar[0][0]
+            kanaryalar.append((f"{modul}: {imza} sokulmus", modul, imza, "SESSIZCE_DEVAM"))
+        kanaryalar.append(
+            ("koken: Katki'ya odul alani eklenmis", "koken",
+             "pub struct Katki {", "pub struct Katki {\n    odul: u64,")
+        )
+        kanaryalar.append(
+            ("veri_yolu: yumusatma yolu acilmis", "veri_yolu",
+             "pub fn ayir(", "fn en_yakin_yol() {}\n    pub fn ayir(")
+        )
+        kanaryalar.append(
+            ("secim: parametre tutmaya baslamis", "secim",
+             "pub const fn parametre_sayisi() -> usize {\n        0\n    }",
+             "pub const fn parametre_sayisi() -> usize {\n        1\n    }")
+        )
+        kanaryalar.append(
+            ("lib: halka sayisi degistirilmis", "lib",
+             "HALKA_SAYISI: usize = 9", "HALKA_SAYISI: usize = 3")
+        )
+
+        for ad, modul, eski, yeni in kanaryalar:
+            yol = hedef / f"{modul}.rs"
+            saglam = yol.read_text(encoding="utf-8")
+            bozuk = saglam.replace(eski, yeni)
+            if bozuk == saglam:
+                raise SystemExit(f"kanarya kurulamadi, imza degismis: {ad}")
+            yol.write_text(bozuk, encoding="utf-8")
+            if not _otonom_denetle(kok):
+                raise SystemExit(f"{ad} yakalanmadi")
+            yol.write_text(saglam, encoding="utf-8")
+
+
 GATES_EXTRA = {
+    "otonom-dongu-reddeder": (gate_otonom_dongu_reddeder, selftest_otonom_dongu_reddeder),
     "sema-jeton-maskeler": (gate_sema_jeton_maskeler, selftest_sema_jeton_maskeler),
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,

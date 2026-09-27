@@ -634,6 +634,10 @@ name = "lubot-omurga"
 version = "0.1.0"
 
 [[package]]
+name = "lubot-otonom"
+version = "0.1.0"
+
+[[package]]
 name = "lubot-paralel"
 version = "0.1.0"
 

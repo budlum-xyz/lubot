@@ -1,0 +1,15 @@
+[package]
+name = "lubot-otonom"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true  # yayinlanmaz: kagit uzerinde de boyle
+license-file.workspace = true
+description = "The autonomous data-triggered training loop, written as refusals rather than a schedule: a trigger that fires on a record count or an elapsed window and never on an empty batch, a router that sends a record to the backbone or to the decision head by its shape instead of its wish, a train/serve split that keeps the training numeric and the serving numeric from being confused for one another, a regression brake that reads the ratchet before it reads the loss, a checkpoint publisher whose lineage is a chain nobody can rewrite, a cross-validator that needs two independent agreements, a head-to-head selector that reports ties as ties, a provenance ledger that records contribution and pays nothing, and a branch/soup merger that refuses to average models that do not share an ancestor."
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[dev-dependencies]
