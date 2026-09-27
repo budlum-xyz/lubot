@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/alim",
     "crates/gecis",
+    "crates/omurga",
     "crates/veri",
     "crates/uc-asama",
     "crates/transformer",
