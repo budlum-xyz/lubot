@@ -5,7 +5,11 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Port serisi `main`e degil uzun omurlu `egitim-dongusu` dalina aciliyor.
+    # Tetikleyici yalniz `main` iken bu PR'lar CI kosmadan birikiyordu: kanit
+    # olarak istenen "commit SHA + CI kosu numarasi" ciftinin ikinci yarisi
+    # yoktu. Tetikleyici genisletildi, hicbir adim gevsetilmedi.
+    branches: [main, egitim-dongusu]
 
 concurrency:
   group: ci-${{ github.ref }}
