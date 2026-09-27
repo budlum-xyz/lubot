@@ -1,0 +1,40 @@
+{
+  "is": "Engram tablosu tasima: tablo kontrol noktasinin yaninda kendi dosyasinda, ayni bicim kurallariyla (sihir, surum, hassasiyet, JSON baslik, adli blok, SHA-256 kuyruk) ve sahip kontrol noktasinin ozetine bagli tasinir",
+  "kanit": {
+    "bayt_32": 670.0,
+    "bayt_64": 1182.0,
+    "bit_ozdes": 1.0,
+    "cevrilen_bayt": 1150.0,
+    "d_kv": 4.0,
+    "f32_sapma": 7.450581e-09,
+    "f32_sapma_sinir_icinde": 1.0,
+    "n": 3.0,
+    "olcut_sonucu": true,
+    "parametre": 128.0,
+    "sure_saniye": 1.31,
+    "tablo": 16.0,
+    "yakalanan": 1150.0
+  },
+  "kaynaklar": {
+    "cikti_jetonlari": 0,
+    "girdi_jetonlari": 0,
+    "maliyet": 0.0,
+    "onbellekli_jetonlari": 0,
+    "sure_saniye": 1.31
+  },
+  "kosucu": "betik",
+  "olculmeyen": [
+    "kaynaktaki sayisal sonuclar (bu kayit yalniz kendi kosumumuzu olcer)",
+    "B.U.D. uzerinde content-addressed yayin (6.5): bu makinede zincir yok, olculmedi",
+    "egitilmis bir engram tablosunun tasinmasi: egitim cagrisi engrami gecmiyor (bagimsiz)",
+    "buyuk tabloda (10^6 hucre) yazma/okuma suresi: olculmedi"
+  ],
+  "olcut": {
+    "ad": "engram_tablosu_ozetli_ve_sahibine_bagli_tasinir",
+    "ifade": "n=3 tablo=16 d_kv=4: parametre = 2*tablo*d_kv VE f64 yuvarlak yol bit-ozdes VE f32 yolu yalniz f32 yuvarlamasi kadar sapar VE iki dosya boyu farki tam 4 bayt/parametre VE govdenin HER bayti tek tek cevrildiginde okuyucu reddeder (yakalanan == cevrilen)",
+    "sonuc": true
+  },
+  "port_karti": "workspace:skills/port-hatti/port-kartlari/needle-engram-bellek.md",
+  "tarih": "2026-09-27",
+  "uyari": "Tablo kontrol noktasi bicimine (surum 1) EKLENMEDI: engram hicbir aileye bagli degil (M1/M2/M3 acik), bagli olmayan bir blogu surum 1 sirasina sokmak mevcut kontrol noktalarini eski bicim yapardi. Ayri dosya + sahip ozeti bu kararin sonucu; aile karari verilince tek dosyaya alinmasi ayri artimdir."
+}

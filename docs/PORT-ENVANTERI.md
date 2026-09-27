@@ -62,6 +62,7 @@ degistirmez ama onu daha dar okutur: sekizinci modulun iki yarisindan biri
 | aile kesitleri | `crates/egitim/src/kesit.rs` | `kesit-kapisi` | `kesit-2026-09-27.json` | bagimsiz |
 | sifir merkezli RMS norm | `crates/egitim/src/normalizasyon.rs` | `normalizasyon-kapisi` | `normalizasyon-2026-09-27.json` | bagimsiz |
 | birlesik blok (3.8) | `crates/egitim/src/birlesik.rs` | `birlesik-kapisi` | `birlesik-2026-09-27.json` | bagimsiz |
+| engram tasima (7.1: tablo model durumunun parcasi) | `crates/egitim/src/engram_tasima.rs` | `omurga-karar-port-kayitlari` | `engram-tasima-2026-09-27.json` | bagimsiz |
 | kademe egitimi (3.5 kalem 1) | `crates/egitim/src/kademe.rs` | `kademe-kapisi` | `kademe-2026-09-27.json` | bagimsiz |
 
 ## Bu envanterin soyledigi
