@@ -37,6 +37,7 @@ notu süreç belgesidir; uygulanan her bileşen kendi kodunu, kendi kapısını 
 | alt-bayt ağırlık nicemlemesi + yerinde okunan kap + derinlik merdiveni | `nicem` (2,125 bit/ağırlık ölçüldü), `tasiyici` (LUBOTNCM) | var |
 | şema-doğrulamalı tek Markdown çıkış, üretim yüzeyi yok | `read/output_schema`, `answer`, kapılar | var |
 | dış kontrol noktasını okuyup çalıştırma | `kodlayici` | var (sözlük tarafı eksik) |
+| sıfırdan yazılan kodlayıcı omurgası: dönel konum + dönüşümlü yerel/genel dikkat + bias'sız blok + birleştirilebilir ağırlık dizini | `omurga` | var (2026-09-27; tasarım notu değil kod) |
 | kendinden-damıtma, mekanik jüri | `kendinden` | var |
 | kıyas protokolü, rakip çıktısı korpusa girmez | `kapisma` | var |
 
@@ -44,6 +45,10 @@ Eksik olan beş deseni bu notlar tasarlar: (a) Hadamard/Monarch MLP, (b) GQA +
 nedensel kıvrım dokunuşları, (c) engram belleği, (d) çok-şeritli artık bağlantılar,
 (e) kalibre edilmiş güven başlığı. Altıncı desen (dilbilgisi-kısıtlı çözümleme) bu
 deponun anayasası tarafından zaten büyük ölçüde karşılanır; kalan boşluk notlanır.
+
+**2026-09-27 eki.** Yukarıdaki maddelerin hiçbiri bileşenlerin üzerine oturacağı
+*yığını* tarif etmiyordu. §3.9 o yığını ekler ve bir tasarım notu değil kod
+getirir (`crates/omurga`, `omurga-sozlesmesi` kapısı).
 
 ## 3. Bileşen tasarım notları
 
@@ -235,6 +240,56 @@ K5/K6 (yeni bir çıktı yüzeyi yok), ve 4. bölümün sırası: bu blok 4–6.
 *ön koşuludur*, yerine geçmez — hangi bileşenin aileye gireceği hâlâ ölçümle ve
 damgayla karara bağlanır.
 
+### 3.9 Kodlayıcı omurgası (uygulandı, `crates/omurga`)
+
+**Ne:** gömme katmanı + N blok; her blokta ön-norm, bias'sız doğrusal katmanlar,
+gruplanmış-sorgu dikkat, kapılı ileri-besleme. Konum bilgisi dönel (rotary);
+dikkat her `periyot` katmanda bir tüm diziyi, geri kalan katmanlarda simetrik bir
+pencereyi görür. Çift yönlüdür, nedensel maske yoktur: bu depo okur, metin
+sürdürmez.
+
+**Neden tasarım notu değil kod:** §3.1-3.7'deki bileşenlerin her biri bir
+omurganın *içine* takılan parçalar; §3.8 onları tek blokta kompoze ediyor. İkisi
+de bir kodlayıcı yığınının *parçası*, yığının kendisi değil. Bu bölüm yığını
+yazar: gömmeden çıkışa, katman çizelgesiyle birlikte. Bileşenlerin bu yığına
+takılması (özellikle §3.1 Hadamard MLP'nin kapılı ileri-beslemenin yerine
+geçmesi) hâlâ M1 kararına bağlı ve **yapılmadı**.
+
+**Kapsam çakışması, gizlenmedi (M9).** Bu ağaçta artık üç kodlayıcı yüzeyi var:
+`egitim` (sıfırdan eğitilen çekirdek, elle yazılmış geri geçiş), `kodlayici`
+(dış yapıtı okuyup koşturan yükleyici) ve `omurga` (bu bölüm: sıfırdan yazılan,
+birleştirilebilir omurga, yalnızca ileri geçiş). Üçü bugün farklı amaç taşıyor
+ama aynı aritmetiğin parçalarını ayrı ayrı yazıyorlar; iki uygulama bir gün
+sessizce ayrışabilir. Tek uygulamaya indirme ya da "aynı girdi, aynı sayı"
+uzlaşma ölçümü bir sonraki karttır ve bu turda yapılmadı. Bir gözlem şimdiden
+kayda değer: `kodlayici` dış yapıtın dönel eşleşmesini **yarıya bölme** olarak
+ölçtü, `transformer` ise bugün **komşu çift** döndürüyor (M7).
+
+**Sessizce karar verilmeyenler.** Omurga üç noktada `training/model_spec.json`'un
+`lubot-a1` ailesinden ayrılır ve bunları **beyan eder, spec'i değiştirmez**:
+dikkat ölçeği `1/sqrt(d_head)` (spec: `1/d_k`); ileri-besleme kapılı (spec: iki
+matrisli MLP); bias yok (spec param gruplarında bias sayıyor). Bunlar ayrı bir
+aile demektir; ailenin benimsenip benimsenmeyeceği operatör damgası bekler.
+
+**Ölçülmeyenler.** Bu omurga eğitilmedi. Hiçbir ağırlık dışarıdan okunmaz;
+`Omurga::yeni` tohumdan üretir. Kalite, hız, `Θ(1)` bandı ve pencere yarıçapının
+alma başarısına etkisi **ölçülmedi**; `lubot omurga ileri` yalnızca ölçüm aletini
+verir, hüküm vermez.
+
+**Kapı ne kanıtlıyor (`omurga-kapisi`):** dönme eşleşmesi beyanının uygulamadan
+bağımsız ölçülüp karşılaştırıldığını; tümü-maskeli softmax satırının reddedildiğini
+(NaN üretilmediğini); her jetonun kendini gördüğünü (softmax'ın tanımlı kaldığını);
+parametre sayımının biri dizinden biri kapalı formülden olmak üzere iki bağımsız
+yoldan türetildiğini; şekil imzası uymayan iki modelin birleştirilmediğini. Kapının
+kendi self-test'i bu maddelerin her birini sökülmüş bir kopyada yakaladığını
+gösterir.
+
+**6.9 bağlantısı (dallanma/birleştirme):** ağırlıklar tek düz tampon + adlandırılmış
+dizin olarak durur ve `sekil_imzasi()` iki kontrol noktasının birleştirilebilir
+olmasının şartıdır. `Omurga::ortala` parametre uzayında ortalama alır, imza
+uymuyorsa reddeder. Bu, dal-birleştir işleminin *tanımlı* olduğunu gösterir;
+birleşmenin kaliteyi düşürüp düşürmediği kapı işidir ve ölçülmedi.
+
 ## 4. Birleşik taslak: lubot-a2 adayı (yön, değil taahhüt)
 
 Sıra, ölçüm disiplinine göre kurulur; her satır ayrı artım, kendi self-test'i ve
@@ -263,6 +318,9 @@ Hiçbir adımda değişmeyenler: K1-K6, donmuş sözlük ailesi, okuyan-yapı, t
 | M4 | kademe eğitimi (her derinlik dağıtılabilir) | hedef olarak işaretli, eğitim hedefi değişikliği damga ister |
 | M5 | güven bandı sınırları | ölçümle oturur; kodda sabit değer yok |
 | M6 | dikkat ölçeği / init kuralı (θ₁ bulgusu) | önceki turlarda zaten açık; bu not yalnızca 3.4'le ilişkisini kaydeder |
+| M7 | `transformer`'daki dönel eşleşme: komşu çift mi kalsın, yarıya bölmeye mi çevrilsin | **bulgu (2026-09-27):** beyan "yarıya bölme" diyordu, uygulama komşu çift döndürüyordu, testi aynı sabiti tekrar ettiği için hiçbir koşu göremiyordu. Beyan ölçüme bağlandı, **uygulama değişmedi**: değiştirmek aile kararıdır. Bağımsız doğrulama: `kodlayici` dış yapıttaki eşleşmeyi yarıya bölme olarak ölçtü, yani iki kodlayıcı bugün farklı eşleşme kullanıyor. |
+| M8 | `omurga` ailesi benimsensin mi (dikkat ölçeği `1/sqrt(d_head)`, kapılı ileri-besleme, bias yok) | üç sapma beyan edildi, spec değiştirilmedi; benimseme ölçüm + damga ister |
+| M9 | üç kodlayıcı yüzeyi (`egitim` çekirdeği, `kodlayici` dış yapıt okuyucusu, `omurga` sıfırdan omurga) tek yüzeye indirilsin mi | üçü de bugün ayrı amaç taşıyor; birleştirme ya da uzlaşma ölçümü (aynı girdi, aynı sayı) bir sonraki kart. Kapsam çakışması operatöre bildirildi. |
 
 ## 6. Kaynak işaretleri
 

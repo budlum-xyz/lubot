@@ -8800,6 +8800,241 @@ def selftest_port_envanteri_kapisi() -> None:
         raise SystemExit("kaynaksiz durum iddiasi yakalanmadi")
 
 
+# --------------------------------------------------------------------------
+# gate: the encoder backbone keeps the contracts it was written for
+# --------------------------------------------------------------------------
+# `crates/omurga` is the ported encoder backbone: rotary positions, an
+# alternating local/global attention schedule, grouped-query attention,
+# bias-free blocks, and a flat weight directory so two checkpoints can be
+# averaged. Every one of those has a failure mode that produces a model which
+# still runs and still answers - a rotary pairing that silently disagrees with
+# its own declaration, an all-masked softmax row that writes NaN into the
+# residual stream, a parameter count nobody derived twice, a merge across two
+# shapes that happen to have the same length. None of those show up as a crash,
+# so none of them show up at all unless something checks for them.
+#
+# The gate checks the contract in the text and then runs the crate's own tests,
+# refusing a run where fewer tests execute than are written: a silently skipped
+# test is the same as a deleted one.
+
+
+_OMURGA_SOZLESME = [
+    (
+        "crates/omurga/src/konum.rs",
+        [
+            ("fn olculen_eslesme", "the rotary pairing cannot be measured back out of the implementation"),
+            ("fn beyan_edilen_eslesme_olculenle_ayni", "nothing checks the declared pairing against the implemented one"),
+            ("fn baginti_yalniz_konum_farkina_baglidir", "the relative-position property is not measured"),
+            ("fn dondurme_normu_korur", "orthogonality is not measured"),
+        ],
+    ),
+    (
+        "crates/omurga/src/dikkat.rs",
+        [
+            ("TumuMaskeli", "an all-masked attention row is not refused, so it can produce NaN"),
+            ("fn yumusak_azami_tumu_maskeli_reddeder", "the all-masked refusal is not tested"),
+            ("fn yumusak_azami_buyuk_sayida_tasmaz", "softmax overflow is not tested"),
+            ("fn kv_paylasan_kafalar_ayni_degeri_okur", "the grouping is not tested"),
+        ],
+    ),
+    (
+        "crates/omurga/src/pencere.rs",
+        [
+            ("fn her_jeton_kendini_gorur", "nothing guarantees a token sees itself, which is what keeps softmax defined"),
+            ("fn pencere_simetrik", "the window is not measured to be symmetric"),
+        ],
+    ),
+    (
+        "crates/omurga/src/katman.rs",
+        [
+            ("fn carp_satir_esleme_dogru", "nothing catches a transposed weight store"),
+            ("fn norm_varyansi_bire_getirir", "the normalisation is not measured"),
+            ("fn kapili_ileri_kapi_gercekten_kapatir", "the gate is not measured to close"),
+        ],
+    ),
+    (
+        "crates/omurga/src/lib.rs",
+        [
+            ("fn beklenen_param_sayisi", "the parameter count is derived only once"),
+            ("fn param_sayisi_iki_yoldan_ayni", "the two parameter counts are never compared"),
+            ("UyumsuzImza", "a merge across two different shapes is not refused"),
+            ("fn uyumsuz_imza_birlesmez", "the merge refusal is not tested"),
+            ("fn dizin_bosluksuz_ve_ortusmez", "the tensor directory is not checked for holes or overlaps"),
+        ],
+    ),
+]
+
+
+def _omurga_denetle(kok: Path) -> list[str]:
+    """The contract, read out of the text of the crate."""
+    ihlaller: list[str] = []
+    for goreli, sartlar in _OMURGA_SOZLESME:
+        yol = kok / goreli
+        if not yol.is_file():
+            ihlaller.append(f"{goreli} yok")
+            continue
+        metin = yol.read_text(encoding="utf-8")
+        for isaret, gerekce in sartlar:
+            if isaret not in metin:
+                ihlaller.append(f"{goreli}: {gerekce} (`{isaret}` yok)")
+        kesim = metin.find("#[cfg(test)]")
+        uretim = metin if kesim < 0 else metin[:kesim]
+        if re.search(r"\.(unwrap|expect)\(", uretim):
+            ihlaller.append(f"{goreli}: uretim tarafinda panik yolu var")
+    return ihlaller
+
+
+# The finding this gate also keeps closed: `crates/transformer`'s rotary
+# accessor used to return a hardcoded `true` while the code rotated adjacent
+# pairs, and its test repeated the same constant. A constant cannot disagree
+# with itself, so nothing could ever catch it.
+_TRANSFORMER_YOL = "crates/transformer/src/lib.rs"
+
+
+def _transformer_eslesme_denetle(kok: Path) -> list[str]:
+    yol = kok / _TRANSFORMER_YOL
+    if not yol.is_file():
+        return [f"{_TRANSFORMER_YOL} yok"]
+    metin = yol.read_text(encoding="utf-8")
+    govde = re.search(
+        r"pub fn yariya_bolme_mi\(&self\) -> bool \{(.*?)\n    \}", metin, re.S
+    )
+    if not govde:
+        return [f"{_TRANSFORMER_YOL}: `yariya_bolme_mi` bulunamadi"]
+    icerik = govde.group(1)
+    if not re.search(r"\buygula\b", icerik):
+        return [
+            f"{_TRANSFORMER_YOL}: `yariya_bolme_mi` uygulamayi olcmuyor; "
+            "sabit bir beyan kendi kendisiyle celisemez"
+        ]
+    if "fn rope_eslesme_beyani_uygulamayla_tutarli" not in metin:
+        return [
+            f"{_TRANSFORMER_YOL}: beyani uygulamadan bagimsiz turetip karsilastiran test yok"
+        ]
+    return []
+
+
+def gate_omurga_sozlesmesi() -> str:
+    """Kodlayici omurgasi sozlesmesini tutuyor: donme eslesmesi olculur ve
+    beyanla karsilastirilir, tumu-maskeli satir reddedilir, her jeton kendini
+    gorur, parametre sayimi iki bagimsiz yoldan turetilir, sekil imzasi
+    uymayan birlesim reddedilir; ve `transformer`'daki eslesme beyani artik
+    sabit degil olculur. Crate'in kendi testleri kosar, sessiz atlama
+    reddedilir."""
+    import subprocess
+
+    ihlaller = _omurga_denetle(ROOT) + _transformer_eslesme_denetle(ROOT)
+    if ihlaller:
+        raise SystemExit("omurga sozlesmesi bozuk:\n  " + "\n  ".join(ihlaller))
+
+    beklenen = 0
+    for kaynak in sorted((ROOT / "crates" / "omurga").rglob("*.rs")):
+        beklenen += len(
+            re.findall(r"#\[test\]", kaynak.read_text(encoding="utf-8"))
+        )
+    if beklenen == 0:
+        raise SystemExit("omurga crate'inde hic test yok")
+    kosu = subprocess.run(
+        ["cargo", "test", "-q", "-p", "lubot-omurga"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    cikti = kosu.stdout + kosu.stderr
+    if kosu.returncode != 0:
+        raise SystemExit("omurga testleri kirmizi:\n" + cikti[-2000:])
+    gecenler = [int(m) for m in re.findall(r"test result: ok\. (\d+) passed", cikti)]
+    if not gecenler:
+        raise SystemExit("test sonucu okunamadi:\n" + cikti[-800:])
+    gecen = max(gecenler)
+    if gecen != beklenen:
+        raise SystemExit(
+            f"{beklenen} test yazili ama {gecen} tanesi kostu; sessiz atlama var"
+        )
+    if re.search(r"(\d+) ignored", cikti) and " 0 ignored" not in cikti:
+        raise SystemExit("atlanan test var; atlanan test yazilmamis testtir")
+    return (
+        f"omurga sozlesmesi tutuyor: {gecen} test, donme eslesmesi olculup beyanla "
+        "karsilastiriliyor, tumu-maskeli satir reddediliyor, parametre sayimi iki "
+        "bagimsiz yoldan ayni, sekil imzasi uymayan birlesim reddediliyor"
+    )
+
+
+def selftest_omurga_sozlesmesi() -> None:
+    """Kanaryalar: sozlesmenin her maddesi sokulursa yakalanmali."""
+    import shutil
+    import tempfile
+
+    if _omurga_denetle(ROOT):
+        raise SystemExit("saglam agac metin denetiminden gecmedi")
+    if _transformer_eslesme_denetle(ROOT):
+        raise SystemExit("saglam transformer eslesme denetiminden gecmedi")
+
+    with tempfile.TemporaryDirectory() as td:
+        kok = Path(td)
+        for goreli, _ in _OMURGA_SOZLESME:
+            hedef = kok / goreli
+            hedef.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / goreli, hedef)
+        hedef = kok / _TRANSFORMER_YOL
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / _TRANSFORMER_YOL, hedef)
+        if _omurga_denetle(kok) or _transformer_eslesme_denetle(kok):
+            raise SystemExit("kopyalanan saglam agac denetimden gecmedi")
+
+        # 1) olcum sokulursa yakalanmali
+        yol = kok / "crates/omurga/src/konum.rs"
+        saglam = yol.read_text(encoding="utf-8")
+        yol.write_text(saglam.replace("fn olculen_eslesme", "fn kapatildi"),
+                       encoding="utf-8")
+        if not _omurga_denetle(kok):
+            raise SystemExit("eslesme olcumu sokulmus kopya yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+
+        # 2) tumu-maskeli reddi sokulursa yakalanmali
+        yol = kok / "crates/omurga/src/dikkat.rs"
+        saglam = yol.read_text(encoding="utf-8")
+        yol.write_text(saglam.replace("TumuMaskeli", "Bosluk"), encoding="utf-8")
+        if not _omurga_denetle(kok):
+            raise SystemExit("tumu-maskeli reddi sokulmus kopya yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+
+        # 3) iki yoldan sayim sokulursa yakalanmali
+        yol = kok / "crates/omurga/src/lib.rs"
+        saglam = yol.read_text(encoding="utf-8")
+        yol.write_text(saglam.replace("fn beklenen_param_sayisi", "fn tek_sayim", 1),
+                       encoding="utf-8")
+        if not _omurga_denetle(kok):
+            raise SystemExit("ikinci sayim yolu sokulmus kopya yakalanmadi")
+
+        # 4) uretim tarafina panik yolu konursa yakalanmali
+        yol.write_text(
+            saglam.replace(
+                "        yap.dogrula()?;",
+                "        let _ = vec![0].first().unwrap();\n        yap.dogrula()?;",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        if not _omurga_denetle(kok):
+            raise SystemExit("panik yolu sokulmus kopya yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+
+        # 5) transformer beyani yeniden sabite cevrilirse yakalanmali
+        yol = kok / _TRANSFORMER_YOL
+        saglam = yol.read_text(encoding="utf-8")
+        sabit = re.sub(
+            r"pub fn yariya_bolme_mi\(&self\) -> bool \{.*?\n    \}",
+            "pub fn yariya_bolme_mi(&self) -> bool {\n        true\n    }",
+            saglam,
+            flags=re.S,
+        )
+        yol.write_text(sabit, encoding="utf-8")
+        if not _transformer_eslesme_denetle(kok):
+            raise SystemExit("sabite cevrilmis eslesme beyani yakalanmadi")
+        yol.write_text(saglam, encoding="utf-8")
+        if _omurga_denetle(kok) or _transformer_eslesme_denetle(kok):
+            raise SystemExit("geri alinan agac hala kirmizi")
+
+
 GATES_EXTRA = {
     "credential-shapes-are-measured": (
         gate_credential_shapes_are_measured,
@@ -8931,6 +9166,7 @@ GATES_EXTRA = {
     "kesit-kapisi": (gate_kesit_kapisi, selftest_kesit_kapisi),
     "normalizasyon-kapisi": (gate_normalizasyon_kapisi, selftest_normalizasyon_kapisi),
     "omurga-karar-port-kayitlari": (gate_omurga_karar_port_kayitlari, selftest_omurga_karar_port_kayitlari),
+    "omurga-sozlesmesi": (gate_omurga_sozlesmesi, selftest_omurga_sozlesmesi),
 }
 
 
