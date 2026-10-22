@@ -11,7 +11,7 @@ readme = "README.md"
 [dependencies]
 lubot-grant = { path = "../grant", version = "0.1.0" }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 
 [dev-dependencies]
 # Only the cross-check needs it: the schema decoder is measured against the
